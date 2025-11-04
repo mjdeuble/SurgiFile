@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SurgiFile - Clinical Management</title>
+    <title>Clinical Management PWA</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
@@ -138,7 +138,7 @@
 
     <nav class="bg-white shadow-md w-full p-4 sticky top-0 z-40">
         <div class="container mx-auto flex items-center justify-between">
-            <h1 id="app-title" class="text-2xl font-bold text-slate-700">SurgiFile</h1>
+            <h1 id="app-title" class="text-2xl font-bold text-slate-700">Clinical Management PWA</h1>
             <div class="flex items-center gap-4">
                 <button id="tab-entry" class="tab-btn active">Clinical Entry</button>
                 <button id="tab-billing" class="tab-btn">Billing & Processing</button>
@@ -321,4 +321,2055 @@
                                      </div>
                                  </div>
                                  <div class="space-y-2">
-                                    <label class
+                                    <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                        <input type="checkbox" id="useNonDissolvable" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                        <span>Non-dissolvable Suture</span>
+                                    </label>
+                                     <div id="skin-suture-details" class="grid grid-cols-2 gap-4">
+                                         <select id="skinSutureSize" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                             <option value="3/0">3/0</option>
+                                             <option value="4/0">4/0</option>
+                                             <option value="5/0" selected>5/0</option>
+                                             <option value="6/0">6/0</option>
+                                         </select>
+                                         <select id="skinSutureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                             </select>
+                                         <div id="skin-suture-removal-container" class="col-span-2">
+                                             <input type="number" id="removalOfSkinSutures" placeholder="Suture Removal (days)" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                         </div>
+                                     </div>
+                                 </div>
+                            </div>
+    
+                        </div>
+                    </form>
+                    
+                    <div class="mt-8 pt-6 border-t border-slate-200">
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <button id="add-lesion-btn" type="button" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300 shadow-md disabled:bg-slate-300">
+                                Add Lesion
+                            </button>
+                            <button id="cancel-edit-btn" type="button" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-300 shadow-md hidden">
+                                Cancel Edit
+                            </button>
+                        </div>
+                        
+                        <div class="mt-6 flex flex-col sm:flex-row gap-3">
+                             <button id="save-procedure-btn" type="button" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 transition duration-300 shadow-md">
+                                Generate JSON File
+                            </button>
+                            <button id="clear-procedure-btn" type="button" class="w-full sm:w-auto bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300">
+                                Clear Procedure
+                            </button>
+                        </div>
+    
+                    </div>
+                </div>
+    
+                <div>
+                     <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+                        <h2 class="text-2xl font-semibold mb-4 border-b pb-3">Recorded Lesions for this Patient</h2>
+                        <div id="lesions-list" class="space-y-3">
+                            <p class="text-slate-500 italic">No lesions added yet.</p>
+                        </div>
+                    </div>
+    
+                    <div class="flex items-center gap-4 mb-4">
+                        <label class="text-sm font-medium text-slate-600">Output Style:</label>
+                        <div class="flex gap-2">
+                            <button id="output-btn-combined" class="output-style-btn px-3 py-1 text-sm rounded-md bg-slate-200 text-slate-700" data-value="combined">Combined</button>
+                            <button id="output-btn-separate" class="output-style-btn px-3 py-1 text-sm rounded-md bg-slate-200 text-slate-700" data-value="separate">Separate</button>
+                        </div>
+                    </div>
+    
+                     <div id="clinical-request-output-container" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+                         <div class="flex justify-between items-center mb-4 border-b pb-3">
+                             <h2 class="text-2xl font-semibold">Clinical Request</h2>
+                             <button id="copy-request-btn" class="bg-sky-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-600 transition duration-300 flex items-center gap-2">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z"/></svg>
+                                 <span id="copy-request-btn-text">Copy</span>
+                             </button>
+                         </div>
+                         <textarea id="clinicalRequestOutput" rows="8" class="w-full bg-slate-50 border-none rounded-lg p-4 text-sm leading-6 focus:ring-0" readonly>Your clinical request will appear here...</textarea>
+                     </div>
+                    
+                     <div id="entry-note-output-container" class="bg-white p-6 rounded-2xl shadow-lg sticky top-8">
+                         <div class="flex justify-between items-center mb-4 border-b pb-3">
+                             <h2 class="text-2xl font-semibold">Generated Note</h2>
+                             <button id="copy-note-btn" class="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-600 transition duration-300 flex items-center gap-2">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z"/></svg>
+                                 <span id="copy-note-btn-text">Copy</span>
+                             </button>
+                         </div>
+                         <textarea id="entryNoteOutput" rows="18" class="w-full bg-slate-50 border-none rounded-lg p-4 text-sm leading-6 focus:ring-0" readonly>Your generated note will appear here...</textarea>
+                     </div>
+                </div>
+            </div>
+    
+            <footer class="text-center mt-12">
+                <p class="text-xs text-slate-500">
+                    Disclaimer: This tool is intended for educational and informational purposes only and does not constitute medical advice. The author makes no warranties regarding the accuracy, completeness, or reliability of the information provided and is not liable for any claims or damages arising from its use. Use at your own risk.
+                </p>
+            </footer>
+        </div>
+    </div>
+
+    <div id="billing-view" class="app-view">
+        <div id="billing-view-container" class="container mx-auto p-4 md:p-8 max-w-7xl">
+            <header class="mb-8 p-6 bg-white rounded-2xl shadow-lg">
+                <div class="flex justify-between items-center">
+                    <h1 id="billing-title" class="text-3xl md:text-4xl font-bold text-slate-700">Billing & Processing</h1>
+                    <label class="flex items-center space-x-2 font-medium text-slate-700">
+                        <input type="checkbox" id="pm-mode-toggle" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <span>Practice Manager Mode</span>
+                    </label>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-center mt-6">
+                    <div id="unprocessed-dashboard" class="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                        <p class="text-sm font-medium text-amber-600">Unprocessed</p>
+                        <p id="unprocessed-count-dash" class="text-3xl font-bold text-amber-700">0</p>
+                    </div>
+                    <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <p class="text-sm font-medium text-blue-600">Billed</p>
+                        <p id="billed-count-dash" class="text-3xl font-bold text-blue-700">0</p>
+                    </div>
+                    <div class="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <p class="text-sm font-medium text-slate-600">Archive</p>
+                        <p id="archive-count-dash" class="text-3xl font-bold text-slate-700">0</p>
+                    </div>
+                </div>
+                <div class="mt-6 pt-4 border-t flex items-center justify-between gap-4">
+                    <div class="flex-grow">
+                        <input type="text" id="search-bar" placeholder="Search by patient name..." class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2">
+                    </div>
+                    <div class="flex-shrink-0 flex gap-2">
+                         <button id="print-billed-list-btn" class="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-700 transition duration-300">
+                            Print Billed List
+                        </button>
+                        <button id="load-files-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+                            Load/Refresh Files
+                        </button>
+                    </div>
+                </div>
+            </header>
+            
+            <div id="billing-columns" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div id="unprocessed-column" class="flex flex-col gap-4">
+                    <h2 class="text-2xl font-semibold text-amber-700 billing-column-header col-header-unprocessed">Unprocessed</h2>
+                    <div id="unprocessed-list" class="space-y-3 max-h-[60vh] overflow-y-auto p-1">
+                        </div>
+                </div>
+    
+                <div id="billed-column" class="flex flex-col gap-4">
+                    <h2 class="text-2xl font-semibold text-blue-700 billing-column-header col-header-billed">Billed</h2>
+                    <div id="billed-list" class="space-y-3 max-h-[60vh] overflow-y-auto p-1">
+                        </div>
+                </div>
+    
+                <div id="archive-column" class="flex flex-col gap-4">
+                    <h2 class="text-2xl font-semibold text-slate-700 billing-column-header col-header-archive">Archive</h2>
+                    <div id="archive-list" class="space-y-3 max-h-[60vh] overflow-y-auto p-1">
+                        </div>
+                </div>
+            </div>
+
+            <div id="billing-panel" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50">
+                <div class="w-full max-w-2xl bg-white p-6 rounded-2xl shadow-lg max-h-[90vh] flex flex-col">
+                    <div class="flex justify-between items-center mb-4 border-b pb-3">
+                        <h2 class="text-2xl font-bold text-slate-700" id="billing-panel-title">Billing Panel</h2>
+                        <button id="close-billing-panel-btn" class="text-slate-500 hover:text-slate-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z"/></svg>
+                        </button>
+                    </div>
+                    
+                    <div id="billing-panel-content" class="overflow-y-auto space-y-4 pr-2">
+                        </div>
+                    
+                    <div id="billing-assistant" class="mt-6 border-t pt-4 space-y-4">
+                        <div id="billing-assistant-lesions">
+                            </div>
+                        <hr/>
+                        <div>
+                            <label for="billing-consult-item" class="block text-sm font-medium text-slate-600 mb-2">Consult Item</label>
+                            <input type="text" id="billing-consult-item" placeholder="e.g., 23" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                        </div>
+                         <div>
+                            <label for="billing-comment" class="block text-sm font-medium text-slate-600 mb-2">Billing Comment (Optional)</label>
+                            <textarea id="billing-comment" rows="2" placeholder="e.g., Patient has concession card." class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3"></textarea>
+                        </div>
+                    </div>
+
+                    <div id="billing-panel-doctor-actions" class="mt-6 flex gap-3">
+                        <button id="save-as-billed-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300">Save as Billed</button>
+                        <button id="delete-procedure-btn" class="w-auto bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition duration-300">Delete</button>
+                    </div>
+                    <div id="billing-panel-pm-actions" class="mt-6 flex gap-3 hidden">
+                        <button id="move-to-archive-btn" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-300">Move to Archive</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="settings-view" class="app-view">
+        <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+            <header class="text-center mb-8 p-6 bg-white rounded-2xl shadow-lg">
+                <h1 class="text-3xl md:text-4xl font-bold text-slate-700">Settings</h1>
+                <p class="text-slate-500 mt-2">Manage app data, including billing codes and suture types.</p>
+            </header>
+            
+            <div class="bg-white p-6 rounded-2xl shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4">App Settings Editor</h2>
+                <p class="text-sm text-slate-600 mb-4">
+                    Edit the JSON data below to update, add, or remove billing codes and suture types.
+                    <br><strong>Warning:</strong> Invalid JSON will break the application. Use a JSON validator if unsure.
+                </p>
+                <textarea id="app-settings-editor" rows="30" class="w-full bg-slate-100 border border-slate-300 rounded-lg p-4 text-sm font-mono focus:ring-2 focus:ring-blue-500"></textarea>
+                <div class="mt-4 flex justify-end gap-3">
+                    <button id="reset-app-settings-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300">Reset to Defaults</button>
+                    <button id="save-app-settings-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Save Changes</button>
+                </div>
+                <p id="app-settings-status" class="text-sm mt-2"></p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="pathologyModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-lg">
+            <h2 class="text-xl font-bold text-slate-700 mb-4">Select Provisional Diagnoses</h2>
+            <div id="pathology-checkboxes" class="grid grid-cols-2 gap-2">
+                </div>
+            <div class="mt-4">
+                <input type="text" id="otherPathologyInput" class="w-full bg-slate-50 border rounded-lg p-2" placeholder="Other diagnosis...">
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" id="confirmPathologyBtn" class="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-600">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="orientationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="w-full max-w-lg bg-white p-6 md:p-8 rounded-2xl shadow-lg transform transition-all" id="modal-content">
+            <h1 class="text-2xl font-bold text-slate-700 text-center mb-6">Select Orientation Location</h1>
+            
+            <div id="modal-location-selector">
+                <div class="mb-6">
+                    <svg id="clock" viewBox="0 0 200 200" class="w-full max-w-xs mx-auto"></svg>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mb-6">
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Proximal">Proximal</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Distal">Distal</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Medial">Medial</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Lateral">Lateral</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Left">Left</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Right">Right</button>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3">
+                 <button type="button" id="cancelOrientationBtn" class="bg-slate-200 text-slate-700 font-bold py-2 px-4 rounded-lg hover:bg-slate-300">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="printable-report">
+        <h1 id="print-title" class="text-2xl font-bold mb-4"></h1>
+        <table id="print-table" class="w-full">
+            </table>
+    </div>
+
+
+    <script>
+    // --- PWA Service Worker Registration ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(registration => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                })
+                .catch(error => {
+                    console.log('ServiceWorker registration failed: ', error);
+                });
+        });
+    }
+
+    // --- DOM Element References ---
+    const getEl = (id) => document.getElementById(id);
+
+    // --- Tab View Elements ---
+    const tabEntryBtn = getEl('tab-entry');
+    const tabBillingBtn = getEl('tab-billing');
+    const tabSettingsBtn = getEl('tab-settings');
+    const entryView = getEl('entry-view');
+    const billingView = getEl('billing-view');
+    const settingsView = getEl('settings-view');
+
+    // --- Entry View Elements ---
+    const lesionForm = getEl('lesion-form');
+    const procedureTypeEl = getEl('procedureType');
+    const dynamicOptionsContainer = getEl('dynamic-options-container');
+    const addLesionBtn = getEl('add-lesion-btn');
+    const cancelEditBtn = getEl('cancel-edit-btn');
+    
+    const patientNameEl = getEl('patientName');
+    const doctorCodeEl = getEl('doctorCode');
+    const saveProcedureBtn = getEl('save-procedure-btn');
+    const clearProcedureBtn = getEl('clear-procedure-btn');
+
+    const lesionsListEl = getEl('lesions-list');
+    const entryNoteOutputEl = getEl('entryNoteOutput');
+    const clinicalRequestOutputEl = getEl('clinicalRequestOutput');
+    const formTitle = getEl('form-title');
+    const clinicalRequestContainer = getEl('clinical-request-output-container');
+    const entryNoteContainer = getEl('entry-note-output-container');
+    const outputBtnCombined = getEl('output-btn-combined');
+    const outputBtnSeparate = getEl('output-btn-separate');
+    
+    // --- Billing View Elements ---
+    const billingViewContainer = getEl('billing-view-container');
+    const appTitle = getEl('app-title');
+    const loadFilesBtn = getEl('load-files-btn');
+    const pmModeToggle = getEl('pm-mode-toggle');
+    const searchBar = getEl('search-bar');
+    const printBilledListBtn = getEl('print-billed-list-btn');
+    
+    const unprocessedColumn = getEl('unprocessed-column');
+    const unprocessedList = getEl('unprocessed-list');
+    const unprocessedCountDash = getEl('unprocessed-count-dash');
+    const billedList = getEl('billed-list');
+    const billedCountDash = getEl('billed-count-dash');
+    const archiveList = getEl('archive-list');
+    const archiveCountDash = getEl('archive-count-dash');
+
+    const billingPanel = getEl('billing-panel');
+    const billingPanelTitle = getEl('billing-panel-title');
+    const billingPanelContent = getEl('billing-panel-content');
+    const billingAssistantLesions = getEl('billing-assistant-lesions');
+    const billingConsultItem = getEl('billing-consult-item');
+    const billingComment = getEl('billing-comment');
+    const closeBillingPanelBtn = getEl('close-billing-panel-btn');
+    const doctorActions = getEl('billing-panel-doctor-actions');
+    const pmActions = getEl('billing-panel-pm-actions');
+    const saveAsBilledBtn = getEl('save-as-billed-btn');
+    const deleteProcedureBtn = getEl('delete-procedure-btn');
+    const moveToArchiveBtn = getEl('move-to-archive-btn');
+
+    // --- Settings View Elements ---
+    const appSettingsEditor = getEl('app-settings-editor');
+    const saveAppSettingsBtn = getEl('save-app-settings-btn');
+    const resetAppSettingsBtn = getEl('reset-app-settings-btn');
+    const appSettingsStatus = getEl('app-settings-status');
+
+    // --- Print Elements ---
+    const printTitle = getEl('print-title');
+    const printTable = getEl('print-table');
+
+
+    // Form Sections
+    const excisionOptions = getEl('excision-options');
+    const graftTypeContainer = getEl('graft-type-container');
+    const justificationContainer = getEl('justification-container');
+    const punchOptions = getEl('punch-options');
+    const lesionSizeContainer = getEl('lesion-size-container');
+    const marginContainer = getEl('margin-container');
+    const punchSizeContainer = getEl('punch-size-container');
+    const orientationInputContainer = getEl('orientation-input-container');
+    const closureDetailsContainer = getEl('closure-details-container');
+    const useDeepSutureEl = getEl('useDeepSuture');
+    const deepSutureContainer = getEl('deep-suture-container');
+    const useNonDissolvableEl = getEl('useNonDissolvable');
+    const skinSutureDetails = getEl('skin-suture-details');
+    
+    // Form Inputs
+    const excisionClosureTypeEl = getEl('excisionClosureType');
+    const punchTypeEl = getEl('punchType');
+    const skinSutureTypeEl = getEl('skinSutureType');
+    const deepSutureTypeEl = getEl('deepSutureType'); // NEW: Suture dropdown reference
+    const skinSutureSizeEl = getEl('skinSutureSize');
+    const deepSutureSizeEl = getEl('deepSutureSize');
+
+    const justificationButtons = getEl('justification-buttons');
+    const flapGraftJustificationInput = getEl('flapGraftJustification');
+    
+    // Modal References
+    const mainMarkerBtnContainer = getEl('main-marker-btn-container');
+    const orientationModal = getEl('orientationModal');
+    const clock = getEl('clock');
+    const modalLocationSelector = getEl('modal-location-selector');
+    const cancelOrientationBtn = getEl('cancelOrientationBtn');
+    const pathologyModal = getEl('pathologyModal');
+    const pathologyDisplayEl = getEl('pathologyDisplay');
+    const pathologyCheckboxesEl = getEl('pathology-checkboxes');
+    const otherPathologyInput = getEl('otherPathologyInput');
+    const confirmPathologyBtn = getEl('confirmPathologyBtn');
+    const dermoscopyBtnContainer = getEl('dermoscopy-btn-container');
+
+    // --- PWA File System Elements ---
+    const setSaveFolderBtn = getEl('set-save-folder-btn');
+    const folderStatusMsg = getEl('folder-status-msg');
+    let saveFolderHandle = null; // This will store our main billing folder permission
+    let currentBillingFile = { handle: null, data: null, fromFolder: '' }; // State for the open billing file
+
+    // --- State Management ---
+    let lesions = []; // This is now a temporary list for the current procedure
+    let lesionCounter = 0;
+    let editingLesionId = null;
+    let modalSelectedLocationElement = null;
+    let allFiles = { unprocessed: [], billed: [], archive: [] }; // Global state for billing files
+    let appSettings = {}; // NEW: Holds ALL app settings
+
+    const pathologyOptions = {
+        'BCC': 'Basal cell carcinoma', 'SCC': 'Squamous cell carcinoma', 'IEC': 'IEC/Bowen\'s disease', 
+        'MMis': 'Melanoma in situ', 'MMinv': 'Melanoma invasive', 'DN': 'Naevus: dysplastic', 'BN': 'Naevus: banal',
+        'SebK': 'Seborrhoeic keratosis', 'SK': 'Solar keratosis', 'KA': 'Keratoacanthoma', 'B Cyst': 'Benign cyst',
+        'DF': 'Dermatofibroma', 'LPLK': 'Lichen planus-like keratosis', 'MCC': 'Merkel cell carcinoma',
+        'OB': 'Other benign', 'OM': 'Other malignant', 'SGH': 'Sebaceous gland hyperplasia', 'SL': 'Solar lentigo',
+        'HMF': 'Hutchinson\'s melanotic freckle', 'MMmet': 'Melanoma, metastasis', 'SN': 'Naevus: Spitz'
+    };
+
+    // --- IndexedDB Helpers for storing folder handle ---
+    const dbOpenRequest = indexedDB.open('file-system-db', 1);
+    let db;
+
+    dbOpenRequest.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('keyval')) {
+            db.createObjectStore('keyval');
+        }
+    };
+
+    dbOpenRequest.onsuccess = (event) => {
+        db = event.target.result;
+        loadSavedFolder(); // Load the folder handle once DB is ready
+    };
+
+    dbOpenRequest.onerror = (event) => {
+        console.error('IndexedDB error:', event.target.error);
+    };
+
+    function dbGet(key) {
+        return new Promise((resolve, reject) => {
+            if (!db) {
+                console.warn('DB not ready, retrying...');
+                return setTimeout(() => dbGet(key).then(resolve).catch(reject), 100);
+            }
+            const transaction = db.transaction('keyval', 'readonly');
+            const store = transaction.objectStore('keyval');
+            const request = store.get(key);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = (event) => reject(event.target.error);
+        });
+    }
+
+    function dbSet(key, value) {
+        return new Promise((resolve, reject) => {
+            if (!db) return reject('DB not open');
+            const transaction = db.transaction('keyval', 'readwrite');
+            const store = transaction.objectStore('keyval');
+            const request = store.put(value, key);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = (event) => reject(event.target.error);
+        });
+    }
+
+    function dbDel(key) {
+         return new Promise((resolve, reject) => {
+            if (!db) return reject('DB not open');
+            const transaction = db.transaction('keyval', 'readwrite');
+            const store = transaction.objectStore('keyval');
+            const request = store.delete(key);
+            request.onsuccess = () => resolve();
+            request.onerror = (event) => reject(event.target.error);
+        });
+    }
+
+    // --- EVENT LISTENERS ---
+
+    // --- Tab Navigation ---
+    tabEntryBtn.addEventListener('click', () => switchTab('entry'));
+    tabBillingBtn.addEventListener('click', () => switchTab('billing'));
+    tabSettingsBtn.addEventListener('click', () => switchTab('settings'));
+
+    function switchTab(tabName) {
+        [tabEntryBtn, tabBillingBtn, tabSettingsBtn].forEach(btn => btn.classList.remove('active'));
+        [entryView, billingView, settingsView].forEach(view => view.classList.remove('active'));
+
+        if (tabName === 'entry') {
+            tabEntryBtn.classList.add('active');
+            entryView.classList.add('active');
+        } else if (tabName === 'billing') {
+            tabBillingBtn.classList.add('active');
+            billingView.classList.add('active');
+            loadBillingFiles(); // Load files when switching to this tab
+        } else if (tabName === 'settings') {
+            tabSettingsBtn.classList.add('active');
+            settingsView.classList.add('active');
+            loadAppSettingsToEditor();
+        }
+    }
+    
+    // --- Entry View Listeners ---
+    lesionForm.addEventListener('change', updateFormUI);
+    lesionForm.addEventListener('input', checkLesionFormCompleteness);
+    
+    addLesionBtn.addEventListener('click', addOrUpdateLesion);
+    cancelEditBtn.addEventListener('click', cancelEdit);
+
+    saveProcedureBtn.addEventListener('click', saveProcedure);
+    clearProcedureBtn.addEventListener('click', resetAll);
+
+    getEl('copy-request-btn').addEventListener('click', () => copyToClipboard('clinicalRequestOutput', getEl('copy-request-btn-text')));
+    getEl('copy-note-btn').addEventListener('click', () => copyToClipboard('entryNoteOutput', getEl('copy-note-btn-text')));
+    
+    cancelOrientationBtn.addEventListener('click', () => orientationModal.classList.add('hidden'));
+    
+    useDeepSutureEl.addEventListener('change', () => deepSutureContainer.classList.toggle('hidden'));
+    useNonDissolvableEl.addEventListener('change', () => skinSutureDetails.classList.toggle('hidden', !useNonDissolvableEl.checked));
+    
+    outputBtnCombined.addEventListener('click', () => setOutputStyle('combined'));
+    outputBtnSeparate.addEventListener('click', () => setOutputStyle('separate'));
+    
+    justificationButtons.addEventListener('click', (e) => {
+        if(e.target.classList.contains('justification-btn')) {
+            e.target.classList.toggle('selected');
+            const selectedButtons = justificationButtons.querySelectorAll('.justification-btn.selected');
+            const justifications = Array.from(selectedButtons).map(btn => btn.dataset.text);
+            flapGraftJustificationInput.value = justifications.join(' ');
+            checkLesionFormCompleteness();
+        }
+    });
+
+    pathologyDisplayEl.addEventListener('click', openPathologyModal);
+    confirmPathologyBtn.addEventListener('click', confirmPathologySelection);
+    
+    dermoscopyBtnContainer.addEventListener('click', (e) => {
+        const target = e.target.closest('.dermoscopy-btn');
+        if (!target) return;
+        getEl('dermoscopyUsed').value = target.dataset.value;
+        dermoscopyBtnContainer.querySelectorAll('.dermoscopy-btn').forEach(btn => btn.classList.remove('selected'));
+        target.classList.add('selected');
+        checkLesionFormCompleteness();
+    });
+
+    // --- Billing View Listeners ---
+    loadFilesBtn.addEventListener('click', loadBillingFiles);
+    pmModeToggle.addEventListener('change', togglePMMode);
+    searchBar.addEventListener('input', () => renderFileLists()); // Re-render on search
+    printBilledListBtn.addEventListener('click', printBilledList);
+    
+    closeBillingPanelBtn.addEventListener('click', () => billingPanel.classList.add('hidden'));
+    saveAsBilledBtn.addEventListener('click', saveBilledFile);
+    deleteProcedureBtn.addEventListener('click', deleteBillingFile);
+    moveToArchiveBtn.addEventListener('click', archiveBilledFile);
+
+    // --- Settings View Listeners ---
+    saveAppSettingsBtn.addEventListener('click', saveAppSettings);
+    resetAppSettingsBtn.addEventListener('click', resetAppSettings);
+
+    // --- PWA FILE SYSTEM LOGIC ---
+    
+    setSaveFolderBtn.addEventListener('click', setSaveFolder);
+
+    async function setSaveFolder() {
+        try {
+            const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            if (await verifyFolderPermission(handle, true)) { // Request permission
+                // Create the 3 subfolders
+                await handle.getDirectoryHandle('Unprocessed', { create: true });
+                await handle.getDirectoryHandle('Billed', { create: true });
+                await handle.getDirectoryHandle('Archive', { create: true });
+
+                await dbSet('saveFolderHandle', handle);
+                saveFolderHandle = handle;
+                
+                console.log('Save folder set:', handle.name);
+                folderStatusMsg.textContent = `Status: Saving to "${handle.name}". Subfolders (Unprocessed, Billed, Archive) are ready.`;
+                folderStatusMsg.classList.remove('text-slate-500', 'text-red-600');
+                folderStatusMsg.classList.add('text-green-600');
+            } else {
+                 throw new Error('Permission to write to folder was not granted.');
+            }
+        } catch (err) {
+            console.error('Error setting save folder:', err);
+            if (err.name !== 'AbortError') { // Don't show error if user just cancelled
+                folderStatusMsg.textContent = `Error: ${err.message}`;
+                folderStatusMsg.classList.remove('text-green-600');
+                folderStatusMsg.classList.add('text-red-600');
+            }
+        }
+    }
+
+    async function loadSavedFolder() {
+        try {
+            const handle = await dbGet('saveFolderHandle');
+            if (handle) {
+                if (await verifyFolderPermission(handle)) { // Just check, don't re-request
+                    console.log('Loaded saved folder handle:', handle.name);
+                    saveFolderHandle = handle;
+                    folderStatusMsg.textContent = `Status: Saving to "${handle.name}".`;
+                    folderStatusMsg.classList.remove('text-slate-500', 'text-red-600');
+                    folderStatusMsg.classList.add('text-green-600');
+                } else {
+                    console.log('Permission for saved folder was revoked.');
+                    folderStatusMsg.textContent = 'Status: Permission for saved folder was revoked. Please set it again.';
+                    folderStatusMsg.classList.add('text-red-600');
+                    saveFolderHandle = null;
+                    await dbDel('saveFolderHandle');
+                }
+            }
+        } catch (err) {
+            console.error('Error loading saved folder:', err);
+        }
+    }
+
+    async function verifyFolderPermission(handle, requestIfNeeded = false) {
+        const options = { mode: 'readwrite' };
+        if (await handle.queryPermission(options) === 'granted') {
+            return true;
+        }
+        if (requestIfNeeded) {
+            if (await handle.requestPermission(options) === 'granted') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    async function saveFileToFolder(data, filename) {
+        if (!saveFolderHandle) {
+            throw new Error("No default folder is set.");
+        }
+        if (!(await verifyFolderPermission(saveFolderHandle, true))) { // Re-request if needed
+            throw new Error("Permission to save folder was denied.");
+        }
+
+        const unprocessedDir = await saveFolderHandle.getDirectoryHandle('Unprocessed', { create: true });
+        const fileHandle = await unprocessedDir.getFileHandle(filename, { create: true });
+        
+        const writable = await fileHandle.createWritable();
+        const jsonString = JSON.stringify(data, null, 2);
+        await writable.write(jsonString);
+        await writable.close();
+        
+        console.log(`File ${filename} saved to Unprocessed folder.`);
+    }
+
+    // --- BILLING VIEW LOGIC ---
+
+    function togglePMMode() {
+        billingViewContainer.classList.toggle('pm-mode-active', pmModeToggle.checked);
+        appTitle.textContent = pmModeToggle.checked ? "Billing & Processing (PM View)" : "Clinical Management PWA";
+    }
+
+    async function loadBillingFiles() {
+        if (!saveFolderHandle || !(await verifyFolderPermission(saveFolderHandle, true))) {
+            alert("Please set the default save folder and grant permission first.");
+            switchTab('entry');
+            return;
+        }
+
+        allFiles = { unprocessed: [], billed: [], archive: [] }; // Reset global state
+
+        try {
+            // 1. Load Unprocessed
+            const unprocessedDir = await saveFolderHandle.getDirectoryHandle('Unprocessed');
+            for await (const entry of unprocessedDir.values()) {
+                if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                    const fileHandle = await unprocessedDir.getFileHandle(entry.name);
+                    const file = await fileHandle.getFile();
+                    const data = JSON.parse(await file.text());
+                    allFiles.unprocessed.push({ data, fileHandle, fromFolder: 'Unprocessed' });
+                }
+            }
+        } catch(e) { console.error('Error loading Unprocessed:', e); }
+
+        try {
+            // 2. Load Billed
+            const billedDir = await saveFolderHandle.getDirectoryHandle('Billed');
+            for await (const entry of billedDir.values()) {
+                if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                    const fileHandle = await billedDir.getFileHandle(entry.name);
+                    const file = await fileHandle.getFile();
+                    const data = JSON.parse(await file.text());
+                    allFiles.billed.push({ data, fileHandle, fromFolder: 'Billed' });
+                }
+            }
+        } catch(e) { console.error('Error loading Billed:', e); }
+
+        try {
+            // 3. Load Archive
+            const archiveDir = await saveFolderHandle.getDirectoryHandle('Archive');
+             for await (const entry of archiveDir.values()) {
+                if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                    const fileHandle = await archiveDir.getFileHandle(entry.name);
+                    const file = await fileHandle.getFile();
+                    const data = JSON.parse(await file.text());
+                    allFiles.archive.push({ data, fileHandle, fromFolder: 'Archive' });
+                }
+            }
+        } catch(e) { console.error('Error loading Archive:', e); }
+
+        // Sort files by date, newest first
+        allFiles.unprocessed.sort((a, b) => b.data.procedureId - a.data.procedureId);
+        allFiles.billed.sort((a, b) => b.data.procedureId - a.data.procedureId);
+        allFiles.archive.sort((a, b) => b.data.procedureId - a.data.procedureId);
+
+        renderFileLists();
+    }
+
+    function renderFileLists() {
+        const searchTerm = searchBar.value.toLowerCase();
+        
+        const filterAndRender = (list, data) => {
+            list.innerHTML = '';
+            let count = 0;
+            data.filter(item => item.data.patientName.toLowerCase().includes(searchTerm))
+                .forEach(item => {
+                    list.appendChild(createFileListItem(item.data, item.fileHandle, item.fromFolder));
+                    count++;
+                });
+            return count;
+        };
+        
+        const uCount = filterAndRender(unprocessedList, allFiles.unprocessed);
+        const bCount = filterAndRender(billedList, allFiles.billed);
+        const aCount = filterAndRender(archiveList, allFiles.archive);
+
+        unprocessedCountDash.textContent = uCount;
+        billedCountDash.textContent = bCount;
+        archiveCountDash.textContent = aCount;
+    }
+
+    function createFileListItem(data, fileHandle, fromFolder) {
+        const item = document.createElement('div');
+        item.className = 'file-list-item bg-white p-3 rounded-lg shadow border border-slate-200';
+        const date = new Date(data.procedureDate).toLocaleDateString();
+        
+        let codes = data.consultItem || '';
+        if (data.lesions) {
+            codes += ' ' + data.lesions.map(l => l.procedureItemNumber || '').filter(Boolean).join(', ');
+        }
+        codes = codes.trim();
+
+        item.innerHTML = `
+            <p class="font-semibold text-slate-800">${data.patientName}</p>
+            <p class="text-sm text-slate-500">${data.doctorCode} - ${date}</p>
+            ${(data.status === 'Billed' || data.status === 'Archived') ? `<p class="text-sm font-medium text-blue-600">${codes || 'No codes'}</p>` : ''}
+            ${data.billingComment ? `<p class="text-xs italic text-amber-700 mt-1">Note: ${data.billingComment}</p>` : ''}
+            ${data.status === 'Deleted' ? `<p class="text-sm font-bold text-red-600">DELETED</p>` : ''}
+        `;
+        item.addEventListener('click', () => openBillingPanel(data, fileHandle, fromFolder));
+        return item;
+    }
+
+    // --- BILLING ASSISTANT LOGIC ---
+    function openBillingPanel(data, fileHandle, fromFolder) {
+        currentBillingFile = { handle: fileHandle, data: data, fromFolder: fromFolder };
+        
+        billingPanelTitle.textContent = `Patient: ${data.patientName}`;
+        
+        // 1. Fill Clinical Summary
+        billingPanelContent.innerHTML = data.lesions.map(l => {
+            const defectSize = l.defectSize || (Math.max(parseFloat(l.length) || 0, parseFloat(l.width) || 0) + (2 * (parseFloat(l.margin) || 0)));
+            return `
+            <div class="p-3 bg-slate-50 rounded-lg">
+                <p class="font-semibold">${l.id}. ${l.location} (${l.procedure})</p>
+                <p class="text-sm">PDx: ${l.pathology.replace(/;/g, ', ')}</p>
+                <p class="text-sm">Region: ${l.anatomicalRegion}</p>
+                <p class="text-sm">Defect Size (Lesion + Margin): <span class="font-bold">${defectSize.toFixed(1)}mm</span></p>
+                <p class="text-sm">Closure: ${l.excisionClosureType} ${l.useDeepSuture ? '(Deep)' : ''}</p>
+            </div>
+        `}).join('');
+
+        // 2. Fill Billing Inputs
+        billingConsultItem.value = data.consultItem || '';
+        billingComment.value = data.billingComment || '';
+        
+        // 3. Build Billing Assistant
+        billingAssistantLesions.innerHTML = data.lesions.map(l => `
+            <div class="p-3 bg-slate-100 rounded-lg" data-lesion-id="${l.id}">
+                <p class="font-bold text-lg text-slate-700">Lesion ${l.id}: ${l.location}</p>
+                
+                <div class="mt-2">
+                    <label class="block text-sm font-medium text-slate-600 mb-2">Step 1: Select Final Histology</label>
+                    <div class="flex flex-wrap gap-2" id="histo-btn-group-${l.id}">
+                        <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="BCC/SCC">BCC / SCC</button>
+                        <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Melanoma">Melanoma</button>
+                        <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Non-Malignant">Benign</button>
+                        <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Biopsy">Simple Biopsy</button>
+                    </div>
+                </div>
+
+                <div id="excision-code-container-${l.id}" class="mt-4 hidden">
+                    <label class="block text-sm font-medium text-slate-600 mb-2">Step 2: Select Excision Code</label>
+                    <div class="flex flex-wrap gap-2" id="excision-btn-group-${l.id}">
+                        </div>
+                </div>
+
+                <div id="repair-code-container-${l.id}" class="mt-4 hidden">
+                    <label class="block text-sm font-medium text-slate-600 mb-2">Step 3: Select/Confirm Repair Code</label>
+                    <div class="flex flex-wrap gap-2" id="repair-btn-group-${l.id}">
+                        </div>
+                </div>
+
+                <div class="mt-4">
+                    <label for="lesion-item-${l.id}" class="block text-sm font-medium text-slate-600">Final Procedure Item(s)</label>
+                    <input type="text" id="lesion-item-${l.id}" data-lesion-id="${l.id}" value="${data.lesions.find(les => les.id === l.id).procedureItemNumber || ''}"
+                           class="lesion-item-input w-full bg-white border border-slate-300 rounded-lg p-2 mt-1">
+                </div>
+            </div>
+        `).join('');
+
+        // 4. Add event listeners to the new buttons
+        data.lesions.forEach(l => {
+            getEl(`histo-btn-group-${l.id}`).addEventListener('click', (e) => handleHistoClick(e, l));
+            getEl(`excision-btn-group-${l.id}`).addEventListener('click', (e) => handleCodeClick(e, l.id, 'excision'));
+            getEl(`repair-btn-group-${l.id}`).addEventListener('click', (e) => handleCodeClick(e, l.id, 'repair'));
+        });
+
+
+        // 5. Show correct action buttons
+        if (fromFolder === 'Unprocessed') {
+            doctorActions.classList.remove('hidden');
+            pmActions.classList.add('hidden');
+        } else if (fromFolder === 'Billed') {
+            doctorActions.classList.add('hidden');
+            pmActions.classList.remove('hidden');
+        } else { // Archive
+            doctorActions.classList.add('hidden');
+            pmActions.classList.add('hidden');
+        }
+
+        billingPanel.classList.remove('hidden');
+    }
+
+    function handleHistoClick(event, lesion) {
+        const target = event.target.closest('.billing-btn');
+        if (!target) return;
+
+        const histoType = target.dataset.histo;
+        
+        // Toggle selected state
+        getEl(`histo-btn-group-${lesion.id}`).querySelectorAll('.billing-btn').forEach(btn => btn.classList.remove('selected'));
+        target.classList.add('selected');
+
+        // Clear lower selections
+        getEl(`excision-btn-group-${lesion.id}`).innerHTML = '';
+        getEl(`repair-btn-group-${lesion.id}`).innerHTML = '';
+        getEl(`repair-code-container-${lesion.id}`).classList.add('hidden');
+        getEl(`lesion-item-${lesion.id}`).value = '';
+
+        // --- This is the core logic ---
+        const region = lesion.anatomicalRegion;
+        const defectSize = lesion.defectSize;
+        const closure = lesion.excisionClosureType;
+        
+        // 1. Get Excision Codes
+        let excisionCodes = [];
+        if (histoType === 'Biopsy') {
+            excisionCodes = [appSettings.biopsy["30071"]]; // 30071
+        } else {
+            excisionCodes = findExcisionCode(histoType, region, defectSize);
+        }
+        
+        const excisionContainer = getEl(`excision-btn-group-${lesion.id}`);
+        if (excisionCodes.length > 0) {
+            excisionCodes.forEach(code => {
+                excisionContainer.appendChild(createBillingButton(code.item, code.desc));
+            });
+            getEl(`excision-code-container-${lesion.id}`).classList.remove('hidden');
+        }
+
+        // 2. Get Repair Codes (if not a simple biopsy)
+        if (histoType !== 'Biopsy') {
+            const repairContainer = getEl(`repair-btn-group-${lesion.id}`);
+            const repairCodes = appSettings.repairs; // Get all repair codes
+            
+            repairCodes.forEach(code => {
+                const btn = createBillingButton(code.item, code.desc);
+                // Pre-select the one that matches the clinical data
+                if (closure === code.clinicalType) {
+                    btn.classList.add('selected');
+                }
+                repairContainer.appendChild(btn);
+            });
+            getEl(`repair-code-container-${lesion.id}`).classList.remove('hidden');
+        }
+        
+        // 3. Update final text box
+        updateFinalCode(lesion.id);
+    }
+
+    function findExcisionCode(histoType, region, size) {
+        const codes = appSettings.excisions[histoType]?.[region];
+        if (!codes) return [];
+        // Find the first size bracket that the lesion fits into
+        const matchingCode = codes.find(c => size <= c.maxSize);
+        return matchingCode ? [matchingCode] : []; // Return as array
+    }
+
+    function createBillingButton(item, desc) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full';
+        btn.dataset.item = item;
+        btn.title = desc;
+        btn.textContent = item;
+        return btn;
+    }
+
+    function handleCodeClick(event, lesionId, groupType) {
+        const target = event.target.closest('.billing-btn');
+        if (!target) return;
+        
+        const btnGroup = getEl(`${groupType}-btn-group-${lesionId}`);
+        // Allow multiple repair selections (e.g., Graft + Flap)
+        if (groupType === 'repair') {
+            target.classList.toggle('selected'); // Toggle on/off
+        } else {
+            // Only one excision code
+            btnGroup.querySelectorAll('.billing-btn').forEach(btn => btn.classList.remove('selected'));
+            target.classList.add('selected');
+        }
+        
+        updateFinalCode(lesionId);
+    }
+
+    function updateFinalCode(lesionId) {
+        const excisionBtn = getEl(`excision-btn-group-${lesionId}`).querySelector('.selected');
+        const repairBtns = getEl(`repair-btn-group-${lesionId}`).querySelectorAll('.selected');
+        
+        const excisionCode = excisionBtn ? excisionBtn.dataset.item : '';
+        const repairCodes = Array.from(repairBtns).map(btn => btn.dataset.item);
+
+        const finalCode = [excisionCode, ...repairCodes].filter(Boolean).join(', ');
+        getEl(`lesion-item-${lesionId}`).value = finalCode;
+    }
+
+
+    async function moveFile(fromDir, toDir, fileHandle, newData) {
+        try {
+            const fromDirHandle = await saveFolderHandle.getDirectoryHandle(fromDir);
+            const toDirHandle = await saveFolderHandle.getDirectoryHandle(toDir);
+            
+            // 1. Write the new/updated file to the destination
+            const newFileHandle = await toDirHandle.getFileHandle(fileHandle.name, { create: true });
+            const writable = await newFileHandle.createWritable();
+            await writable.write(JSON.stringify(newData, null, 2));
+            await writable.close();
+
+            // 2. Delete the old file from the source
+            await fromDirHandle.removeEntry(fileHandle.name);
+
+            console.log(`Moved ${fileHandle.name} from ${fromDir} to ${toDir}`);
+        } catch (e) {
+            console.error('Error moving file:', e);
+            alert(`Error moving file: ${e.message}`);
+        }
+    }
+
+    async function saveBilledFile() {
+        // 1. Get new data from panel
+        const updatedData = { ...currentBillingFile.data };
+        updatedData.consultItem = billingConsultItem.value;
+        updatedData.billingComment = billingComment.value;
+        updatedData.status = 'Billed';
+
+        document.querySelectorAll('.lesion-item-input').forEach(input => {
+            const lesionId = parseInt(input.dataset.lesionId, 10);
+            const lesion = updatedData.lesions.find(l => l.id === lesionId);
+            if (lesion) {
+                lesion.procedureItemNumber = input.value;
+            }
+        });
+
+        // 2. Move file
+        await moveFile('Unprocessed', 'Billed', currentBillingFile.handle, updatedData);
+
+        // 3. Refresh UI
+        billingPanel.classList.add('hidden');
+        loadBillingFiles();
+    }
+    
+    async function deleteBillingFile() {
+        if (!confirm('Are you sure you want to delete this unprocessed procedure? This cannot be undone.')) {
+            return;
+        }
+        // 1. Update status to 'Deleted'
+        const updatedData = { ...currentBillingFile.data, status: 'Deleted', billingComment: `DELETED by doctor on ${new Date().toLocaleDateString()}` };
+
+        // 2. Move file from 'Unprocessed' to 'Archive'
+        await moveFile('Unprocessed', 'Archive', currentBillingFile.handle, updatedData);
+
+        // 3. Refresh UI
+        billingPanel.classList.add('hidden');
+        loadBillingFiles();
+    }
+    
+    async function archiveBilledFile() {
+        // 1. Update status to 'Archived'
+        const updatedData = { ...currentBillingFile.data, status: 'Archived' };
+        
+        // 2. Move file from 'Billed' to 'Archive'
+        await moveFile('Billed', 'Archive', currentBillingFile.handle, updatedData);
+
+        // 3. Refresh UI
+        billingPanel.classList.add('hidden');
+        loadBillingFiles();
+    }
+
+    function printBilledList() {
+        const itemsToPrint = allFiles.billed.filter(item => item.data.patientName.toLowerCase().includes(searchBar.value.toLowerCase()));
+        
+        if (itemsToPrint.length === 0) {
+            alert("No billed items to print.");
+            return;
+        }
+
+        printTitle.innerHTML = `Billing Run Sheet - ${new Date().toLocaleDateString()}`;
+        
+        let tableHTML = `
+            <thead>
+                <tr>
+                    <th>[ ]</th>
+                    <th>Patient Name</th>
+                    <th>Date</th>
+                    <th>Doctor</th>
+                    <th>Consult Item</th>
+                    <th>Procedure Items</th>
+                    <th>Comment</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        itemsToPrint.forEach(item => {
+            const data = item.data;
+            const date = new Date(data.procedureDate).toLocaleDateString();
+            const consult = data.consultItem || '';
+            const procedures = data.lesions.map(l => l.procedureItemNumber || '').filter(Boolean).join(', ');
+            const comment = data.billingComment || '';
+            
+            tableHTML += `
+                <tr>
+                    <td>[ &nbsp; ]</td>
+                    <td>${data.patientName}</td>
+                    <td>${date}</td>
+                    <td>${data.doctorCode}</td>
+                    <td>${consult}</td>
+                    <td>${procedures}</td>
+                    <td>${comment}</td>
+                </tr>
+            `;
+        });
+        
+        tableHTML += `</tbody>`;
+        printTable.innerHTML = tableHTML;
+        
+        window.print();
+    }
+
+
+    // --- MODAL & CLOCK LOGIC ---
+
+    function openOrientationModal() {
+        if (modalSelectedLocationElement) modalSelectedLocationElement.classList.remove('selected');
+        
+        const currentDescription = getEl('orientationDescription').value;
+        if(currentDescription) {
+            const currentLocationEl = modalLocationSelector.querySelector(`[data-value="${currentDescription}"]`);
+            if(currentLocationEl) {
+                currentLocationEl.classList.add('selected');
+                modalSelectedLocationElement = currentLocationEl;
+            }
+        }
+        
+        orientationModal.classList.remove('hidden');
+    }
+
+    mainMarkerBtnContainer.addEventListener('click', (e) => {
+        const target = e.target.closest('.main-marker-btn');
+        if (!target) return;
+
+        const markerType = target.dataset.value;
+        getEl('orientationType').value = markerType;
+
+        if (markerType === 'None') {
+            getEl('orientationDescription').value = '';
+            updateOrientationButtons();
+        } else {
+            openOrientationModal();
+        }
+    });
+
+    modalLocationSelector.addEventListener('click', (e) => {
+        const target = e.target.closest('.direction-btn, .hour-text');
+        if (!target) return;
+
+        getEl('orientationDescription').value = target.dataset.value;
+        updateOrientationButtons();
+        orientationModal.classList.add('hidden');
+    });
+
+    // Draw clock
+    const radius = 90;
+    const center = 100;
+    const face = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    face.setAttribute('cx', center);
+    face.setAttribute('cy', center);
+    face.setAttribute('r', radius);
+    face.classList.add('clock-face');
+    clock.appendChild(face);
+    for (let i = 1; i <= 12; i++) {
+        const angle = (i - 3) * (Math.PI / 6);
+        const textX = center + (radius - 22) * Math.cos(angle);
+        const textY = center + (radius - 22) * Math.sin(angle);
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', textX);
+        text.setAttribute('y', textY);
+        text.textContent = i;
+        text.classList.add('hour-text');
+        text.dataset.value = `${i} O'Clock`;
+        clock.appendChild(text);
+    }
+    const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    centerDot.setAttribute('cx', center);
+    centerDot.setAttribute('cy', center);
+    centerDot.setAttribute('r', 4);
+    centerDot.classList.add('center-dot');
+    clock.appendChild(centerDot);
+    
+    // --- PATHOLOGY MODAL ---
+    function openPathologyModal() {
+        const selected = (getEl('provisionalDiagnoses').value || '').split(';').filter(Boolean);
+        pathologyCheckboxesEl.querySelectorAll('input').forEach(input => {
+            input.checked = selected.includes(input.value);
+        });
+        const otherValue = selected.find(s => !pathologyOptions[s]);
+        otherPathologyInput.value = otherValue || '';
+        pathologyModal.classList.remove('hidden');
+    }
+
+    function confirmPathologySelection() {
+        const selected = [];
+        pathologyCheckboxesEl.querySelectorAll('input:checked').forEach(input => {
+            selected.push(input.value);
+        });
+        const otherValue = otherPathologyInput.value.trim();
+        if (otherValue) {
+            selected.push(otherValue);
+        }
+        
+        getEl('provisionalDiagnoses').value = selected.join(';');
+        
+        if (selected.length > 0) {
+            pathologyDisplayEl.textContent = selected.join(', ');
+            pathologyDisplayEl.classList.remove('italic', 'text-slate-500');
+        } else {
+            pathologyDisplayEl.textContent = 'Click to select...';
+            pathologyDisplayEl.classList.add('italic', 'text-slate-500');
+        }
+        
+        pathologyModal.classList.add('hidden');
+        checkLesionFormCompleteness();
+    }
+
+    // --- MAIN FORM LOGIC ---
+    function updateFormUI(event) {
+        if (event && event.target.id === 'procedureType') {
+            const currentProcedure = procedureTypeEl.value;
+            // Don't reset the whole form, just the lesion part
+            resetLesionForm(false); // Pass false to not reset procedureType
+            procedureTypeEl.value = currentProcedure;
+            updateOrientationButtons();
+        }
+
+        const procedure = procedureTypeEl.value;
+        const excisionClosure = excisionClosureTypeEl.value;
+        const punchType = punchTypeEl.value;
+
+        document.querySelectorAll('.form-section').forEach(el => el.style.display = 'none');
+        dynamicOptionsContainer.style.display = procedure ? 'block' : 'none';
+
+        if (!procedure) {
+            checkLesionFormCompleteness();
+            return;
+        }
+        
+        orientationInputContainer.style.display = 'block';
+
+        switch (procedure) {
+            case 'Excision':
+                excisionOptions.style.display = 'block';
+                lesionSizeContainer.style.display = 'block';
+                marginContainer.style.display = 'block';
+                graftTypeContainer.style.display = (excisionClosure === 'Graft Repair' || excisionClosure === 'Graft + Flap') ? 'block' : 'none';
+                justificationContainer.style.display = (excisionClosure === 'Graft Repair' || excisionClosure === 'Flap Repair' || excisionClosure === 'Graft + Flap') ? 'block' : 'none';
+                closureDetailsContainer.style.display = (excisionClosure !== 'Secondary Intention') ? 'block' : 'none';
+                break;
+            case 'Punch':
+                punchOptions.style.display = 'block';
+                closureDetailsContainer.style.display = 'block';
+                if (punchType === 'Punch Biopsy') {
+                    punchSizeContainer.style.display = 'block';
+                } else {
+                    lesionSizeContainer.style.display = 'block';
+                    marginContainer.style.display = 'block';
+                }
+                break;
+            case 'Shave':
+                lesionSizeContainer.style.display = 'block';
+                marginContainer.style.display = 'block';
+                break;
+        }
+        
+        checkLesionFormCompleteness();
+    }
+
+    function checkLesionFormCompleteness() {
+        // Helper to validate a single field and highlight it if invalid
+        const validateAndHighlight = (element, isRequired) => {
+            let isValid = true;
+            if (isRequired) {
+                if (!element.value.trim()) {
+                    element.classList.add('missing-field');
+                    isValid = false;
+                } else {
+                    element.classList.remove('missing-field');
+                }
+            } else {
+                 element.classList.remove('missing-field');
+            }
+            return isValid;
+        };
+
+        let isAllValid = true;
+        const getVal = (id) => getEl(id).value;
+        const procedure = getVal('procedureType');
+
+        if (!procedure) {
+            addLesionBtn.disabled = true;
+            return;
+        }
+
+        // Validate common fields
+        isAllValid &= validateAndHighlight(getEl('lesionLocation'), true);
+        isAllValid &= validateAndHighlight(getEl('anatomicalRegion'), true);
+        isAllValid &= validateAndHighlight(getEl('provisionalDiagnoses'), true);
+        isAllValid &= validateAndHighlight(getEl('dermoscopyUsed'), true);
+        
+        // Validate procedure-specific fields
+        switch (procedure) {
+            case 'Excision':
+                isAllValid &= validateAndHighlight(getEl('lesionLength'), true);
+                isAllValid &= validateAndHighlight(getEl('lesionWidth'), true);
+                isAllValid &= validateAndHighlight(getEl('margin'), true);
+                const isComplexClosure = getVal('excisionClosureType') === 'Graft Repair' || getVal('excisionClosureType') === 'Flap Repair' || getVal('excisionClosureType') === 'Graft + Flap';
+                isAllValid &= validateAndHighlight(getEl('flapGraftJustification'), isComplexClosure);
+                if (getVal('excisionClosureType') === 'Graft Repair' || getVal('excisionClosureType') === 'Graft + Flap') {
+                    isAllValid &= validateAndHighlight(getEl('graftType'), true);
+                }
+                if (getVal('excisionClosureType') !== 'Secondary Intention' && getEl('useNonDissolvable').checked) {
+                    isAllValid &= validateAndHighlight(getEl('removalOfSkinSutures'), false); // Optional
+                }
+                break;
+            case 'Punch':
+                if (getVal('punchType') === 'Punch Biopsy') {
+                    isAllValid &= validateAndHighlight(getEl('punchSize'), true);
+                } else { // Punch Excision
+                    isAllValid &= validateAndHighlight(getEl('lesionLength'), true);
+                    isAllValid &= validateAndHighlight(getEl('lesionWidth'), true);
+                    isAllValid &= validateAndHighlight(getEl('margin'), true);
+                }
+                 if (getEl('useNonDissolvable').checked) {
+                    isAllValid &= validateAndHighlight(getEl('removalOfSkinSutures'), false); // Optional
+                }
+                break;
+            case 'Shave':
+                isAllValid &= validateAndHighlight(getEl('lesionLength'), true);
+                isAllValid &= validateAndHighlight(getEl('lesionWidth'), true);
+                isAllValid &= validateAndHighlight(getEl('margin'), true);
+                break;
+        }
+        
+        addLesionBtn.disabled = !isAllValid;
+    }
+
+
+    // --- DATA LOGIC ---
+    function addOrUpdateLesion() {
+        const isUpdating = editingLesionId !== null;
+        const getVal = id => getEl(id).value;
+        const getChecked = id => getEl(id).checked;
+        
+        // Calculate defect size
+        const length = parseFloat(getVal('lesionLength')) || 0;
+        const width = parseFloat(getVal('lesionWidth')) || 0;
+        const margin = parseFloat(getVal('margin')) || 0;
+        let defectSize = 0;
+        if (getVal('procedureType') === 'Punch' && getVal('punchType') === 'Punch Biopsy') {
+            defectSize = parseFloat(getVal('punchSize')) || 0;
+        } else {
+            defectSize = Math.max(length, width) + (2 * margin);
+        }
+
+
+        const lesionData = {
+            id: isUpdating ? editingLesionId : ++lesionCounter,
+            procedure: getVal('procedureType'),
+            excisionClosureType: getVal('excisionClosureType'),
+            punchType: getVal('punchType'),
+            graftType: getVal('graftType'),
+            justification: getVal('flapGraftJustification'),
+            location: getVal('lesionLocation'),
+            anatomicalRegion: getVal('anatomicalRegion'),
+            anesthetic: getVal('localAnesthetic'),
+            pathology: getVal('provisionalDiagnoses'),
+            excludeNMSC: getChecked('excludeNMSC'),
+            excludeMelanoma: getChecked('excludeMelanoma'),
+            dermoscopyUsed: getVal('dermoscopyUsed'),
+            length: getVal('lesionLength'),
+            width: getVal('lesionWidth'),
+            margin: getVal('margin'),
+            punchSize: getVal('punchSize'),
+            defectSize: defectSize, // Save the calculated defect size
+            orientationType: getVal('orientationType'),
+            orientationDescription: getVal('orientationDescription'),
+            useDeepSuture: getChecked('useDeepSuture'),
+            deepSutureSize: getVal('deepSutureSize'),
+            deepSutureType: getVal('deepSutureType'),
+            skinSutureSize: getVal('skinSutureSize'),
+            skinSutureType: getChecked('useNonDissolvable') ? getVal('skinSutureType') : 'Dissolvable',
+            skinSutureRemoval: getChecked('useNonDissolvable') ? getVal('removalOfSkinSutures') : null
+        };
+
+        if (isUpdating) {
+            const index = lesions.findIndex(l => l.id === editingLesionId);
+            lesions[index] = lesionData;
+        } else {
+            lesions.push(lesionData);
+        }
+
+        updateAllOutputs();
+        resetLesionForm();
+    }
+
+    async function saveProcedure() {
+        const patientName = patientNameEl.value.trim();
+        const doctorCode = doctorCodeEl.value.trim();
+        
+        // Validation
+        let isValid = true;
+        if (!patientName) {
+            patientNameEl.classList.add('missing-field');
+            isValid = false;
+        } else {
+            patientNameEl.classList.remove('missing-field');
+        }
+
+        if (!doctorCode) {
+            doctorCodeEl.classList.add('missing-field');
+            isValid = false;
+        } else {
+            doctorCodeEl.classList.remove('missing-field');
+        }
+
+        if (lesions.length === 0) {
+            alert('Please add at least one lesion before saving.');
+            isValid = false;
+        }
+
+        if (!isValid) return;
+
+        // Create the procedure record
+        const procedureRecord = {
+            procedureId: Date.now(), // Unique ID for this procedure
+            doctorCode: doctorCode,
+            patientName: patientName,
+            procedureDate: new Date().toISOString(),
+            lesions: lesions, // The array of lesion objects
+            status: 'Unprocessed' // Default status for the manager app
+        };
+
+        // Generate filename
+        const timestamp = procedureRecord.procedureId;
+        const filename = `${doctorCode}_${timestamp}.json`;
+
+        // *** NEW: Try to save to folder, fallback to download ***
+        try {
+            await saveFileToFolder(procedureRecord, filename);
+            alert(`Procedure for ${patientName} saved directly to your default folder!`);
+            resetAll();
+        } catch (err) {
+            console.warn('Could not save to folder, falling back to download.', err.message);
+            downloadJSON(procedureRecord, filename);
+            alert(`Procedure for ${patientName} saved.\nFile: ${filename}\n\n(Could not save to default folder. Please save this file manually.)`);
+            resetAll();
+        }
+    }
+
+    function downloadJSON(data, filename) {
+        const jsonString = JSON.stringify(data, null, 2); // Pretty print JSON
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        URL.revokeObjectURL(url);
+    }
+    
+    function updateAllOutputs() {
+        updateLesionsList();
+        const requestText = generateClinicalRequest();
+        const noteText = generateEntryNote();
+        clinicalRequestOutputEl.value = requestText;
+        entryNoteOutputEl.value = noteText;
+        updateOutputVisibility();
+    }
+
+    function generateClinicalRequest() {
+        if (lesions.length === 0) {
+            return 'Your clinical request will appear here...';
+        }
+
+        return lesions.map(lesion => {
+            const auditParts = [];
+            auditParts.push(lesion.location);
+            auditParts.push(lesion.pathology);
+
+            if (lesion.excludeNMSC) auditParts.push('ex NMSC');
+            if (lesion.excludeMelanoma) auditParts.push('ex MEL');
+
+            let managementCode = 'O'; // Default to Other
+            switch (lesion.procedure) {
+                case 'Excision':
+                    switch (lesion.excisionClosureType) {
+                        case 'Ellipse': managementCode = 'E'; break;
+                        case 'Flap Repair': managementCode = 'F'; break;
+                        case 'Graft Repair': managementCode = lesion.graftType === 'Split-Skin Graft (SSG)' ? 'SSG' : 'FTG'; break;
+                        case 'Graft + Flap': managementCode = (lesion.graftType === 'Split-Skin Graft (SSG)' ? 'SSG' : 'FTG') + '+F'; break;
+                        case 'Secondary Intention': managementCode = 'NC'; break;
+                    }
+                    break;
+                case 'Punch':
+                    managementCode = lesion.punchType === 'Punch Biopsy' ? 'PS' : 'PR';
+                    break;
+                case 'Shave':
+                    managementCode = 'SxEx';
+                    break;
+            }
+            auditParts.push(managementCode);
+            
+            if (lesion.dermoscopyUsed) {
+                auditParts.push(`D=${lesion.dermoscopyUsed}`);
+            }
+            
+            const dimensionParts = [];
+            let diameter = 0;
+            
+            let procedureNameFull = lesion.procedure;
+            if (lesion.procedure === 'Excision') procedureNameFull = `Excision (${lesion.excisionClosureType})`;
+            if (lesion.procedure === 'Punch') procedureNameFull = lesion.punchType;
+            if (lesion.procedure === 'Shave') procedureNameFull = 'Shave Excision';
+            dimensionParts.push(procedureNameFull);
+
+            if (lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy') {
+                dimensionParts.push(`Punch: ${lesion.punchSize}mm`);
+                diameter = parseFloat(lesion.punchSize);
+            } else {
+                dimensionParts.push(`${lesion.length}x${lesion.width}mm`);
+                dimensionParts.push(`Margin: ${lesion.margin}mm`);
+                diameter = lesion.defectSize; // Use pre-calculated defect size
+            }
+
+            if (diameter > 0) {
+                dimensionParts.push(`Dia: ${diameter.toFixed(2)}mm`);
+            }
+
+            if (lesion.orientationType && lesion.orientationType !== 'None') {
+                dimensionParts.push(`${lesion.orientationType}: ${lesion.orientationDescription}`);
+            }
+            
+            const dimensionString = `[${dimensionParts.join(', ')}]`;
+
+            return `${lesion.id}. ${auditParts.join('; ')} ${dimensionString}`;
+        }).join('\n');
+    }
+
+    function generateEntryNote() {
+        if (lesions.length === 0) {
+            return 'Your generated note will appear here...';
+        }
+        
+        const patientName = patientNameEl.value.trim();
+        const doctorCode = doctorCodeEl.value.trim();
+        let header = "PATIENT: " + (patientName || "N/A") + "\n";
+        header += "DOCTOR: " + (doctorCode || "N/A") + "\n\n";
+
+        const procedureDetails = lesions.map(lesion => {
+            let procedureTitle = '';
+            let findingsStr = '';
+            const closureParts = [];
+            const findingsParts = [];
+
+            if (lesion.useDeepSuture) {
+                closureParts.push(`Deep closure with ${lesion.deepSutureSize} ${lesion.deepSutureType}.`);
+            }
+
+            switch (lesion.procedure) {
+                case 'Excision':
+                    procedureTitle = `Excision with ${lesion.excisionClosureType}`;
+                    findingsParts.push(`A ${lesion.length}x${lesion.width}mm lesion excised with ${lesion.margin}mm clinical margins.`);
+                    if (lesion.justification) {
+                        findingsParts.push(`Justification for complex closure: ${lesion.justification}`);
+                    }
+                    if (lesion.excisionClosureType === 'Secondary Intention') {
+                        closureParts.push('Wound left to heal by secondary intention.');
+                    } else {
+                         if (lesion.excisionClosureType === 'Graft Repair' || lesion.excisionClosureType === 'Graft + Flap') {
+                             closureParts.push(`Defect repaired with a ${lesion.graftType}.`);
+                         }
+                         if (lesion.excisionClosureType === 'Flap Repair' || lesion.excisionClosureType === 'Graft + Flap') {
+                             if (!closureParts.some(p => p.includes('repaired with'))) {
+                                 closureParts.push(`Defect repaired with a flap.`);
+                             } else {
+                                 closureParts[closureParts.length - 1] += ' and a flap.';
+                             }
+                         }
+                        closureParts.push(`Skin closed with ${lesion.skinSutureSize} ${lesion.skinSutureType}.`);
+                    }
+                    break;
+                case 'Punch':
+                    procedureTitle = lesion.punchType;
+                    if (lesion.punchType === 'Punch Biopsy') {
+                        findingsParts.push(`A ${lesion.punchSize}mm punch biopsy was taken from the lesion site.`);
+                    } else { // Punch Excision
+                        findingsParts.push(`A ${lesion.length}x${lesion.width}mm lesion was excised via punch technique with a ${lesion.margin}mm margin.`);
+                    }
+                    closureParts.push(`Skin closed with ${lesion.skinSutureSize} ${lesion.skinSutureType}.`);
+                    break;
+                case 'Shave':
+                    procedureTitle = 'Shave Excision';
+                    findingsParts.push(`A ${lesion.length}x${lesion.width}mm lesion was removed via shave technique with ${lesion.margin}mm clinical margins.`);
+                    closureParts.push('Hemostasis achieved. Left to heal by secondary intention.');
+                    break;
+            }
+            
+            let specimenText = `Sent for histopathology, labelled as "${lesion.id}. ${lesion.location}".`;
+            if (lesion.orientationType && lesion.orientationType !== 'None') {
+                specimenText += ` Orientation marker (${lesion.orientationType}) at ${lesion.orientationDescription}.`;
+            }
+
+            // Get the full text of the selected anatomical region from the lesion data
+            let regionText = "N/A";
+            if (lesion.anatomicalRegion) {
+                const option = Array.from(getEl('anatomicalRegion').options).find(opt => opt.value === lesion.anatomicalRegion);
+                if (option) {
+                    regionText = option.text;
+                }
+            }
+
+            return `
+PROCEDURE ${lesion.id}: ${procedureTitle} of the ${lesion.location}
+- Anatomical Region: ${regionText}
+- Consent: Obtained after discussion of risks, benefits, and alternatives.
+- Anesthetic: ${lesion.anesthetic} administered.
+- Prep: Site prepped and draped in a sterile manner.
+- Findings: ${findingsParts.join(' ')}
+- Closure: ${closureParts.join(' ')}
+- Specimen: ${specimenText}
+`.trim();
+        }).join('\n\n');
+
+        const planItems = [];
+        lesions.forEach(l => {
+            let needsPlan = false;
+            let planText = '';
+
+            if (l.procedure === 'Excision' && l.excisionClosureType !== 'Secondary Intention') needsPlan = true;
+            if (l.procedure === 'Punch') needsPlan = true;
+            
+            if(needsPlan) {
+                 if (l.skinSutureType === 'Dissolvable') {
+                     planText = `- Wound for lesion ${l.id} (${l.location}) closed with dissolvable skin sutures which do not require removal.`;
+                 } else if (l.skinSutureRemoval) {
+                     planText = `- Sutures for lesion ${l.id} (${l.location}) to be removed in ${l.skinSutureRemoval} days.`;
+                 }
+                 if(planText) planItems.push(planText);
+            }
+        });
+        
+        const openWoundLesions = lesions.filter(l => l.procedure === 'Shave' || (l.procedure === 'Excision' && l.excisionClosureType === 'Secondary Intention'));
+        if (openWoundLesions.length > 0) {
+             planItems.push('- For open wounds, advised to keep clean and apply antiseptic/dressing as needed.');
+        }
+
+        const note = `
+${header}OBJECTIVE:
+${procedureDetails}
+
+Follow up:
+${planItems.length > 0 ? planItems.join('\n') : '- General wound care advice given.'}
+- Discussed signs of infection (redness, swelling, discharge, increasing pain) and to seek review if these occur.
+- Follow-up for results and further management as required.
+        `;
+
+        return note.trim().replace(/^\s+/gm, '');
+    }
+
+    // --- FORM MANAGEMENT ---
+    window.startEditLesion = function(id) {
+        const lesion = lesions.find(l => l.id === id);
+        if (!lesion) return;
+        editingLesionId = id;
+
+        const setVal = (elId, val) => getEl(elId).value = val;
+        const setChecked = (elId, val) => getEl(elId).checked = val;
+
+        setVal('procedureType', lesion.procedure);
+        updateFormUI(); // Update UI before setting sub-options
+        setVal('excisionClosureType', lesion.excisionClosureType);
+        setVal('punchType', lesion.punchType);
+        setVal('graftType', lesion.graftType);
+        setVal('flapGraftJustification', lesion.justification);
+        
+        // Reselect justification buttons
+        justificationButtons.querySelectorAll('.justification-btn').forEach(btn => {
+            if (lesion.justification && lesion.justification.includes(btn.dataset.text)) {
+                btn.classList.add('selected');
+            } else {
+                btn.classList.remove('selected');
+            }
+        });
+
+        setVal('lesionLocation', lesion.location);
+        setVal('anatomicalRegion', lesion.anatomicalRegion);
+        setVal('localAnesthetic', lesion.anesthetic);
+        
+        setVal('provisionalDiagnoses', lesion.pathology);
+        pathologyDisplayEl.textContent = lesion.pathology.replace(/;/g, ', ');
+        pathologyDisplayEl.classList.remove('italic', 'text-slate-500');
+        
+        setVal('lesionLength', lesion.length);
+        setVal('lesionWidth', lesion.width);
+        setVal('margin', lesion.margin);
+        setVal('punchSize', lesion.punchSize);
+        setVal('orientationType', lesion.orientationType);
+        setVal('orientationDescription', lesion.orientationDescription);
+        updateOrientationButtons();
+        
+        setChecked('excludeNMSC', lesion.excludeNMSC);
+        setChecked('excludeMelanoma', lesion.excludeMelanoma);
+        setVal('dermoscopyUsed', lesion.dermoscopyUsed);
+        document.querySelectorAll('#dermoscopy-btn-container .dermoscopy-btn').forEach(btn => {
+            btn.classList.toggle('selected', btn.dataset.value === lesion.dermoscopyUsed);
+        });
+
+        setChecked('useDeepSuture', lesion.useDeepSuture);
+        setVal('deepSutureSize', lesion.deepSutureSize);
+        setVal('deepSutureType', lesion.deepSutureType);
+        
+        const isNonDissolvable = lesion.skinSutureType !== 'Dissolvable';
+        setChecked('useNonDissolvable', isNonDissolvable);
+        
+        // *** BUG FIX: Manually sync visibility when loading for edit ***
+        deepSutureContainer.classList.toggle('hidden', !lesion.useDeepSuture);
+        skinSutureDetails.classList.toggle('hidden', !isNonDissolvable);
+
+        if(isNonDissolvable) {
+            setVal('skinSutureSize', lesion.skinSutureSize);
+            setVal('skinSutureType', lesion.skinSutureType);
+            setVal('removalOfSkinSutures', lesion.skinSutureRemoval);
+        }
+        
+        updateFormUI(); // Re-run to ensure visibility is correct after setting all values
+        
+        formTitle.textContent = `Editing Lesion ${id}`;
+        addLesionBtn.textContent = 'Update Lesion';
+        cancelEditBtn.style.display = 'block';
+        clearProcedureBtn.style.display = 'none';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    function cancelEdit() {
+        resetLesionForm();
+    }
+
+    /**
+     * Resets just the lesion-specific form fields, not the patient info.
+     * @param {boolean} [resetProcType=true] - Whether to reset the procedureType dropdown.
+     */
+    function resetLesionForm(resetProcType = true) {
+        editingLesionId = null;
+
+        // Manually reset fields inside the dynamic container
+        const dynamicFields = ['lesionLocation', 'anatomicalRegion', 'lesionLength', 'lesionWidth', 'margin', 'punchSize', 'flapGraftJustification', 'provisionalDiagnoses', 'dermoscopyUsed', 'orientationType', 'orientationDescription'];
+        dynamicFields.forEach(id => getEl(id).value = '');
+        
+        // Reset checkboxes
+        const checkboxes = ['excludeNMSC', 'excludeMelanoma', 'useDeepSuture'];
+        checkboxes.forEach(id => getEl(id).checked = false);
+        getEl('useNonDissolvable').checked = true; // Default
+
+        // *** BUG FIX HERE ***
+        // Manually sync container visibility with the reset checkbox states
+        deepSutureContainer.classList.add('hidden'); // Syncs with useDeepSuture = false
+        skinSutureDetails.classList.remove('hidden'); // Syncs with useNonDissolvable = true
+
+        // Reset selects to their default
+        if(resetProcType) getEl('procedureType').selectedIndex = 0;
+        getEl('excisionClosureType').selectedIndex = 0;
+        getEl('punchType').selectedIndex = 0;
+        getEl('graftType').selectedIndex = 0;
+        getEl('localAnesthetic').selectedIndex = 0;
+        getEl('deepSutureSize').value = '4/0';
+        getEl('deepSutureType').selectedIndex = 0; // Will be set to first item in dynamic list
+        getEl('skinSutureSize').value = '5/0';
+        getEl('skinSutureType').selectedIndex = 0; // Will be set to first item in dynamic list
+        getEl('removalOfSkinSutures').value = '';
+        getEl('anatomicalRegion').selectedIndex = 0;
+
+        // Reset display elements
+        pathologyDisplayEl.textContent = 'Click to select...';
+        pathologyDisplayEl.classList.add('italic', 'text-slate-500');
+        document.querySelectorAll('.dermoscopy-btn, .justification-btn').forEach(btn => btn.classList.remove('selected'));
+        
+        getEl('orientationType').value = 'None';
+        updateOrientationButtons();
+        
+        formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
+        addLesionBtn.textContent = 'Add Lesion';
+        cancelEditBtn.style.display = 'none';
+        clearProcedureBtn.style.display = 'block';
+        
+        // Re-run UI and validation logic
+        updateFormUI();
+        checkLesionFormCompleteness();
+    }
+
+    function updateOrientationButtons() {
+        const type = getEl('orientationType').value;
+        const desc = getEl('orientationDescription').value;
+
+        mainMarkerBtnContainer.querySelectorAll('.main-marker-btn').forEach(btn => {
+            const btnType = btn.dataset.value;
+            btn.classList.remove('selected');
+            btn.textContent = btnType; // Reset text
+
+            if (btnType === type) {
+                btn.classList.add('selected');
+                if (type !== 'None' && desc) {
+                    btn.textContent = `${type}: ${desc}`;
+                }
+            }
+        });
+    }
+
+    function resetAll() {
+        lesions = [];
+        lesionCounter = 0;
+        patientNameEl.value = '';
+        patientNameEl.classList.remove('missing-field');
+        doctorCodeEl.classList.remove('missing-field');
+        
+        resetLesionForm(); // Resets the lesion part of the form
+        updateAllOutputs(); // Clears outputs and lesion list
+    }
+
+    function updateLesionsList() {
+        lesionsListEl.innerHTML = '';
+        if (lesions.length === 0) {
+            lesionsListEl.innerHTML = `<p class="text-slate-500 italic">No lesions added yet.</p>`;
+            return;
+        }
+        
+        lesions.forEach(lesion => {
+            const listItem = document.createElement('div');
+            listItem.className = 'bg-slate-100 p-3 rounded-lg flex justify-between items-center transition-all';
+            
+            // Get the prefix of the anatomical region for display
+            let regionText = 'No Region';
+            // Find the region text from the *lesion data* when rebuilding the list
+            if (lesion.anatomicalRegion) {
+                const option = Array.from(getEl('anatomicalRegion').options).find(opt => opt.value === lesion.anatomicalRegion);
+                if (option) {
+                    regionText = option.text.split(':')[0];
+                }
+            }
+
+            listItem.innerHTML = `
+                <div>
+                    <p class="font-semibold text-slate-700">${lesion.id}. ${lesion.location} <span class="text-blue-600 font-medium ml-2">[${regionText}]</span></p>
+                    <p class="text-sm text-slate-500">${lesion.pathology.replace(/;/g, ', ')}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="startEditLesion(${lesion.id})" class="text-blue-500 hover:text-blue-700 p-1 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" aria-label="Edit lesion ${lesion.id}">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/></svg>
+                    </button>
+                    <button onclick="window.removeLesion(${lesion.id})" class="text-red-500 hover:text-red-700 p-1 rounded-full focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2" aria-label="Remove lesion ${lesion.id}">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
+                    </button>
+                </div>
+            `;
+            lesionsListEl.appendChild(listItem);
+        });
+    }
+
+
+    window.removeLesion = function(id) {
+        lesions = lesions.filter(l => l.id !== id);
+        // Renumber the remaining lesions
+        lesions.forEach((lesion, index) => {
+            lesion.id = index + 1;
+        });
+        // Update the global counter
+        lesionCounter = lesions.length;
+        // Update the form title for the next entry
+        formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
+
+        if (editingLesionId === id) cancelEdit();
+        updateAllOutputs();
+    }
+    
+    function copyToClipboard(elementId, buttonTextElement) {
+        const outputElement = getEl(elementId);
+        if (!outputElement.value || outputElement.value.startsWith('Your')) return;
+        
+        outputElement.select();
+        outputElement.setSelectionRange(0, 99999);
+        
+        try {
+            document.execCommand('copy');
+            const originalText = buttonTextElement.textContent;
+            buttonTextElement.textContent = 'Copied!';
+            setTimeout(() => {
+                buttonTextElement.textContent = originalText;
+            }, 2000);
+        } catch (err) {
+            console.error('Failed to copy text: ', err);
+        }
+        window.getSelection().removeAllRanges();
+    }
+    
+    function setOutputStyle(style) {
+        localStorage.setItem('medicalNoteGeneratorOutputStyle', style);
+        updateOutputVisibility();
+    }
+
+    function updateOutputVisibility() {
+        const style = localStorage.getItem('medicalNoteGeneratorOutputStyle') || 'combined';
+        
+        outputBtnCombined.classList.toggle('selected', style === 'combined');
+        outputBtnSeparate.classList.toggle('selected', style === 'separate');
+
+        if (style === 'separate') {
+            clinicalRequestContainer.style.display = 'block';
+            entryNoteContainer.style.display = 'block';
+            entryNoteOutputEl.value = generateEntryNote();
+            clinicalRequestOutputEl.value = generateClinicalRequest();
+        } else { // Combined
+            clinicalRequestContainer.style.display = 'none';
+            entryNoteContainer.style.display = 'block';
+            
+            const note = generateEntryNote();
+            const request = generateClinicalRequest();
+
+            const noteText = note.startsWith('Your') ? '' : note;
+            const requestText = request.startsWith('Your') ? '' : `\n\n---\n\CLINICAL REQUEST:\n${request}`;
+            
+            if (noteText || requestText) {
+                entryNoteOutputEl.value = noteText + requestText;
+            } else {
+                entryNoteOutputEl.value = 'Your clinical request and note will appear here...';
+            }
+        }
+    }
+
+    // --- SETTINGS TAB LOGIC ---
+
+    const defaultAppSettings = {
+        "excisions": {
+            "BCC/SCC": {
+                "Option1": [
+                    { "maxSize": 6, "item": "31356", "desc": "BCC/SCC, Option 1, <6mm" },
+                    { "maxSize": 999, "item": "31358", "desc": "BCC/SCC, Option 1, >6mm" }
+                ],
+                "Option2": [
+                    { "maxSize": 14, "item": "31362", "desc": "BCC/SCC, Option 2, <14mm" },
+                    { "maxSize": 999, "item": "31364", "desc": "BCC/SCC, Option 2, >14mm" }
+                ],
+                "Option3": [
+                    { "maxSize": 15, "item": "31366", "desc": "BCC/SCC, Option 3, <15mm" },
+                    { "maxSize": 30, "item": "31368", "desc": "BCC/SCC, Option 3, 15-30mm" },
+                    { "maxSize": 999, "item": "31370", "desc": "BCC/SCC, Option 3, >30mm" }
+                ]
+            },
+            "Melanoma": {
+                "Option1": [
+                    { "maxSize": 6, "item": "31377", "desc": "Melanoma, Option 1, <6mm" },
+                    { "maxSize": 999, "item": "31378", "desc": "Melanoma, Option 1, >6mm" }
+                ],
+                "Option2": [
+                    { "maxSize": 14, "item": "31379", "desc": "Melanoma, Option 2, <14mm" },
+                    { "maxSize": 999, "item": "31380", "desc": "Melanoma, Option 2, >14mm" }
+                ],
+                "Option3": [
+                    { "maxSize": 15, "item": "31381", "desc": "Melanoma, Option 3, <15mm" },
+                    { "maxSize": 30, "item": "31382", "desc": "Melanoma, Option 3, 15-30mm" },
+                    { "maxSize": 999, "item": "31383", "desc": "Melanoma, Option 3, >30mm" }
+                ]
+            },
+            "Non-Malignant": {
+                "Option1": [
+                    { "maxSize": 6, "item": "31357", "desc": "Benign, Option 1, <6mm" },
+                    { "maxSize": 999, "item": "31360", "desc": "Benign, Option 1, >6mm" }
+                ],
+                "Option2": [
+                    { "maxSize": 14, "item": "31361", "desc": "Benign, Option 2, <14mm" },
+                    { "maxSize": 999, "item": "31363", "desc": "Benign, Option 2, >14mm" }
+                ],
+                "Option3": [
+                    { "maxSize": 15, "item": "31365", "desc": "Benign, Option 3, <15mm" },
+                    { "maxSize": 30, "item": "31367", "desc": "Benign, Option 3, 15-30mm" },
+                    { "maxSize": 999, "item": "31369", "desc": "Benign, Option 3, >30mm" }
+                ]
+            }
+        },
+        "biopsy": {
+            "30071": { "item": "30071", "desc": "Biopsy - Skin" }
+        },
+        "repairs": [
+            { "item": "45201", "desc": "Flap repair - standard", "clinicalType": "Flap Repair" },
+            { "item": "45451", "desc": "Full thickness graft", "clinicalType": "Graft Repair" },
+            { "item": "45440", "desc": "Split skin graft - Small", "clinicalType": "Graft Repair" },
+            { "item": "45443", "desc": "Split skin graft - Large", "clinicalType": "Graft Repair" },
+            { "item": "45202", "desc": "Flap repair - non-standard", "clinicalType": "Flap Repair" },
+            { "item": "45665", "desc": "Wedge (Lip, Eyelid, Ear)", "clinicalType": "Ellipse" },
+            { "item": "45207", "desc": "H-flap or double advancement", "clinicalType": "Flap Repair" }
+        ],
+        "sutures": {
+            "deep": ["Vicryl", "Monocryl", "PDS II", "Monosyn"],
+            "skin": ["Prolene", "Nylon", "Monocryl", "Monosyn", "PDS II"]
+        }
+    };
+
+    function loadAppSettings() {
+        const savedSettings = localStorage.getItem('appSettings');
+        if (savedSettings) {
+            try {
+                appSettings = JSON.parse(savedSettings);
+            } catch (e) {
+                console.error("Error parsing saved settings, loading defaults.", e);
+                appSettings = defaultAppSettings;
+                localStorage.setItem('appSettings', JSON.stringify(defaultAppSettings, null, 2));
+            }
+        } else {
+            appSettings = defaultAppSettings;
+            localStorage.setItem('appSettings', JSON.stringify(defaultAppSettings, null, 2));
+        }
+        // AFTER loading, populate dropdowns
+        populateSutureDropdowns();
+    }
+
+    function loadAppSettingsToEditor() {
+        appSettingsEditor.value = JSON.stringify(appSettings, null, 2);
+    }
+
+    function saveAppSettings() {
+        try {
+            const newSettings = JSON.parse(appSettingsEditor.value);
+            appSettings = newSettings;
+            localStorage.setItem('appSettings', JSON.stringify(newSettings, null, 2));
+            appSettingsStatus.textContent = "Changes saved successfully! Reloading form data.";
+            appSettingsStatus.className = "text-sm mt-2 text-green-600";
+            populateSutureDropdowns(); // Re-populate dropdowns
+        } catch (e) {
+            appSettingsStatus.textContent = `Error: ${e.message}. Changes NOT saved.`;
+            appSettingsStatus.className = "text-sm mt-2 text-red-600";
+        }
+    }
+    
+    function resetAppSettings() {
+        if (confirm("Are you sure you want to reset all app settings to the defaults? This cannot be undone.")) {
+            appSettings = defaultAppSettings;
+            localStorage.setItem('appSettings', JSON.stringify(defaultAppSettings, null, 2));
+            loadAppSettingsToEditor();
+            populateSutureDropdowns();
+            appSettingsStatus.textContent = "Settings reset to default. Form data reloaded.";
+            appSettingsStatus.className = "text-sm mt-2 text-green-600";
+        }
+    }
+
+    // --- DYNAMIC FORM POPULATION ---
+    function populateSutureDropdowns() {
+        // Clear existing options
+        deepSutureTypeEl.innerHTML = '';
+        skinSutureTypeEl.innerHTML = '';
+
+        // Populate Deep Sutures
+        appSettings.sutures.deep.forEach(suture => {
+            const option = document.createElement('option');
+            option.value = suture;
+            option.textContent = suture;
+            deepSutureTypeEl.appendChild(option);
+        });
+        
+        // Populate Skin Sutures
+        appSettings.sutures.skin.forEach(suture => {
+            const option = document.createElement('option');
+            option.value = suture;
+            option.textContent = suture;
+            skinSutureTypeEl.appendChild(option);
+        });
+
+        // Set defaults
+        deepSutureSizeEl.value = "4/0";
+        skinSutureSizeEl.value = "5/0";
+    }
+
+
+    // --- INIT ---
+    document.addEventListener('DOMContentLoaded', () => {
+        // Load saved doctor code
+        const savedDoctorCode = localStorage.getItem('doctorCode');
+        if (savedDoctorCode) {
+            doctorCodeEl.value = savedDoctorCode;
+        }
+        // Save doctor code as user types
+        doctorCodeEl.addEventListener('input', () => {
+            localStorage.setItem('doctorCode', doctorCodeEl.value.trim());
+        });
+
+        // Note: loadSavedFolder() is called by the IndexedDB success callback
+        loadAppSettings(); // NEW: Load ALL settings on startup
+
+        // Populate pathology modal
+        Object.entries(pathologyOptions).forEach(([key, value]) => {
+            const label = document.createElement('label');
+            label.className = 'flex items-center space-x-2';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = key;
+            checkbox.className = 'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500';
+            label.appendChild(checkbox);
+            const span = document.createElement('span');
+            span.textContent = `${key} (${value})`;
+            label.appendChild(span);
+            pathologyCheckboxesEl.appendChild(label);
+        });
+
+        updateOutputVisibility();
+        updateFormUI();
+        // Set the initial lesion counter title
+        formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
+    });
+    </script>
+</body>
+</html>
