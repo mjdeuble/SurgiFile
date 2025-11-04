@@ -1,0 +1,31 @@
+{
+  "name": "SurgiFile PWA",
+  "short_name": "SurgiFile",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#e2e8f0",
+  "theme_color": "#0284c7",
+  "description": "A PWA for clinical note generation and billing processing.",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "index.html",
+      "accept": {
+        "application/json": [
+          ".json"
+        ]
+      }
+    }
+  ]
+}
