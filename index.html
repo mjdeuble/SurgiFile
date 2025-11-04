@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SurgiFile - Clinical Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#f1f5f9">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #e2e8f0; /* bg-slate-200 */
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        /* Hide number input spinners */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+        .form-section { display: none; }
+        
+        /* Clock styles */
+        .clock-face { stroke: #94a3b8; stroke-width: 4; fill: white; }
+        .hour-marker { stroke: #94a3b8; stroke-width: 2; }
+        .center-dot { fill: #1e293b; }
+        .hour-text { font-size: 20px; font-weight: 500; fill: #334155; text-anchor: middle; dominant-baseline: middle; cursor: pointer; transition: fill 0.2s, font-weight 0.2s; -webkit-user-select: none; user-select: none; }
+        .hour-text.disabled { cursor: not-allowed; fill: #cbd5e1; }
+        .hour-text:not(.disabled):hover { fill: #0ea5e9; }
+        .hour-text.selected { fill: #0284c7; font-weight: 700; }
+        
+        .main-marker-btn.selected, .modal-marker-btn.selected, .direction-btn.selected, .output-style-btn.selected, .justification-btn.selected, .dermoscopy-btn.selected { background-color: #0284c7; color: white; border-color: #0284c7; }
+        .billing-btn.selected { background-color: #0284c7; color: white; border-color: #0284c7; }
+        .direction-btn:disabled { background-color: #e2e8f0; color: #94a3b8; cursor: not-allowed; }
+
+        /* Style for missing required fields */
+        .missing-field {
+            border-color: #ef4444 !important; /* red-500 */
+            --tw-ring-color: #ef4444;
+            --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+            --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+            box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+        }
+        
+        /* Tab Styles */
+        .tab-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            color: #334155; /* text-slate-700 */
+            background-color: #f1f5f9; /* bg-slate-100 */
+            transition: all 0.2s;
+        }
+        .tab-btn:hover {
+            background-color: #e2e8f0; /* bg-slate-200 */
+        }
+        .tab-btn.active {
+            color: white;
+            background-color: #0284c7; /* bg-sky-600 */
+        }
+        .app-view {
+            display: none; /* Hidden by default */
+        }
+        .app-view.active {
+            display: block; /* Shown by JS */
+        }
+
+        /* Billing View File List Styles */
+        .file-list-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .file-list-item:hover {
+            background-color: #f8fafc; /* bg-slate-50 */
+        }
+        .file-list-item.selected {
+            background-color: #ecfefc; /* bg-teal-50 */
+            border-color: #14b8a6; /* border-teal-500 */
+            border-left-width: 4px;
+        }
+
+        /* Billing Column Colors */
+        .billing-column-header {
+            border-bottom-width: 4px;
+            padding-bottom: 8px;
+        }
+        .col-header-unprocessed { border-color: #f59e0b; } /* amber-500 */
+        .col-header-billed { border-color: #3b82f6; } /* blue-500 */
+        .col-header-archive { border-color: #94a3b8; } /* slate-400 */
+
+        /* PM Mode Styles */
+        .pm-mode-active #unprocessed-column { display: none; }
+        .pm-mode-active #billing-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        #print-billed-list-btn { display: none; }
+        .pm-mode-active #print-billed-list-btn { display: inline-flex; }
+
+        /* Print Styles */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #printable-report, #printable-report * {
+                visibility: visible;
+            }
+            #printable-report {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            th, td {
+                border: 1px solid #000;
+                padding: 8px;
+                text-align: left;
+                font-size: 10pt;
+            }
+            th {
+                background-color: #f4f4f4;
+            }
+        }
+        #printable-report {
+            display: none; /* Hidden by default, only shown for printing */
+        }
+
+    </style>
+</head>
+<body class="bg-slate-200 text-slate-800">
+
+    <nav class="bg-white shadow-md w-full p-4 sticky top-0 z-40">
+        <div class="container mx-auto flex items-center justify-between">
+            <h1 id="app-title" class="text-2xl font-bold text-slate-700">SurgiFile</h1>
+            <div class="flex items-center gap-4">
+                <button id="tab-entry" class="tab-btn active">Clinical Entry</button>
+                <button id="tab-billing" class="tab-btn">Billing & Processing</button>
+                <button id="tab-settings" class="tab-btn">Settings</button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="entry-view" class="app-view active">
+        <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+            <header class="text-center mb-8 p-6 bg-white rounded-2xl shadow-lg">
+                <h1 class="text-3xl md:text-4xl font-bold text-slate-700">Excision Note Generator</h1>
+                <p class="text-slate-500 mt-2">Part 1: Enter clinical data and generate the operation note.</p>
+                <div class="mt-4 border-t pt-4">
+                    <button id="set-save-folder-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+                        Set Default Save Folder
+                    </button>
+                    <p id="folder-status-msg" class="text-xs text-slate-500 mt-2">Status: No folder set. Files will be downloaded normally.</p>
+                </div>
+            </header>
+    
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <form id="lesion-form">
+                        
+                        <div class="space-y-4 border-b border-slate-200 pb-6 mb-6">
+                            <h2 class="text-2xl font-semibold">Procedure Details</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="patientName" class="block text-sm font-medium text-slate-600 mb-2">Patient Name</label>
+                                    <input type="text" id="patientName" placeholder="e.g., John Smith" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                </div>
+                                <div>
+                                    <label for="doctorCode" class="block text-sm font-medium text-slate-600 mb-2">Doctor Code</label>
+                                    <input type="text" id="doctorCode" placeholder="e.g., DR_MD" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <h2 class="text-2xl font-semibold mb-4" id="form-title">Enter Lesion Details</h2>
+    
+                        <div>
+                            <label for="procedureType" class="block text-sm font-medium text-slate-600 mb-2">1. Procedure Type</label>
+                            <select id="procedureType" name="procedureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500">
+                                <option value="" disabled selected>Select a procedure...</option>
+                                <option value="Excision">Excision</option>
+                                <option value="Punch">Punch</option>
+                                <option value="Shave">Shave</option>
+                            </select>
+                        </div>
+    
+                        <div id="dynamic-options-container" class="mt-6 space-y-4 border-t border-slate-200 pt-6 hidden">
+                            <div id="excision-options" class="form-section space-y-4">
+                                <div>
+                                    <label for="excisionClosureType" class="block text-sm font-medium text-slate-600 mb-2">Excision Closure Method</label>
+                                    <select id="excisionClosureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                        <option value="Ellipse">Ellipse</option>
+                                        <option value="Secondary Intention">Secondary Intention</option>
+                                        <option value="Flap Repair">Flap Repair</option>
+                                        <option value="Graft Repair">Graft Repair</option>
+                                        <option value="Graft + Flap">Graft + Flap</option>
+                                    </select>
+                                </div>
+                                <div id="graft-type-container" class="form-section">
+                                    <label for="graftType" class="block text-sm font-medium text-slate-600 mb-2">Graft Type</label>
+                                    <select id="graftType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                        <option value="Split-Skin Graft (SSG)">Split-Skin Graft (SSG)</option>
+                                        <option value="Full-Thickness Skin Graft (FTSG)">Full-Thickness Skin Graft (FTSG)</option>
+                                    </select>
+                                </div>
+                                <div id="justification-container" class="form-section space-y-2">
+                                    <label class="block text-sm font-medium text-slate-600">Justification for Flap/Graft</label>
+                                    <div id="justification-buttons" class="flex flex-wrap gap-2">
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="Defect size/tension prevents primary closure.">Size/Tension</button>
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="Anatomical location with poor skin laxity.">Location</button>
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="To avoid distortion of adjacent anatomical features.">Avoid Distortion</button>
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="To preserve cosmetic appearance (color/texture/contour).">Cosmesis</button>
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="To maintain mobility over a joint.">Mobility</button>
+                                    </div>
+                                    <input type="hidden" id="flapGraftJustification">
+                                </div>
+                            </div>
+                            <div id="punch-options" class="form-section">
+                                <label for="punchType" class="block text-sm font-medium text-slate-600 mb-2">Punch Type</label>
+                                <select id="punchType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                    <option value="Punch Biopsy">Punch Biopsy</option>
+                                    <option value="Punch Excision">Punch Excision</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label for="lesionLocation" class="block text-sm font-medium text-slate-600 mb-2">Lesion Location Description</label>
+                                <input type="text" id="lesionLocation" name="lesionLocation" placeholder="e.g., Left forearm, 10cm proximal to wrist" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                            </div>
+    
+                            <div>
+                                <label for="anatomicalRegion" class="block text-sm font-medium text-slate-600 mb-2">Anatomical Region (for billing)</label>
+                                <select id="anatomicalRegion" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                    <option value="">Select billing region...</option>
+                                    <option value="Option1">Option 1: Nose, eyelid, eyebrow, lip, ear, digit, genitalia</option>
+                                    <option value="Option2">Option 2: Face, neck, scalp, distal limbs (from knee/ulnar styloid)</option>
+                                    <option value="Option3">Option 3: Trunk, proximal limbs (areas not in 1 or 2)</option>
+                                </select>
+                            </div>
+    
+                            <div>
+                                <label for="localAnesthetic" class="block text-sm font-medium text-slate-600 mb-2">Local Anesthetic</label>
+                                <select id="localAnesthetic" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                    <option value="Lignocaine 1% with Adrenaline 1:100,000">Lignocaine 1% w/ Adrenaline</option>
+                                    <option value="Lignocaine 1% without Adrenaline">Lignocaine 1% Plain</option>
+                                    <option value="Bupivacaine 0.5%">Bupivacaine 0.5%</option>
+                                </select>
+                            </div>
+                            <div id="lesion-size-container" class="form-section">
+                                <label class="block text-sm font-medium text-slate-600 mb-2">Lesion Dimensions (mm)</label>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <input type="number" id="lesionLength" placeholder="Length" class="w-full bg-slate-50 border rounded-lg p-3">
+                                    <input type="number" id="lesionWidth" placeholder="Width" class="w-full bg-slate-50 border rounded-lg p-3">
+                                </div>
+                            </div>
+                            <div id="margin-container" class="form-section">
+                                <label for="margin" class="block text-sm font-medium text-slate-600 mb-2">Clinical Margin (mm)</label>
+                                <input type="number" id="margin" placeholder="e.g., 4" class="w-full bg-slate-50 border rounded-lg p-3">
+                            </div>
+                            <div id="punch-size-container" class="form-section">
+                                <label for="punchSize" class="block text-sm font-medium text-slate-600 mb-2">Punch Biopsy Size (mm)</label>
+                                <input type="number" id="punchSize" name="punchSize" placeholder="e.g., 3" class="w-full bg-slate-50 border rounded-lg p-3">
+                            </div>
+                             <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-2">Provisional Diagnosis (PDx)</label>
+                                <div class="flex items-center gap-2">
+                                    <div id="pathologyDisplay" class="flex-grow bg-slate-100 border border-slate-300 rounded-lg p-3 h-12 flex items-center text-slate-500 italic cursor-pointer">Click to select...</div>
+                                    <input type="hidden" id="provisionalDiagnoses">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                    <input type="checkbox" id="excludeNMSC" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>Exclude NMSC?</span>
+                                </label>
+                                <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                    <input type="checkbox" id="excludeMelanoma" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>Exclude Melanoma?</span>
+                                </label>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-2">Dermoscopy Used?</label>
+                                <div id="dermoscopy-btn-container" class="flex gap-2">
+                                    <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Y">Yes</button>
+                                    <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="N">No</button>
+                                </div>
+                                <input type="hidden" id="dermoscopyUsed">
+                            </div>
+                            <div id="orientation-input-container" class="form-section">
+                                <label class="block text-sm font-medium text-slate-600 mb-2">Specimen Orientation</label>
+                                <div id="main-marker-btn-container" class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                    <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="None">None</button>
+                                    <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Nick">Nick</button>
+                                    <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Apex">Apex</button>
+                                    <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Suture">Suture</button>
+                                </div>
+                                <input type="hidden" id="orientationType" value="None">
+                                <input type="hidden" id="orientationDescription">
+                            </div>
+                            <div id="closure-details-container" class="form-section space-y-4 pt-4 border-t mt-4">
+                                 <h3 class="text-lg font-semibold text-slate-600">Closure Details</h3>
+                                 <div class="space-y-2 p-3 bg-slate-50 rounded-lg">
+                                     <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                         <input type="checkbox" id="useDeepSuture" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                         <span>Use Deep Sutures (Optional)</span>
+                                     </label>
+                                     <div id="deep-suture-container" class="hidden grid grid-cols-2 gap-4 pt-2">
+                                         <select id="deepSutureSize" class="w-full bg-white border border-slate-300 rounded-lg p-3">
+                                             <option value="3/0">3/0</option>
+                                             <option value="4/0" selected>4/0</option>
+                                             <option value="5/0">5/0</option>
+                                         </select>
+                                         <select id="deepSutureType" class="w-full bg-white border border-slate-300 rounded-lg p-3">
+                                             </select>
+                                     </div>
+                                 </div>
+                                 <div class="space-y-2">
+                                    <label class
