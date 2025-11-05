@@ -15,9 +15,10 @@ dbOpenRequest.onupgradeneeded = (event) => {
 
 dbOpenRequest.onsuccess = (event) => {
     db = event.target.result;
-    // Once the DB is ready, we will call loadSavedFolder() from main.js
-    // (Original call removed for better load order control)
+    // Once the DB is ready, AND settings are loaded (from main.js),
+    // we can safely load the folder.
     console.log("Database connection ready.");
+    loadSavedFolder(); // <-- THIS CALL HAS BEEN ADDED HERE
 };
 
 dbOpenRequest.onerror = (event) => {
