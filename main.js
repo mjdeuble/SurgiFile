@@ -52,7 +52,7 @@ const outputBtnSeparate = getEl('output-btn-separate');
 const billingViewContainer = getEl('billing-view-container');
 const appTitle = getEl('app-title');
 const loadFilesBtn = getEl('load-files-btn');
-const pmModeToggle = getEl('pm-mode-toggle');
+// const pmModeToggle = getEl('pm-mode-toggle'); // <-- This is no longer needed
 const searchBar = getEl('search-bar');
 const printBilledListBtn = getEl('print-billed-list-btn');
 
@@ -82,6 +82,9 @@ const appSettingsEditor = getEl('app-settings-editor');
 const saveAppSettingsBtn = getEl('save-app-settings-btn');
 const resetAppSettingsBtn = getEl('reset-app-settings-btn');
 const appSettingsStatus = getEl('app-settings-status');
+const newDoctorNameInput = getEl('new-doctor-name'); // <-- NEW
+const addDoctorBtn = getEl('add-doctor-btn'); // <-- NEW
+const addDoctorStatus = getEl('add-doctor-status'); // <-- NEW
 
 // --- Print Elements ---
 const printTitle = getEl('print-title');
@@ -166,7 +169,17 @@ function switchTab(tabName) {
     } else if (tabName === 'billing') {
         tabBillingBtn.classList.add('active');
         billingView.classList.add('active');
-        loadBillingFiles(); // Load files when switching to this tab
+        
+        // When switching to billing, re-scan folders and reload files
+        // This ensures the doctor list is up-to-date
+        (async () => {
+            if (saveFolderHandle) {
+                appSettings.doctorList = await getDoctorListFromFolders();
+                populateDoctorDropdown();
+                loadBillingFiles(); // Load files for the currently selected doctor
+            }
+        })();
+
     } else if (tabName === 'settings') {
         tabSettingsBtn.classList.add('active');
         settingsView.classList.add('active');
@@ -180,10 +193,11 @@ function populateDoctorDropdown() {
     const savedDoctorCode = localStorage.getItem('doctorCode');
 
     if (appSettings.doctorList && appSettings.doctorList.length > 0) {
-        appSettings.doctorList.forEach(doctor => {
+        appSettings.doctorList.forEach(doctorDisplayName => {
             const option = document.createElement('option');
-            option.value = doctor;
-            option.textContent = doctor;
+            // We use the display name (with spaces) for both value and text
+            option.value = doctorDisplayName;
+            option.textContent = doctorDisplayName;
             doctorCodeEl.appendChild(option);
         });
 
@@ -192,8 +206,10 @@ function populateDoctorDropdown() {
             doctorCodeEl.value = savedDoctorCode;
         } else if (appSettings.doctorList.length > 1) {
             // Default to the first *non-PM* doctor if no selection saved
-            doctorCodeEl.value = appSettings.doctorList[1];
-        } else {
+            // Assumes PM is always at index 0
+            doctorCodeEl.value = appSettings.doctorList[1]; 
+        } else if (appSettings.doctorList.length > 0) {
+            // Fallback to whatever is first (probably just PM)
             doctorCodeEl.value = appSettings.doctorList[0];
         }
 
@@ -204,7 +220,7 @@ function populateDoctorDropdown() {
         // Fallback if settings are broken
         const option = document.createElement('option');
         option.value = "ERROR";
-        option.textContent = "Error: No doctors found in settings";
+        option.textContent = "Error: No save folder set";
         doctorCodeEl.appendChild(option);
     }
 }
@@ -214,15 +230,23 @@ function handleDoctorChange() {
     const selectedDoctor = doctorCodeEl.value;
     localStorage.setItem('doctorCode', selectedDoctor);
 
-    // Sync PM Mode checkbox
-    const isPM = (selectedDoctor === "Practice Manager");
-    if (pmModeToggle.checked !== isPM) {
-        pmModeToggle.checked = isPM;
-        // This will trigger pmModeToggle's own 'change' event listener
-        // which will call togglePMMode() and reload files
-        pmModeToggle.dispatchEvent(new Event('change'));
+    // This function now *replaces* the old pmModeToggle
+    const isPM = (selectedDoctor === appSettings.pmIdentifier);
+    togglePMModeView(isPM);
+
+    // When the doctor changes, we must reload the billing files
+    // This check prevents auto-loading before the billing view is ready
+    if (billingView.classList.contains('active')) {
+        loadBillingFiles();
     }
 }
+
+// --- NEW: Controls the UI based on PM selection ---
+function togglePMModeView(isPM) {
+    billingViewContainer.classList.toggle('pm-mode-active', isPM);
+    appTitle.textContent = isPM ? "Billing & Processing (PM View)" : "Clinical Management PWA";
+}
+
 
 // --- Handle Billing-Only Mode Toggle ---
 function toggleBillingOnlyMode() {
@@ -242,6 +266,35 @@ function toggleBillingOnlyMode() {
     }
     // Re-validate the form for the new mode
     checkLesionFormCompleteness();
+}
+
+// --- NEW: Handle Add Doctor Button ---
+async function handleAddDoctor() {
+    const newName = newDoctorNameInput.value.trim();
+    if (!newName) {
+        addDoctorStatus.textContent = "Error: Doctor name cannot be empty.";
+        addDoctorStatus.className = "text-sm mt-2 text-red-600";
+        return;
+    }
+
+    try {
+        addDoctorStatus.textContent = "Creating folders...";
+        addDoctorStatus.className = "text-sm mt-2 text-slate-600";
+        
+        const result = await addNewDoctorFolder(newName);
+        
+        addDoctorStatus.textContent = `${result} Please refresh the app.`;
+        addDoctorStatus.className = "text-sm mt-2 text-green-600";
+        newDoctorNameInput.value = ''; // Clear input on success
+
+        // Refresh the doctor list in the app state
+        appSettings.doctorList = await getDoctorListFromFolders();
+        populateDoctorDropdown();
+
+    } catch (e) {
+        addDoctorStatus.textContent = `Error: ${e.message}`;
+        addDoctorStatus.className = "text-sm mt-2 text-red-600";
+    }
 }
 
 
@@ -296,8 +349,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Connect Billing View Listeners ---
-    loadFilesBtn.addEventListener('click', loadBillingFiles);
-    pmModeToggle.addEventListener('change', togglePMMode);
+    loadFilesBtn.addEventListener('click', async () => {
+        // "Refresh Database" now re-scans for new doctors first
+        if (saveFolderHandle) {
+            appSettings.doctorList = await getDoctorListFromFolders();
+            populateDoctorDropdown();
+        }
+        loadBillingFiles();
+    });
+    // pmModeToggle.addEventListener('change', togglePMMode); // <-- REMOVED
     searchBar.addEventListener('input', () => renderFileLists()); // Re-render on search
     printBilledListBtn.addEventListener('click', printBilledList);
     
@@ -309,10 +369,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Connect Settings View Listeners ---
     saveAppSettingsBtn.addEventListener('click', saveAppSettings);
     resetAppSettingsBtn.addEventListener('click', resetAppSettings);
+    addDoctorBtn.addEventListener('click', handleAddDoctor); // <-- NEW
 
     // --- Connect PWA/File System Listeners ---
-    setSaveFolderBtn.addEventListener('click', setSaveFolder); // <-- THIS WAS THE MISSING FIX
-    billingOnlyModeBtn.addEventListener('click', toggleBillingOnlyMode); // <-- THIS WAS THE MISSING FIX
+    setSaveFolderBtn.addEventListener('click', setSaveFolder);
+    billingOnlyModeBtn.addEventListener('click', toggleBillingOnlyMode);
+
 
 
     // --- Connect Doctor Dropdown Listener ---
@@ -345,8 +407,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- Initial App Load ---
-    loadAppSettings(); // Load settings first (this now populates doctors)
-    loadSavedFolder(); // Called after DB connection is ready (via db.js onsuccess)
+    loadAppSettings(); // Load settings first
+    
+    // This is now triggered by db.js onsuccess callback
+    // dbOpenRequest.onsuccess = (event) => {
+    //     db = event.target.result;
+    //     console.log("Database connection ready.");
+    //     loadSavedFolder(); // Load folder, which then populates doctors
+    // };
+    // We moved this call to db.js to ensure load order
+    loadSavedFolder(); // Load folder, which then populates doctors
 
     // Populate pathology modal
     Object.entries(pathologyOptions).forEach(([key, value]) => {
