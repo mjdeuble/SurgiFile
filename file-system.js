@@ -50,7 +50,6 @@ async function loadSavedFolder() {
                 folderStatusMsg.classList.remove('text-slate-500', 'text-red-600');
                 folderStatusMsg.classList.add('text-green-600');
 
-                // *** THIS IS THE FIX ***
                 // Folder is loaded, so scan it for doctors
                 appSettings.doctorList = await getDoctorListFromFolders();
 
@@ -61,20 +60,17 @@ async function loadSavedFolder() {
                 saveFolderHandle = null;
                 await dbDel('saveFolderHandle');
 
-                // *** THIS IS THE FIX ***
-                // No folder is loaded, so only show the PM
-                appSettings.doctorList = [appSettings.pmIdentifier];
+                // No folder is loaded, so the list is empty
+                appSettings.doctorList = [];
             }
         } else {
-            // *** THIS IS THE FIX ***
             // No handle was ever saved, so this is a true first load.
-            // Only show the PM.
-            appSettings.doctorList = [appSettings.pmIdentifier];
+            appSettings.doctorList = [];
         }
     } catch (err) {
         console.error('Error loading saved folder:', err);
         // Fallback in case of other errors
-        appSettings.doctorList = [appSettings.pmIdentifier];
+        appSettings.doctorList = [];
     }
 
     // After all checks, populate the dropdown with the correct list
@@ -83,13 +79,12 @@ async function loadSavedFolder() {
 
 
 async function getDoctorListFromFolders() {
-    // *** THIS IS THE FIX ***
-    // Always start with a fresh list containing *only* the PM
-    let dynamicDoctorList = [appSettings.pmIdentifier];
+    // Start with a fresh, empty list.
+    let dynamicDoctorList = [];
 
     if (!saveFolderHandle) {
         console.warn("getDoctorListFromFolders: No save folder handle.");
-        return dynamicDoctorList; // Return list with just PM
+        return dynamicDoctorList; // Return empty list
     }
 
     try {
@@ -104,16 +99,13 @@ async function getDoctorListFromFolders() {
         return dynamicDoctorList;
     } catch (e) {
         console.error("Error scanning for doctor folders:", e);
-        return dynamicDoctorList; // Return list with just PM on error
+        return dynamicDoctorList; // Return empty list on error
     }
 }
 
 async function addNewDoctorFolder(doctorDisplayName) {
     if (!saveFolderHandle) {
         throw new Error("Please set the Default Save Folder first.");
-    }
-    if (doctorDisplayName === appSettings.pmIdentifier) {
-        throw new Error("Cannot create a folder for 'Practice Manager'.");
     }
 
     const folderName = doctorDisplayName.replace(/\s+/g, '_'); // e.g., "Firstname Lastname" -> "Firstname_Lastname"
