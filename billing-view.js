@@ -1,32 +1,5 @@
 // --- BILLING VIEW LOGIC ---
 
-function togglePMMode() {
-    const isPM = pmModeToggle.checked;
-    billingViewContainer.classList.toggle('pm-mode-active', isPM);
-    appTitle.textContent = isPM ? "Billing & Processing (PM View)" : "Clinical Management PWA";
-    
-    // Also update the main doctor dropdown in the entry tab
-    const doctorSelect = getEl('doctorCode');
-    if (isPM) {
-        // If PM mode is on, select "Practice Manager" in the entry tab
-        doctorSelect.value = "Practice Manager";
-        // Trigger a change event to save this to localStorage
-        doctorSelect.dispatchEvent(new Event('change'));
-    } else {
-        // If turning PM mode off, revert to the last saved doctor (or the first non-PM)
-        let lastDoctor = localStorage.getItem('doctorCode');
-        if (!lastDoctor || lastDoctor === "Practice Manager") {
-            lastDoctor = appSettings.doctorList[1] || appSettings.doctorList[0]; // Fallback to first non-PM
-        }
-        doctorSelect.value = lastDoctor;
-        doctorSelect.dispatchEvent(new Event('change'));
-    }
-
-    // Refresh the file list to reflect the new user's permissions
-    loadBillingFiles();
-}
-
-
 async function loadBillingFiles() {
     if (!saveFolderHandle || !(await verifyFolderPermission(saveFolderHandle, true))) {
         alert("Please set the default save folder and grant permission first.");
@@ -36,13 +9,13 @@ async function loadBillingFiles() {
 
     allFiles = { unprocessed: [], billed: [], archive: [] }; // Reset global state
     const currentDoctor = getEl('doctorCode').value;
-    const isPM = (currentDoctor === "Practice Manager");
+    const isPM = (currentDoctor === appSettings.pmIdentifier);
 
     // Determine which doctor folders to scan
     let doctorsToScan = [];
     if (isPM) {
         // PM scans all doctors *except* "Practice Manager"
-        doctorsToScan = appSettings.doctorList.filter(d => d !== "Practice Manager");
+        doctorsToScan = appSettings.doctorList.filter(d => d !== appSettings.pmIdentifier);
     } else {
         // A doctor only scans their own folder
         doctorsToScan = [currentDoctor];
@@ -60,9 +33,12 @@ async function loadBillingFiles() {
     }
 
 
-    for (const doctor of doctorsToScan) {
+    for (const doctorName of doctorsToScan) {
+        // Convert display name to folder name (e.g., "Firstname Lastname" -> "Firstname_Lastname")
+        const folderName = doctorName.replace(/\s+/g, '_');
+        
         try {
-            const doctorDir = await saveFolderHandle.getDirectoryHandle(doctor);
+            const doctorDir = await saveFolderHandle.getDirectoryHandle(folderName);
 
             // 1. Load Unprocessed (only if not PM)
             if (!isPM) {
@@ -73,41 +49,41 @@ async function loadBillingFiles() {
                             const fileHandle = await unprocessedDir.getFileHandle(entry.name);
                             const file = await fileHandle.getFile();
                             const data = JSON.parse(await file.text());
-                            allFiles.unprocessed.push({ data, fileHandle, fromDoctor: doctor, fromFolder: 'Unprocessed' });
+                            allFiles.unprocessed.push({ data, fileHandle, fromDoctor: doctorName, fromFolder: 'Unprocessed' });
                         }
                     }
-                } catch (e) { console.error(`No 'Unprocessed' folder for ${doctor}?`, e); }
+                } catch (e) { console.error(`No 'Unprocessed' folder for ${doctorName}?`, e); }
             }
 
             // 2. Load Billed
             try {
-                const billedDir = await doctorDir.getDirectoryHandle('Billed');
-                for await (const entry of billedDir.values()) {
-                    if (entry.kind === 'file' && entry.name.endsWith('.json')) {
-                        const fileHandle = await billedDir.getFileHandle(entry.name);
-                        const file = await fileHandle.getFile();
-                        const data = JSON.parse(await file.text());
-                        allFiles.billed.push({ data, fileHandle, fromDoctor: doctor, fromFolder: 'Billed' });
+                    const billedDir = await doctorDir.getDirectoryHandle('Billed');
+                    for await (const entry of billedDir.values()) {
+                        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                            const fileHandle = await billedDir.getFileHandle(entry.name);
+                            const file = await fileHandle.getFile();
+                            const data = JSON.parse(await file.text());
+                            allFiles.billed.push({ data, fileHandle, fromDoctor: doctorName, fromFolder: 'Billed' });
+                        }
                     }
-                }
-            } catch (e) { console.error(`No 'Billed' folder for ${doctor}?`, e); }
+                } catch (e) { console.error(`No 'Billed' folder for ${doctorName}?`, e); }
 
 
             // 3. Load Archive
             try {
-                const archiveDir = await doctorDir.getDirectoryHandle('Archive');
-                for await (const entry of archiveDir.values()) {
-                    if (entry.kind === 'file' && entry.name.endsWith('.json')) {
-                        const fileHandle = await archiveDir.getFileHandle(entry.name);
-                        const file = await fileHandle.getFile();
-                        const data = JSON.parse(await file.text());
-                        allFiles.archive.push({ data, fileHandle, fromDoctor: doctor, fromFolder: 'Archive' });
+                    const archiveDir = await doctorDir.getDirectoryHandle('Archive');
+                    for await (const entry of archiveDir.values()) {
+                        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                            const fileHandle = await archiveDir.getFileHandle(entry.name);
+                            const file = await fileHandle.getFile();
+                            const data = JSON.parse(await file.text());
+                            allFiles.archive.push({ data, fileHandle, fromDoctor: doctorName, fromFolder: 'Archive' });
+                        }
                     }
-                }
-            } catch (e) { console.error(`No 'Archive' folder for ${doctor}?`, e); }
+                } catch (e) { console.error(`No 'Archive' folder for ${doctorName}?`, e); }
 
         } catch (e) {
-            console.error(`Could not read directory for doctor: ${doctor}`, e);
+            console.error(`Could not read directory for doctor: ${doctorName} (Folder: ${folderName})`, e);
         }
     }
 
@@ -122,7 +98,7 @@ async function loadBillingFiles() {
 function renderFileLists() {
     const searchTerm = searchBar.value.toLowerCase();
     const currentDoctor = getEl('doctorCode').value;
-    const isPM = (currentDoctor === "Practice Manager");
+    const isPM = (currentDoctor === appSettings.pmIdentifier);
 
     const filterAndRender = (list, data) => {
         list.innerHTML = '';
@@ -160,7 +136,7 @@ function createFileListItem(data, fileHandle, fromDoctor, fromFolder) {
     codes = codes.trim();
     
     // For PM view, show which doctor this belongs to
-    const doctorLabel = (getEl('doctorCode').value === "Practice Manager") ? `<p class="text-sm font-medium text-slate-600">${data.doctorCode}</p>` : '';
+    const doctorLabel = (getEl('doctorCode').value === appSettings.pmIdentifier) ? `<p class="text-sm font-medium text-slate-600">${data.doctorCode}</p>` : '';
 
     item.innerHTML = `
         <p class="font-semibold text-slate-800">${data.patientName}</p>
@@ -252,7 +228,7 @@ function openBillingPanel(data, fileHandle, fromDoctor, fromFolder) {
     // 5. Show correct action buttons
     // PM can only move from Billed -> Archive
     // Doctor can only move from Unprocessed -> Billed (or Delete)
-    const isPM = (getEl('doctorCode').value === "Practice Manager");
+    const isPM = (getEl('doctorCode').value === appSettings.pmIdentifier);
 
     if (isPM) {
         doctorActions.classList.add('hidden');
@@ -400,7 +376,7 @@ async function saveBilledFile() {
     });
 
     // 2. Move file
-    await moveFile(currentBillingFile.fromDoctor, 'Unprocessed', 'Billed', currentBillingFile.handle, updatedData);
+    await moveFile('Unprocessed', 'Billed', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
 
     // 3. Refresh UI
     billingPanel.classList.add('hidden');
@@ -415,7 +391,7 @@ async function deleteBillingFile() {
     const updatedData = { ...currentBillingFile.data, status: 'Deleted', billingComment: `DELETED by doctor on ${new Date().toLocaleDateString()}` };
 
     // 2. Move file from 'Unprocessed' to 'Archive'
-    await moveFile(currentBillingFile.fromDoctor, 'Unprocessed', 'Archive', currentBillingFile.handle, updatedData);
+    await moveFile('Unprocessed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
 
     // 3. Refresh UI
     billingPanel.classList.add('hidden');
@@ -427,7 +403,7 @@ async function archiveBilledFile() {
     const updatedData = { ...currentBillingFile.data, status: 'Archived' };
 
     // 2. Move file from 'Billed' to 'Archive'
-    await moveFile(currentBillingFile.fromDoctor, 'Billed', 'Archive', currentBillingFile.handle, updatedData);
+    await moveFile('Billed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
 
     // 3. Refresh UI
     billingPanel.classList.add('hidden');
