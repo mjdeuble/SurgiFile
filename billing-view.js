@@ -1,9 +1,31 @@
 // --- BILLING VIEW LOGIC ---
 
 function togglePMMode() {
-    billingViewContainer.classList.toggle('pm-mode-active', pmModeToggle.checked);
-    appTitle.textContent = pmModeToggle.checked ? "Billing & Processing (PM View)" : "Clinical Management PWA";
+    const isPM = pmModeToggle.checked;
+    billingViewContainer.classList.toggle('pm-mode-active', isPM);
+    appTitle.textContent = isPM ? "Billing & Processing (PM View)" : "Clinical Management PWA";
+    
+    // Also update the main doctor dropdown in the entry tab
+    const doctorSelect = getEl('doctorCode');
+    if (isPM) {
+        // If PM mode is on, select "Practice Manager" in the entry tab
+        doctorSelect.value = "Practice Manager";
+        // Trigger a change event to save this to localStorage
+        doctorSelect.dispatchEvent(new Event('change'));
+    } else {
+        // If turning PM mode off, revert to the last saved doctor (or the first non-PM)
+        let lastDoctor = localStorage.getItem('doctorCode');
+        if (!lastDoctor || lastDoctor === "Practice Manager") {
+            lastDoctor = appSettings.doctorList[1] || appSettings.doctorList[0]; // Fallback to first non-PM
+        }
+        doctorSelect.value = lastDoctor;
+        doctorSelect.dispatchEvent(new Event('change'));
+    }
+
+    // Refresh the file list to reflect the new user's permissions
+    loadBillingFiles();
 }
+
 
 async function loadBillingFiles() {
     if (!saveFolderHandle || !(await verifyFolderPermission(saveFolderHandle, true))) {
@@ -13,83 +35,81 @@ async function loadBillingFiles() {
     }
 
     allFiles = { unprocessed: [], billed: [], archive: [] }; // Reset global state
-    const selectedDoctorCode = doctorCodeEl.value; // Get the currently selected doctor
+    const currentDoctor = getEl('doctorCode').value;
+    const isPM = (currentDoctor === "Practice Manager");
 
-    let doctorFoldersToScan = [];
-
-    if (selectedDoctorCode === appSettings.pmIdentifier) {
-        // Practice Manager: Scan all doctor folders
-        doctorFoldersToScan = appSettings.doctorList
-            .filter(doc => doc.code !== appSettings.pmIdentifier && doc.code.trim() !== '')
-            .map(doc => doc.code);
-        
-        // Also show PM-mode-specific UI if the PM is selected
-        billingViewContainer.classList.add('pm-mode-active');
-        pmModeToggle.checked = true;
-
-    } else if (selectedDoctorCode) {
-        // A specific doctor is selected: Scan only their folder
-        doctorFoldersToScan.push(selectedDoctorCode);
-        
-        // Hide PM-mode-specific UI if a doctor is selected
-        billingViewContainer.classList.remove('pm-mode-active');
-        pmModeToggle.checked = false;
+    // Determine which doctor folders to scan
+    let doctorsToScan = [];
+    if (isPM) {
+        // PM scans all doctors *except* "Practice Manager"
+        doctorsToScan = appSettings.doctorList.filter(d => d !== "Practice Manager");
     } else {
-        alert("Please select a Doctor from the dropdown in the 'Clinical Entry' tab first.");
-        switchTab('entry');
-        return;
+        // A doctor only scans their own folder
+        doctorsToScan = [currentDoctor];
     }
 
-    // Loop through each doctor folder and load files from their subfolders
-    for (const doctorCode of doctorFoldersToScan) {
-        try {
-            const doctorDirHandle = await saveFolderHandle.getDirectoryHandle(doctorCode);
+    // Show/hide columns based on role
+    unprocessedColumn.style.display = isPM ? 'none' : 'flex';
+    
+    // Adjust grid columns
+    const billingColumns = getEl('billing-columns');
+    if(isPM) {
+        billingColumns.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+    } else {
+        billingColumns.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+    }
 
-            // 1. Load Unprocessed
-            try {
-                const unprocessedDir = await doctorDirHandle.getDirectoryHandle('Unprocessed');
-                for await (const entry of unprocessedDir.values()) {
-                    if (entry.kind === 'file' && entry.name.endsWith('.json')) {
-                        const fileHandle = await unprocessedDir.getFileHandle(entry.name);
-                        const file = await fileHandle.getFile();
-                        const data = JSON.parse(await file.text());
-                        // Add doctor code and fromFolder to the context
-                        allFiles.unprocessed.push({ data, fileHandle, fromFolder: 'Unprocessed', doctorCode: doctorCode });
+
+    for (const doctor of doctorsToScan) {
+        try {
+            const doctorDir = await saveFolderHandle.getDirectoryHandle(doctor);
+
+            // 1. Load Unprocessed (only if not PM)
+            if (!isPM) {
+                try {
+                    const unprocessedDir = await doctorDir.getDirectoryHandle('Unprocessed');
+                    for await (const entry of unprocessedDir.values()) {
+                        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                            const fileHandle = await unprocessedDir.getFileHandle(entry.name);
+                            const file = await fileHandle.getFile();
+                            const data = JSON.parse(await file.text());
+                            allFiles.unprocessed.push({ data, fileHandle, fromDoctor: doctor, fromFolder: 'Unprocessed' });
+                        }
                     }
-                }
-            } catch(e) { console.error(`Error loading Unprocessed for ${doctorCode}:`, e); }
+                } catch (e) { console.error(`No 'Unprocessed' folder for ${doctor}?`, e); }
+            }
 
             // 2. Load Billed
             try {
-                const billedDir = await doctorDirHandle.getDirectoryHandle('Billed');
+                const billedDir = await doctorDir.getDirectoryHandle('Billed');
                 for await (const entry of billedDir.values()) {
                     if (entry.kind === 'file' && entry.name.endsWith('.json')) {
                         const fileHandle = await billedDir.getFileHandle(entry.name);
                         const file = await fileHandle.getFile();
                         const data = JSON.parse(await file.text());
-                        allFiles.billed.push({ data, fileHandle, fromFolder: 'Billed', doctorCode: doctorCode });
+                        allFiles.billed.push({ data, fileHandle, fromDoctor: doctor, fromFolder: 'Billed' });
                     }
                 }
-            } catch(e) { console.error(`Error loading Billed for ${doctorCode}:`, e); }
+            } catch (e) { console.error(`No 'Billed' folder for ${doctor}?`, e); }
+
 
             // 3. Load Archive
             try {
-                const archiveDir = await doctorDirHandle.getDirectoryHandle('Archive');
+                const archiveDir = await doctorDir.getDirectoryHandle('Archive');
                 for await (const entry of archiveDir.values()) {
                     if (entry.kind === 'file' && entry.name.endsWith('.json')) {
                         const fileHandle = await archiveDir.getFileHandle(entry.name);
                         const file = await fileHandle.getFile();
                         const data = JSON.parse(await file.text());
-                        allFiles.archive.push({ data, fileHandle, fromFolder: 'Archive', doctorCode: doctorCode });
+                        allFiles.archive.push({ data, fileHandle, fromDoctor: doctor, fromFolder: 'Archive' });
                     }
                 }
-            } catch(e) { console.error(`Error loading Archive for ${doctorCode}:`, e); }
+            } catch (e) { console.error(`No 'Archive' folder for ${doctor}?`, e); }
 
         } catch (e) {
-            console.error(`Could not find or access folder for doctor: ${doctorCode}`, e);
+            console.error(`Could not read directory for doctor: ${doctor}`, e);
         }
     }
-
 
     // Sort files by date, newest first
     allFiles.unprocessed.sort((a, b) => b.data.procedureId - a.data.procedureId);
@@ -101,19 +121,24 @@ async function loadBillingFiles() {
 
 function renderFileLists() {
     const searchTerm = searchBar.value.toLowerCase();
-    
+    const currentDoctor = getEl('doctorCode').value;
+    const isPM = (currentDoctor === "Practice Manager");
+
     const filterAndRender = (list, data) => {
         list.innerHTML = '';
         let count = 0;
         data.filter(item => item.data.patientName.toLowerCase().includes(searchTerm))
             .forEach(item => {
-                // Pass the new context (fromFolder, doctorCode)
-                list.appendChild(createFileListItem(item.data, item.fileHandle, item.fromFolder, item.doctorCode));
+                list.appendChild(createFileListItem(item.data, item.fileHandle, item.fromDoctor, item.fromFolder));
                 count++;
             });
+        
+        if (count === 0) {
+            list.innerHTML = `<p class="text-slate-500 italic p-2">No files found.</p>`;
+        }
         return count;
     };
-    
+
     const uCount = filterAndRender(unprocessedList, allFiles.unprocessed);
     const bCount = filterAndRender(billedList, allFiles.billed);
     const aCount = filterAndRender(archiveList, allFiles.archive);
@@ -123,45 +148,55 @@ function renderFileLists() {
     archiveCountDash.textContent = aCount;
 }
 
-function createFileListItem(data, fileHandle, fromFolder, doctorCode) {
+function createFileListItem(data, fileHandle, fromDoctor, fromFolder) {
     const item = document.createElement('div');
     item.className = 'file-list-item bg-white p-3 rounded-lg shadow border border-slate-200';
     const date = new Date(data.procedureDate).toLocaleDateString();
-    
+
     let codes = data.consultItem || '';
     if (data.lesions) {
         codes += ' ' + data.lesions.map(l => l.procedureItemNumber || '').filter(Boolean).join(', ');
     }
     codes = codes.trim();
+    
+    // For PM view, show which doctor this belongs to
+    const doctorLabel = (getEl('doctorCode').value === "Practice Manager") ? `<p class="text-sm font-medium text-slate-600">${data.doctorCode}</p>` : '';
 
     item.innerHTML = `
         <p class="font-semibold text-slate-800">${data.patientName}</p>
-        <p class="text-sm text-slate-500">${data.doctorCode} - ${date}</p>
+        ${doctorLabel}
+        <p class="text-sm text-slate-500">${date}</p>
         ${(data.status === 'Billed' || data.status === 'Archived') ? `<p class="text-sm font-medium text-blue-600">${codes || 'No codes'}</p>` : ''}
         ${data.billingComment ? `<p class="text-xs italic text-amber-700 mt-1">Note: ${data.billingComment}</p>` : ''}
         ${data.status === 'Deleted' ? `<p class="text-sm font-bold text-red-600">DELETED</p>` : ''}
     `;
-    // Pass the new context to the billing panel
-    item.addEventListener('click', () => openBillingPanel(data, fileHandle, fromFolder, doctorCode));
+    item.addEventListener('click', () => openBillingPanel(data, fileHandle, fromDoctor, fromFolder));
     return item;
 }
 
 // --- BILLING ASSISTANT LOGIC ---
-function openBillingPanel(data, fileHandle, fromFolder, doctorCode) {
-    // Store all context, including the doctorCode
-    currentBillingFile = { handle: fileHandle, data: data, fromFolder: fromFolder, doctorCode: doctorCode };
-    
-    billingPanelTitle.textContent = `Patient: ${data.patientName}`;
-    
+function openBillingPanel(data, fileHandle, fromDoctor, fromFolder) {
+    currentBillingFile = { handle: fileHandle, data: data, fromDoctor: fromDoctor, fromFolder: fromFolder };
+
+    billingPanelTitle.textContent = `Patient: ${data.patientName} (${data.doctorCode})`;
+
     // 1. Fill Clinical Summary
     billingPanelContent.innerHTML = data.lesions.map(l => {
-        const defectSize = l.defectSize || (Math.max(parseFloat(l.length) || 0, parseFloat(l.width) || 0) + (2 * (parseFloat(l.margin) || 0)));
+        let defectSize = 0;
+        if (l.procedure === 'Punch' && l.punchType === 'Punch Biopsy') {
+             defectSize = parseFloat(l.punchSize) || 0;
+        } else if (l.billingOnlyDefectSize) {
+             defectSize = parseFloat(l.billingOnlyDefectSize) || 0;
+        } else {
+             defectSize = l.defectSize || 0; // Use pre-calculated
+        }
+
         return `
         <div class="p-3 bg-slate-50 rounded-lg">
             <p class="font-semibold">${l.id}. ${l.location} (${l.procedure})</p>
             <p class="text-sm">PDx: ${l.pathology.replace(/;/g, ', ')}</p>
             <p class="text-sm">Region: ${l.anatomicalRegion}</p>
-            <p class="text-sm">Defect Size (Lesion + Margin): <span class="font-bold">${defectSize.toFixed(1)}mm</span></p>
+            <p class="text-sm">Defect Size: <span class="font-bold">${defectSize.toFixed(1)}mm</span></p>
             <p class="text-sm">Closure: ${l.excisionClosureType} ${l.useDeepSuture ? '(Deep)' : ''}</p>
         </div>
     `}).join('');
@@ -169,7 +204,7 @@ function openBillingPanel(data, fileHandle, fromFolder, doctorCode) {
     // 2. Fill Billing Inputs
     billingConsultItem.value = data.consultItem || '';
     billingComment.value = data.billingComment || '';
-    
+
     // 3. Build Billing Assistant
     billingAssistantLesions.innerHTML = data.lesions.map(l => `
         <div class="p-3 bg-slate-100 rounded-lg" data-lesion-id="${l.id}">
@@ -179,8 +214,9 @@ function openBillingPanel(data, fileHandle, fromFolder, doctorCode) {
                 <label class="block text-sm font-medium text-slate-600 mb-2">Step 1: Select Final Histology</label>
                 <div class="flex flex-wrap gap-2" id="histo-btn-group-${l.id}">
                     <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="BCC/SCC">BCC / SCC</button>
-                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Melanoma">Melanoma</button>
-                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Non-Malignant">Benign</button>
+                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Suspected Melanoma">Suspected Melanoma</button>
+                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Definitive Melanoma">Definitive Melanoma</button>
+                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Benign / Other">Benign / Other</button>
                     <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Biopsy">Simple Biopsy</button>
                 </div>
             </div>
@@ -213,46 +249,28 @@ function openBillingPanel(data, fileHandle, fromFolder, doctorCode) {
     });
 
 
-    // 5. Show correct action buttons based on folder AND selected user
-    const isPM = doctorCodeEl.value === appSettings.pmIdentifier;
+    // 5. Show correct action buttons
+    // PM can only move from Billed -> Archive
+    // Doctor can only move from Unprocessed -> Billed (or Delete)
+    const isPM = (getEl('doctorCode').value === "Practice Manager");
 
-    if (fromFolder === 'Unprocessed') {
-        // Doctors and PMs can bill or delete Unprocessed files
-        doctorActions.classList.remove('hidden');
-        editClinicalDataBtn.classList.remove('hidden'); // Allow editing
-        pmActions.classList.add('hidden');
-    } else if (fromFolder === 'Billed') {
-        // Only PMs can archive Billed files
+    if (isPM) {
         doctorActions.classList.add('hidden');
-        editClinicalDataBtn.classList.add('hidden'); // Lock editing
-        pmActions.classList.toggle('hidden', !isPM);
-    } else { // Archive
-        // No actions for archived files
-        doctorActions.classList.add('hidden');
-        editClinicalDataBtn.classList.add('hidden'); // Lock editing
+        if (fromFolder === 'Billed') {
+            pmActions.classList.remove('hidden');
+        } else {
+            pmActions.classList.add('hidden'); // PM can't action Unprocessed or Archive
+        }
+    } else {
         pmActions.classList.add('hidden');
+        if (fromFolder === 'Unprocessed') {
+            doctorActions.classList.remove('hidden');
+        } else {
+            doctorActions.classList.add('hidden'); // Doctor can't action Billed or Archive
+        }
     }
 
     billingPanel.classList.remove('hidden');
-}
-
-/**
- * NEW: Event listener for the "Edit Clinical Data" button.
- * Saves the current file's data to localStorage and switches to the entry tab.
- */
-function loadProcedureForEditing() {
-    const dataToEdit = { ...currentBillingFile.data };
-    const editContext = {
-        filename: currentBillingFile.handle.name,
-        fromFolder: currentBillingFile.fromFolder,
-        doctorCode: currentBillingFile.doctorCode // Pass the doctor code
-    };
-
-    localStorage.setItem('procedureToEdit', JSON.stringify(dataToEdit));
-    localStorage.setItem('editContext', JSON.stringify(editContext));
-
-    billingPanel.classList.add('hidden');
-    switchTab('entry');
 }
 
 function handleHistoClick(event, lesion) {
@@ -260,7 +278,7 @@ function handleHistoClick(event, lesion) {
     if (!target) return;
 
     const histoType = target.dataset.histo;
-    
+
     // Toggle selected state
     getEl(`histo-btn-group-${lesion.id}`).querySelectorAll('.billing-btn').forEach(btn => btn.classList.remove('selected'));
     target.classList.add('selected');
@@ -273,9 +291,16 @@ function handleHistoClick(event, lesion) {
 
     // --- This is the core logic ---
     const region = lesion.anatomicalRegion;
-    const defectSize = lesion.defectSize;
+    let defectSize = 0;
+    if (lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy') {
+            defectSize = parseFloat(lesion.punchSize) || 0;
+    } else if (lesion.billingOnlyDefectSize) {
+            defectSize = parseFloat(lesion.billingOnlyDefectSize) || 0;
+    } else {
+            defectSize = lesion.defectSize || 0; // Use pre-calculated
+    }
     const closure = lesion.excisionClosureType;
-    
+
     // 1. Get Excision Codes
     let excisionCodes = [];
     if (histoType === 'Biopsy') {
@@ -283,7 +308,7 @@ function handleHistoClick(event, lesion) {
     } else {
         excisionCodes = findExcisionCode(histoType, region, defectSize);
     }
-    
+
     const excisionContainer = getEl(`excision-btn-group-${lesion.id}`);
     if (excisionCodes.length > 0) {
         excisionCodes.forEach(code => {
@@ -307,7 +332,7 @@ function handleHistoClick(event, lesion) {
         });
         getEl(`repair-code-container-${lesion.id}`).classList.remove('hidden');
     }
-    
+
     // 3. Update final text box
     updateFinalCode(lesion.id);
 }
@@ -333,7 +358,7 @@ function createBillingButton(item, desc) {
 function handleCodeClick(event, lesionId, groupType) {
     const target = event.target.closest('.billing-btn');
     if (!target) return;
-    
+
     const btnGroup = getEl(`${groupType}-btn-group-${lesionId}`);
     // Allow multiple repair selections (e.g., Graft + Flap)
     if (groupType === 'repair') {
@@ -343,20 +368,21 @@ function handleCodeClick(event, lesionId, groupType) {
         btnGroup.querySelectorAll('.billing-btn').forEach(btn => btn.classList.remove('selected'));
         target.classList.add('selected');
     }
-    
+
     updateFinalCode(lesionId);
 }
 
 function updateFinalCode(lesionId) {
     const excisionBtn = getEl(`excision-btn-group-${lesionId}`).querySelector('.selected');
     const repairBtns = getEl(`repair-btn-group-${lesionId}`).querySelectorAll('.selected');
-    
+
     const excisionCode = excisionBtn ? excisionBtn.dataset.item : '';
     const repairCodes = Array.from(repairBtns).map(btn => btn.dataset.item);
 
     const finalCode = [excisionCode, ...repairCodes].filter(Boolean).join(', ');
     getEl(`lesion-item-${lesionId}`).value = finalCode;
 }
+
 
 async function saveBilledFile() {
     // 1. Get new data from panel
@@ -372,34 +398,36 @@ async function saveBilledFile() {
             lesion.procedureItemNumber = input.value;
         }
     });
-    // 2. Move file - **Pass the doctorCode**
-    await moveFile('Unprocessed', 'Billed', currentBillingFile.handle, updatedData, currentBillingFile.doctorCode);
+
+    // 2. Move file
+    await moveFile(currentBillingFile.fromDoctor, 'Unprocessed', 'Billed', currentBillingFile.handle, updatedData);
 
     // 3. Refresh UI
     billingPanel.classList.add('hidden');
     loadBillingFiles();
 }
-    
+
 async function deleteBillingFile() {
     if (!confirm('Are you sure you want to delete this unprocessed procedure? This cannot be undone.')) {
         return;
     }
     // 1. Update status to 'Deleted'
     const updatedData = { ...currentBillingFile.data, status: 'Deleted', billingComment: `DELETED by doctor on ${new Date().toLocaleDateString()}` };
-    // 2. Move file from 'Unprocessed' to 'Archive' - **Pass the doctorCode**
-    await moveFile('Unprocessed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.doctorCode);
+
+    // 2. Move file from 'Unprocessed' to 'Archive'
+    await moveFile(currentBillingFile.fromDoctor, 'Unprocessed', 'Archive', currentBillingFile.handle, updatedData);
 
     // 3. Refresh UI
     billingPanel.classList.add('hidden');
     loadBillingFiles();
 }
-    
+
 async function archiveBilledFile() {
     // 1. Update status to 'Archived'
     const updatedData = { ...currentBillingFile.data, status: 'Archived' };
-    
-    // 2. Move file from 'Billed' to 'Archive' - **Pass the doctorCode**
-    await moveFile('Billed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.doctorCode);
+
+    // 2. Move file from 'Billed' to 'Archive'
+    await moveFile(currentBillingFile.fromDoctor, 'Billed', 'Archive', currentBillingFile.handle, updatedData);
 
     // 3. Refresh UI
     billingPanel.classList.add('hidden');
