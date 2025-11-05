@@ -1,10 +1,12 @@
 // --- SETTINGS TAB LOGIC ---
 
-// This file holds the default app settings and the functions
-// to manage them from the "Settings" tab.
+// This file manages the Settings tab, including:
+// - Loading and saving the app settings (billing codes, sutures) to localStorage
+// - Resetting settings to their default state
+// - Populating the suture dropdowns on the Entry tab
 
 const defaultAppSettings = {
-    "pmIdentifier": "Practice Manager", // The name used to identify the PM role
+    // "pmIdentifier": "Practice Manager", // <-- This has been removed.
     "excisions": {
         "BCC/SCC": {
             "Option1": [
@@ -21,54 +23,53 @@ const defaultAppSettings = {
                 { "maxSize": 999, "item": "31370", "desc": "BCC/SCC, Option 3, >30mm" }
             ]
         },
-        "Suspected Melanoma": {
-             "Option1": [
-                { "maxSize": 6, "item": "31377", "desc": "Suspected Melanoma, Option 1, <6mm" },
-                { "maxSize": 999, "item": "31378", "desc": "Suspected Melanoma, Option 1, >6mm" }
-            ],
-            "Option2": [
-                { "maxSize": 14, "item": "31379", "desc": "Suspected Melanoma, Option 2, <14mm" },
-                { "maxSize": 999, "item": "31380", "desc": "Suspected Melanoma, Option 2, >14mm" }
-            ],
-            "Option3": [
-                { "maxSize": 15, "item": "31381", "desc": "Suspected Melanoma, Option 3, <15mm" },
-                { "maxSize": 30, "item": "31382", "desc": "Suspected Melanoma, Option 3, 15-30mm" },
-                { "maxSize": 999, "item": "31383", "desc": "Suspected Melanoma, Option 3, >30mm" }
-            ]
-        },
-        "Definitive Melanoma": {
-             "Option1": [
-                { "maxSize": 6, "item": "31371", "desc": "Definitive Melanoma, Option 1, <6mm" },
-                { "maxSize": 999, "item": "31371", "desc": "Definitive Melanoma, Option 1, >6mm" }
-            ],
-            "Option2": [
-                { "maxSize": 14, "item": "31372", "desc": "Definitive Melanoma, Option 2, <14mm" },
-                { "maxSize": 999, "item": "31373", "desc": "Definitive Melanoma, Option 2, >14mm" }
-            ],
-            "Option3": [
-                { "maxSize": 15, "item": "31374", "desc": "Definitive Melanoma, Option 3, <15mm" },
-                { "maxSize": 30, "item": "31375", "desc": "Definitive Melanoma, Option 3, 15-30mm" },
-                { "maxSize": 999, "item": "31376", "desc": "Definitive Melanoma, Option 3, >30mm" }
-            ]
-        },
-        "Benign / Other": {
+        "Suspected Melanoma": { // <-- RENAMED
             "Option1": [
-                { "maxSize": 6, "item": "31357", "desc": "Benign, Option 1, <6mm" },
-                { "maxSize": 999, "item": "31360", "desc": "Benign, Option 1, >6mm" }
+                { "maxSize": 6, "item": "31377", "desc": "Suspected Mel, Option 1, <6mm" },
+                { "maxSize": 999, "item": "31378", "desc": "Suspected Mel, Option 1, >6mm" }
             ],
             "Option2": [
-                { "maxSize": 14, "item": "31361", "desc": "Benign, Option 2, <14mm" },
-                { "maxSize": 999, "item": "31363", "desc": "Benign, Option 2, >14mm" }
+                { "maxSize": 14, "item": "31379", "desc": "Suspected Mel, Option 2, <14mm" },
+                { "maxSize": 999, "item": "31380", "desc": "Suspected Mel, Option 2, >14mm" }
             ],
             "Option3": [
-                { "maxSize": 15, "item": "31365", "desc": "Benign, Option 3, <15mm" },
-                { "maxSize": 30, "item": "31367", "desc": "Benign, Option 3, 15-30mm" },
-                { "maxSize": 999, "item": "31369", "desc": "Benign, Option 3, >30mm" }
+                { "maxSize": 15, "item": "31381", "desc": "Suspected Mel, Option 3, <15mm" },
+                { "maxSize": 30, "item": "31382", "desc": "Suspected Mel, Option 3, 15-30mm" },
+                { "maxSize": 999, "item": "31383", "desc": "Suspected Mel, Option 3, >30mm" }
+            ]
+        },
+        "Definitive Melanoma": { // <-- NEW CATEGORY
+            "Option1": [
+                { "maxSize": 999, "item": "31371", "desc": "Definitive Mel, Option 1" }
+            ],
+            "Option2": [
+                { "maxSize": 14, "item": "31372", "desc": "Definitive Mel, Option 2, <14mm" },
+                { "maxSize": 999, "item": "31373", "desc": "Definitive Mel, Option 2, >14mm" }
+            ],
+            "Option3": [
+                { "maxSize": 15, "item": "31374", "desc": "Definitive Mel, Option 3, <15mm" },
+                { "maxSize": 30, "item": "31375", "desc": "Definitive Mel, Option 3, 15-30mm" },
+                { "maxSize": 999, "item": "31376", "desc": "Definitive Mel, Option 3, >30mm" }
+            ]
+        },
+        "Benign / Other": { // <-- RENAMED
+            "Option1": [
+                { "maxSize": 6, "item": "31357", "desc": "Benign/Other, Option 1, <6mm" },
+                { "maxSize": 999, "item": "31360", "desc": "Benign/Other, Option 1, >6mm" }
+            ],
+            "Option2": [
+                { "maxSize": 14, "item": "31361", "desc": "Benign/Other, Option 2, <14mm" },
+                { "maxSize": 999, "item": "31363", "desc": "Benign/Other, Option 2, >14mm" }
+            ],
+            "Option3": [
+                { "maxSize": 15, "item": "31365", "desc": "Benign/Other, Option 3, <15mm" },
+                { "maxSize": 30, "item": "31367", "desc": "Benign/Other, Option 3, 15-30mm" },
+                { "maxSize": 999, "item": "31369", "desc": "Benign/Other, Option 3, >30mm" }
             ]
         }
     },
     "biopsy": {
-        "30071": { "item": "30071", "desc": "Biopsy - Skin" }
+        "30071": { "item": "30071", "desc": "Biopsy - Skin/Mucous Membrane" }
     },
     "repairs": [
         { "item": "45201", "desc": "Flap repair - standard", "clinicalType": "Flap Repair" },
@@ -81,37 +82,56 @@ const defaultAppSettings = {
     ],
     "sutures": {
         "deep": ["Vicryl", "Monocryl", "PDS II", "Monosyn"],
-        "skin": ["Prolene", "Nylon", "Monocryl", "Monosyn", "PDS II"]
+        "skin": ["Prolene", "Nylon",WELCOME"],
+        "skin_dissolvable": ["Monocryl", "Monosyn", "PDS II", "Vicryl Rapide"]
     }
 };
 
 function loadAppSettings() {
     const savedSettings = localStorage.getItem('appSettings');
+    let needsResave = false; // Flag to force-save if we migrate old settings
+
     if (savedSettings) {
         try {
             appSettings = JSON.parse(savedSettings);
+
+            // --- Migration logic ---
+            // This ensures users upgrading from an old version
+            // don't have broken settings.
+
+            // 1. Remove old doctorList if it exists
+            if (appSettings.doctorList) {
+                delete appSettings.doctorList;
+                needsResave = true;
+            }
+            // 2. Remove old pmIdentifier if it exists
+            if (appSettings.pmIdentifier) {
+                delete appSettings.pmIdentifier;
+                needsResave = true;
+            }
+
         } catch (e) {
             console.error("Error parsing saved settings, loading defaults.", e);
             appSettings = defaultAppSettings;
-            localStorage.setItem('appSettings', JSON.stringify(defaultAppSettings, null, 2));
+            needsResave = true;
         }
     } else {
         appSettings = defaultAppSettings;
-        localStorage.setItem('appSettings', JSON.stringify(defaultAppSettings, null, 2));
+        needsResave = true;
     }
 
-    // *** THIS IS THE FIX ***
-    // The doctorList is no longer part of the saved settings.
-    // It is loaded *dynamically* from the file system.
-    // We just ensure the pmIdentifier is present.
-    appSettings.pmIdentifier = appSettings.pmIdentifier || defaultAppSettings.pmIdentifier;
+    if (needsResave) {
+         localStorage.setItem('appSettings', JSON.stringify(appSettings, null, 2));
+    }
 
-    // AFTER loading, populate suture dropdowns
+    // AFTER loading, populate dropdowns
     populateSutureDropdowns();
 }
 
+
 function loadAppSettingsToEditor() {
-    // We only show the main settings, not the dynamic doctorList
+    // We load the *current* appSettings, which have already been
+    // migrated and cleaned by loadAppSettings()
     appSettingsEditor.value = JSON.stringify(appSettings, null, 2);
 }
 
@@ -128,9 +148,9 @@ function saveAppSettings() {
         appSettingsStatus.className = "text-sm mt-2 text-red-600";
     }
 }
-
+    
 function resetAppSettings() {
-    if (confirm("Are you sure you want to reset all billing codes and suture types to the defaults? This cannot be undone.")) {
+    if (confirm("Are you sure you want to reset all app settings to the defaults? This cannot be undone.")) {
         appSettings = defaultAppSettings;
         localStorage.setItem('appSettings', JSON.stringify(defaultAppSettings, null, 2));
         loadAppSettingsToEditor();
@@ -145,29 +165,35 @@ function populateSutureDropdowns() {
     // Clear existing options
     deepSutureTypeEl.innerHTML = '';
     skinSutureTypeEl.innerHTML = '';
+    skinSutureTypeDissolvableEl.innerHTML = '';
+
 
     // Populate Deep Sutures
-    if (appSettings.sutures && appSettings.sutures.deep) {
-        appSettings.sutures.deep.forEach(suture => {
-            const option = document.createElement('option');
-            option.value = suture;
-            option.textContent = suture;
-            deepSutureTypeEl.appendChild(option);
-        });
-    }
-
+    appSettings.sutures.deep.forEach(suture => {
+        const option = document.createElement('option');
+        option.value = suture;
+        option.textContent = suture;
+        deepSutureTypeEl.appendChild(option);
+    });
+    
     // Populate Skin Sutures
-    if (appSettings.sutures && appSettings.sutures.skin) {
-        appSettings.sutures.skin.forEach(suture => {
-            const option = document.createElement('option');
-            option.value = suture;
-            option.textContent = suture;
-            skinSutureTypeEl.appendChild(option);
-        });
-    }
+    appSettings.sutures.skin.forEach(suture => {
+        const option = document.createElement('option');
+        option.value = suture;
+        option.textContent = suture;
+        skinSutureTypeEl.appendChild(option);
+    });
 
+    // Populate Skin Sutures (Dissolvable)
+    appSettings.sutures.skin_dissolvable.forEach(suture => {
+        const option = document.createElement('option');
+        option.value = suture;
+        option.textContent = suture;
+        skinSutureTypeDissolvableEl.appendChild(option);
+    });
 
     // Set defaults
     deepSutureSizeEl.value = "4/0";
     skinSutureSizeEl.value = "5/0";
+    skinSutureSizeDissolvableEl.value = "5/0";
 }
