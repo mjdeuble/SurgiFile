@@ -1,13 +1,10 @@
 // --- SETTINGS TAB LOGIC ---
 
+// This file holds the default app settings and the functions
+// to manage them from the "Settings" tab.
+
 const defaultAppSettings = {
-    "doctorList": [
-        "Practice Manager", // Special user, must be first
-        "DR_A",
-        "DR_B",
-        "DR_C"
-        // Add more doctor codes here as needed
-    ],
+    "pmIdentifier": "Practice Manager", // The name used to identify the PM role
     "excisions": {
         "BCC/SCC": {
             "Option1": [
@@ -24,8 +21,8 @@ const defaultAppSettings = {
                 { "maxSize": 999, "item": "31370", "desc": "BCC/SCC, Option 3, >30mm" }
             ]
         },
-        "Suspected Melanoma": { // New items: 31377-31383
-            "Option1": [
+        "Suspected Melanoma": {
+             "Option1": [
                 { "maxSize": 6, "item": "31377", "desc": "Suspected Melanoma, Option 1, <6mm" },
                 { "maxSize": 999, "item": "31378", "desc": "Suspected Melanoma, Option 1, >6mm" }
             ],
@@ -39,9 +36,9 @@ const defaultAppSettings = {
                 { "maxSize": 999, "item": "31383", "desc": "Suspected Melanoma, Option 3, >30mm" }
             ]
         },
-        "Definitive Melanoma": { // Amended items: 31371-31376
-            "Option1": [
-                 // No <6mm code for definitive excision
+        "Definitive Melanoma": {
+             "Option1": [
+                { "maxSize": 6, "item": "31371", "desc": "Definitive Melanoma, Option 1, <6mm" },
                 { "maxSize": 999, "item": "31371", "desc": "Definitive Melanoma, Option 1, >6mm" }
             ],
             "Option2": [
@@ -54,19 +51,19 @@ const defaultAppSettings = {
                 { "maxSize": 999, "item": "31376", "desc": "Definitive Melanoma, Option 3, >30mm" }
             ]
         },
-        "Benign / Other": { // Renamed from "Non-Malignant"
+        "Benign / Other": {
             "Option1": [
-                { "maxSize": 6, "item": "31357", "desc": "Benign/Other, Option 1, <6mm" },
-                { "maxSize": 999, "item": "31360", "desc": "Benign/Other, Option 1, >6mm" }
+                { "maxSize": 6, "item": "31357", "desc": "Benign, Option 1, <6mm" },
+                { "maxSize": 999, "item": "31360", "desc": "Benign, Option 1, >6mm" }
             ],
             "Option2": [
-                { "maxSize": 14, "item": "31361", "desc": "Benign/Other, Option 2, <14mm" },
-                { "maxSize": 999, "item": "31363", "desc": "Benign/Other, Option 2, >14mm" }
+                { "maxSize": 14, "item": "31361", "desc": "Benign, Option 2, <14mm" },
+                { "maxSize": 999, "item": "31363", "desc": "Benign, Option 2, >14mm" }
             ],
             "Option3": [
-                { "maxSize": 15, "item": "31365", "desc": "Benign/Other, Option 3, <15mm" },
-                { "maxSize": 30, "item": "31367", "desc": "Benign/Other, Option 3, 15-30mm" },
-                { "maxSize": 999, "item": "31369", "desc": "Benign/Other, Option 3, >30mm" }
+                { "maxSize": 15, "item": "31365", "desc": "Benign, Option 3, <15mm" },
+                { "maxSize": 30, "item": "31367", "desc": "Benign, Option 3, 15-30mm" },
+                { "maxSize": 999, "item": "31369", "desc": "Benign, Option 3, >30mm" }
             ]
         }
     },
@@ -102,12 +99,19 @@ function loadAppSettings() {
         appSettings = defaultAppSettings;
         localStorage.setItem('appSettings', JSON.stringify(defaultAppSettings, null, 2));
     }
-    // AFTER loading, populate dropdowns
+
+    // *** THIS IS THE FIX ***
+    // The doctorList is no longer part of the saved settings.
+    // It is loaded *dynamically* from the file system.
+    // We just ensure the pmIdentifier is present.
+    appSettings.pmIdentifier = appSettings.pmIdentifier || defaultAppSettings.pmIdentifier;
+
+    // AFTER loading, populate suture dropdowns
     populateSutureDropdowns();
-    populateDoctorDropdown(); // New function call from main.js
 }
 
 function loadAppSettingsToEditor() {
+    // We only show the main settings, not the dynamic doctorList
     appSettingsEditor.value = JSON.stringify(appSettings, null, 2);
 }
 
@@ -119,7 +123,6 @@ function saveAppSettings() {
         appSettingsStatus.textContent = "Changes saved successfully! Reloading form data.";
         appSettingsStatus.className = "text-sm mt-2 text-green-600";
         populateSutureDropdowns(); // Re-populate dropdowns
-        populateDoctorDropdown(); // Re-populate doctor dropdown
     } catch (e) {
         appSettingsStatus.textContent = `Error: ${e.message}. Changes NOT saved.`;
         appSettingsStatus.className = "text-sm mt-2 text-red-600";
@@ -127,12 +130,11 @@ function saveAppSettings() {
 }
 
 function resetAppSettings() {
-    if (confirm("Are you sure you want to reset all app settings to the defaults? This cannot be undone.")) {
+    if (confirm("Are you sure you want to reset all billing codes and suture types to the defaults? This cannot be undone.")) {
         appSettings = defaultAppSettings;
         localStorage.setItem('appSettings', JSON.stringify(defaultAppSettings, null, 2));
         loadAppSettingsToEditor();
         populateSutureDropdowns();
-        populateDoctorDropdown();
         appSettingsStatus.textContent = "Settings reset to default. Form data reloaded.";
         appSettingsStatus.className = "text-sm mt-2 text-green-600";
     }
@@ -155,14 +157,15 @@ function populateSutureDropdowns() {
     }
 
     // Populate Skin Sutures
-     if (appSettings.sutures && appSettings.sutures.skin) {
+    if (appSettings.sutures && appSettings.sutures.skin) {
         appSettings.sutures.skin.forEach(suture => {
             const option = document.createElement('option');
             option.value = suture;
             option.textContent = suture;
             skinSutureTypeEl.appendChild(option);
         });
-     }
+    }
+
 
     // Set defaults
     deepSutureSizeEl.value = "4/0";
