@@ -175,8 +175,8 @@ function switchTab(tabName) {
         (async () => {
             if (saveFolderHandle) {
                 appSettings.doctorList = await getDoctorListFromFolders();
-                populateDoctorDropdown();
-                loadBillingFiles(); // Load files for the currently selected doctor
+                populateDoctorDropdown(); // This will trigger handleDoctorChange, which loads files.
+                // loadBillingFiles(); // <-- THIS WAS THE DUPLICATE, NOW REMOVED
             }
         })();
 
