@@ -201,7 +201,7 @@
                                 <option value="" disabled selected>Select a procedure...</option>
                                 <option value="Excision">Excision</option>
                                 <option value="Punch">Punch</option>
-                                <option value="Shave">Shave</option>
+                                <option valuea="Shave">Shave</option>
                             </select>
                         </div>
     
@@ -378,7 +378,7 @@
                         
                         <div class="mt-6 flex flex-col sm:flex-row gap-3">
                              <button id="save-procedure-btn" type="button" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 transition duration-300 shadow-md">
-                                Save Procedure
+                                Save Procedure to Billing
                             </button>
                             <button id="clear-procedure-btn" type="button" class="w-full sm:w-auto bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300">
                                 Clear Procedure
@@ -441,10 +441,13 @@
             <header class="mb-8 p-6 bg-white rounded-2xl shadow-lg">
                 <div class="flex justify-between items-center">
                     <h1 id="billing-title" class="text-3xl md:text-4xl font-bold text-slate-700">Billing & Processing</h1>
-                    <label class="flex items-center space-x-2 font-medium text-slate-700">
+                    <!-- 
+                        <label class="flex items-center space-x-2 font-medium text-slate-700">
                         <input type="checkbox" id="pm-mode-toggle" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                         <span>Practice Manager Mode</span>
-                    </label>
+                    </label> 
+                    -->
+                    <!-- The PM Mode Toggle checkbox above has been removed. -->
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center mt-6">
                     <div id="unprocessed-dashboard" class="p-4 bg-amber-50 rounded-lg border border-amber-200">
@@ -469,7 +472,7 @@
                             Print Billed List
                         </button>
                         <button id="load-files-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
-                            Load/Refresh Files
+                            Refresh Database
                         </button>
                     </div>
                 </div>
@@ -542,19 +545,44 @@
                 <h1 class="text-3xl md:text-4xl font-bold text-slate-700">Settings</h1>
                 <p class="text-slate-500 mt-2">Manage app data, including doctors, billing codes, and suture types.</p>
             </header>
-            
-            <div class="bg-white p-6 rounded-2xl shadow-lg">
-                <h2 class="text-2xl font-semibold mb-4">App Settings Editor</h2>
-                <p class="text-sm text-slate-600 mb-4">
-                    Edit the JSON data below to update, add, or remove billing codes and suture types.
-                    <br><strong>Warning:</strong> Invalid JSON will break the application. Use a JSON validator if unsure.
-                </p>
-                <textarea id="app-settings-editor" rows="30" class="w-full bg-slate-100 border border-slate-300 rounded-lg p-4 text-sm font-mono focus:ring-2 focus:ring-blue-500"></textarea>
-                <div class="mt-4 flex justify-end gap-3">
-                    <button id="reset-app-settings-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300">Reset to Defaults</button>
-                    <button id="save-app-settings-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Save Changes</button>
+
+            <div class="space-y-8">
+                <!-- NEW: Manage Doctors Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h2 class="text-2xl font-semibold mb-4">Manage Doctors</h2>
+                    <p class="text-sm text-slate-600 mb-4">
+                        Add a new doctor to the database. This will create a new set of folders in the shared directory.
+                        Doctor names are based on the folders found in the shared directory.
+                    </p>
+                    <div>
+                        <label for="new-doctor-name" class="block text-sm font-medium text-slate-600 mb-2">New Doctor's Name</label>
+                        <div class="flex rounded-md shadow-sm">
+                            <span class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-slate-300 bg-slate-50 text-slate-500 sm:text-sm">
+                                Dr.
+                            </span>
+                            <input type="text" id="new-doctor-name" placeholder="Firstname Lastname" class="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md border border-slate-300 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <button id="add-doctor-btn" class="mt-3 w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 sm:w-auto">
+                            Add New Doctor
+                        </button>
+                    </div>
+                    <p id="add-doctor-status" class="text-sm mt-2"></p>
                 </div>
-                <p id="app-settings-status" class="text-sm mt-2"></p>
+
+                <!-- Existing: App Settings Editor Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h2 class="text-2xl font-semibold mb-4">Manage Billing Codes & Sutures</h2>
+                    <p class="text-sm text-slate-600 mb-4">
+                        Edit the JSON data below to update, add, or remove billing codes and suture types.
+                        <br><strong>Warning:</strong> Invalid JSON will break the application.
+                    </p>
+                    <textarea id="app-settings-editor" rows="30" class="w-full bg-slate-100 border border-slate-300 rounded-lg p-4 text-sm font-mono focus:ring-2 focus:ring-blue-500"></textarea>
+                    <div class="mt-4 flex justify-end gap-3">
+                        <button id="reset-app-settings-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300">Reset to Defaults</button>
+                        <button id="save-app-settings-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Save Changes</button>
+                    </div>
+                    <p id="app-settings-status" class="text-sm mt-2"></p>
+                </div>
             </div>
         </div>
     </div>
@@ -562,7 +590,7 @@
     <div id="pathologyModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
         <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-lg">
             <h2 class="text-xl font-bold text-slate-700 mb-4">Select Provisional Diagnoses</h2>
-            <div id="pathology-checkboxes" class_temp="grid grid-cols-2 gap-2" class="max-h-[60vh] overflow-y-auto space-y-2 p-1">
+            <div id="pathology-checkboxes" class="max-h-[60vh] overflow-y-auto space-y-2 p-1">
                 <!-- Checkboxes populated by main.js -->
             </div>
             <div class="mt-4">
@@ -611,12 +639,19 @@
     All JavaScript is now loaded externally.
     We've split the logic into multiple files for maintainability 
     and to prevent chat/browser crashing.
+
+    *** SCRIPT LOAD ORDER IS IMPORTANT ***
+    1. main.js: Defines all element variables and global state.
+    2. db.js: Defines database functions (used by file-system.js).
+    3. settings-view.js: Defines appSettings (used by all other files).
+    4. file-system.js: Defines file functions (used by entry/billing).
+    5. entry-view.js & billing-view.js: The main app logic.
     -->
+    <script src="main.js"></script>
     <script src="db.js"></script>
-    <script src="file-system.js"></script>
     <script src="settings-view.js"></script>
+    <script src="file-system.js"></script>
     <script src="entry-view.js"></script>
     <script src="billing-view.js"></script>
-    <script src="main.js"></script>
 </body>
 </html>
