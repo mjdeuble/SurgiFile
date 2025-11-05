@@ -1,13 +1,101 @@
-// --- ENTRY VIEW LOGIC ---
-// This file manages all interactivity for the "Clinical Entry" tab.
-// All DOM element references (e.g., lesionForm, addLesionBtn) are
-// defined in 'main.js' and assumed to be available.
+// --- AUTOSAVE LOGIC ---
+
+/**
+ * Saves the current procedure state (patient, doctor, lesions) to localStorage.
+ */
+function autosaveProcedure() {
+    const procedureData = {
+        patientName: patientNameEl.value,
+        doctorCode: doctorCodeEl.value,
+        lesions: lesions,
+        lesionCounter: lesionCounter
+    };
+    localStorage.setItem('autosavedProcedure', JSON.stringify(procedureData));
+    console.log("Procedure autosaved.");
+}
+
+/**
+ * Loads the autosaved procedure from localStorage on startup.
+ */
+function loadAutosavedProcedure() {
+    const savedData = localStorage.getItem('autosavedProcedure');
+    if (savedData) {
+        try {
+            const data = JSON.parse(savedData);
+            // Don't load if a procedure is actively being edited from the billing tab
+            if (localStorage.getItem('procedureToEdit')) {
+                localStorage.removeItem('autosavedProcedure'); // Clear autosave
+                return;
+            }
+
+            patientNameEl.value = data.patientName || '';
+            doctorCodeEl.value = data.doctorCode || '';
+            lesions = data.lesions || [];
+            lesionCounter = data.lesionCounter || 0;
+
+            if (lesions.length > 0) {
+                console.log("Loaded autosaved procedure.");
+                updateAllOutputs();
+            }
+        } catch (e) {
+            console.error("Error loading autosaved data:", e);
+            localStorage.removeItem('autosavedProcedure');
+        }
+    }
+}
+
+/**
+ * Checks localStorage for a procedure sent from the billing tab to edit.
+ */
+function checkAndLoadProcedureForEditing() {
+    const dataString = localStorage.getItem('procedureToEdit');
+    const contextString = localStorage.getItem('editContext');
+
+    if (dataString && contextString) {
+        try {
+            const data = JSON.parse(dataString);
+            const context = JSON.parse(contextString);
+
+            resetAll(); // Clear the form completely first
+
+            // Load data into the form
+            patientNameEl.value = data.patientName;
+            doctorCodeEl.value = data.doctorCode;
+            lesions = data.lesions;
+            lesionCounter = data.lesions.length;
+
+            updateAllOutputs(); // Re-render lesions list and note outputs
+
+            // Change UI to "Edit Mode"
+            saveProcedureBtn.textContent = 'Save Edits to Original File';
+            clearProcedureBtn.textContent = 'Cancel Edit';
+
+            // Store the edit context in the form's dataset
+            lesionForm.dataset.isEditingFile = 'true';
+            lesionForm.dataset.originalFilename = context.filename;
+            lesionForm.dataset.originalFromFolder = context.fromFolder;
+            lesionForm.dataset.originalProcedureId = data.procedureId; // Store original ID
+            lesionForm.dataset.originalDoctorCode = data.doctorCode; // Store original doctor
+
+            // Clear the local storage items
+            localStorage.removeItem('procedureToEdit');
+            localStorage.removeItem('editContext');
+            localStorage.removeItem('autosavedProcedure'); // Clear any autosave
+
+            console.log(`Loaded procedure ${context.filename} for editing.`);
+            alert(`Loaded procedure for ${data.patientName} for editing. Make your changes and click "Save Edits to Original File".`);
+
+        } catch (e) {
+            console.error("Error loading procedure for editing:", e);
+            localStorage.removeItem('procedureToEdit');
+            localStorage.removeItem('editContext');
+        }
+    }
+}
+
 
 // --- MODAL & CLOCK LOGIC ---
 
-/**
- * Opens the orientation modal and pre-selects the current value.
- */
 function openOrientationModal() {
     if (modalSelectedLocationElement) modalSelectedLocationElement.classList.remove('selected');
     
@@ -23,10 +111,6 @@ function openOrientationModal() {
     orientationModal.classList.remove('hidden');
 }
 
-/**
- * Draws the SVG clock face in the orientation modal.
- * Called from main.js on startup.
- */
 function drawClock() {
     const radius = 90;
     const center = 100;
@@ -57,10 +141,6 @@ function drawClock() {
 }
 
 // --- PATHOLOGY MODAL ---
-
-/**
- * Opens the pathology modal and pre-selects current diagnoses.
- */
 function openPathologyModal() {
     const selected = (getEl('provisionalDiagnoses').value || '').split(';').filter(Boolean);
     pathologyCheckboxesEl.querySelectorAll('input').forEach(input => {
@@ -71,9 +151,6 @@ function openPathologyModal() {
     pathologyModal.classList.remove('hidden');
 }
 
-/**
- * Confirms the pathology selection from the modal and updates the form.
- */
 function confirmPathologySelection() {
     const selected = [];
     pathologyCheckboxesEl.querySelectorAll('input:checked').forEach(input => {
@@ -99,11 +176,6 @@ function confirmPathologySelection() {
 }
 
 // --- MAIN FORM LOGIC ---
-
-/**
- * Updates the visibility of form sections based on dropdown selections.
- * @param {Event} [event] - The change event that triggered the update.
- */
 function updateFormUI(event) {
     if (event && event.target.id === 'procedureType') {
         const currentProcedure = procedureTypeEl.value;
@@ -155,10 +227,6 @@ function updateFormUI(event) {
     checkLesionFormCompleteness();
 }
 
-/**
- * Checks if all required fields for the current lesion are filled.
- * Toggles the 'disabled' state of the "Add Lesion" button.
- */
 function checkLesionFormCompleteness() {
     // Helper to validate a single field and highlight it if invalid
     const validateAndHighlight = (element, isRequired) => {
@@ -230,10 +298,6 @@ function checkLesionFormCompleteness() {
 
 
 // --- DATA LOGIC ---
-
-/**
- * Adds a new lesion to the 'lesions' array or updates an existing one.
- */
 function addOrUpdateLesion() {
     const isUpdating = editingLesionId !== null;
     const getVal = id => getEl(id).value;
@@ -289,12 +353,9 @@ function addOrUpdateLesion() {
 
     updateAllOutputs();
     resetLesionForm();
+    autosaveProcedure(); // Call autosave
 }
 
-/**
- * Saves the entire procedure (patient details + lesions) to a JSON file.
- * Uses File System Access API if available, otherwise falls back to download.
- */
 async function saveProcedure() {
     const patientName = patientNameEl.value.trim();
     const doctorCode = doctorCodeEl.value.trim();
@@ -308,52 +369,73 @@ async function saveProcedure() {
         patientNameEl.classList.remove('missing-field');
     }
 
-    if (!doctorCode) {
+    if (!doctorCode || doctorCode === appSettings.pmIdentifier) { // PM cannot create new files
         doctorCodeEl.classList.add('missing-field');
+        if (doctorCode === appSettings.pmIdentifier) {
+            alert('Practice Managers cannot create new procedures. Please select a doctor.');
+        }
         isValid = false;
     } else {
         doctorCodeEl.classList.remove('missing-field');
     }
 
     if (lesions.length === 0) {
-        alert('Please add at least one lesion before saving.'); // Use custom modal in production
+        alert('Please add at least one lesion before saving.');
         isValid = false;
     }
 
     if (!isValid) return;
 
+    // Check if we are saving an edit or a new file
+    const isEditing = lesionForm.dataset.isEditingFile === 'true';
+
     // Create the procedure record
     const procedureRecord = {
-        procedureId: Date.now(), // Unique ID for this procedure
+        // Use the original ID if editing, or a new timestamp if creating
+        procedureId: isEditing ? parseInt(lesionForm.dataset.originalProcedureId, 10) : Date.now(),
         doctorCode: doctorCode,
         patientName: patientName,
-        procedureDate: new Date().toISOString(),
+        procedureDate: new Date().toISOString(), // Always update to current date
         lesions: lesions, // The array of lesion objects
-        status: 'Unprocessed' // Default status for the manager app
+        // Use the original folder's status if editing, or 'Unprocessed' if new
+        status: isEditing ? (lesionForm.dataset.originalFromFolder === 'Billed' ? 'Billed' : 'Archived' ? 'Archived' : 'Unprocessed') : 'Unprocessed'
     };
 
-    // Generate filename
-    const timestamp = procedureRecord.procedureId;
-    const filename = `${doctorCode}_${timestamp}.json`;
+    if (isEditing) {
+        // --- This is an EDIT, so OVERWRITE the original file ---
+        const originalFilename = lesionForm.dataset.originalFilename;
+        const originalFromFolder = lesionForm.dataset.originalFromFolder;
+        const originalDoctorCode = lesionForm.dataset.originalDoctorCode; // Get original doctor code
 
-    // *** Try to save to folder, fallback to download ***
-    try {
-        await saveFileToFolder(procedureRecord, filename);
-        alert(`Procedure for ${patientName} saved directly to your default folder!`); // Use custom modal
-        resetAll();
-    } catch (err) {
-        console.warn('Could not save to folder, falling back to download.', err.message);
-        downloadJSON(procedureRecord, filename);
-        alert(`Procedure for ${patientName} saved.\nFile: ${filename}\n\n(Could not save to default folder. Please save this file manually.)`); // Use custom modal
-        resetAll();
+        try {
+            // Pass the original doctor code to find the correct folder
+            await overwriteFile(procedureRecord, originalFilename, originalFromFolder, originalDoctorCode);
+            alert(`Procedure for ${patientName} successfully updated!`);
+            resetAll(); // This will also clear autosave
+        } catch (err) {
+            console.error('Could not save edits to file:', err.message);
+            alert(`Error saving edits: ${err.message}\n\nYour data is still safe in the form.`);
+        }
+
+    } else {
+        // --- This is a NEW procedure, so SAVE to Unprocessed ---
+        const timestamp = procedureRecord.procedureId;
+        const filename = `${doctorCode}_${timestamp}.json`;
+
+        try {
+            // Pass the new doctor code to save in the correct folder
+            await saveFileToFolder(procedureRecord, filename, doctorCode);
+            alert(`Procedure for ${patientName} saved directly to your default folder!`);
+            resetAll(); // This will also clear autosave
+        } catch (err) {
+            console.warn('Could not save to folder, falling back to download.', err.message);
+            downloadJSON(procedureRecord, filename);
+            alert(`Procedure for ${patientName} saved.\nFile: ${filename}\n\n(Could not save to default folder. Please save this file manually.)`);
+            resetAll(); // This will also clear autosave
+        }
     }
 }
 
-/**
- * Fallback function to download a JSON file if File System API fails.
- * @param {object} data - The JSON object to download.
- * @param {string} filename - The name for the downloaded file.
- */
 function downloadJSON(data, filename) {
     const jsonString = JSON.stringify(data, null, 2); // Pretty print JSON
     const blob = new Blob([jsonString], { type: 'application/json' });
@@ -368,10 +450,7 @@ function downloadJSON(data, filename) {
     
     URL.revokeObjectURL(url);
 }
-
-/**
- * Updates the lesion list display and both output text areas.
- */
+    
 function updateAllOutputs() {
     updateLesionsList();
     const requestText = generateClinicalRequest();
@@ -381,10 +460,6 @@ function updateAllOutputs() {
     updateOutputVisibility();
 }
 
-/**
- * Generates the text for the "Clinical Request" output area.
- * @returns {string} The generated clinical request text.
- */
 function generateClinicalRequest() {
     if (lesions.length === 0) {
         return 'Your clinical request will appear here...';
@@ -454,10 +529,6 @@ function generateClinicalRequest() {
     }).join('\n');
 }
 
-/**
- * Generates the text for the "Generated Note" output area.
- * @returns {string} The generated operation note text.
- */
 function generateEntryNote() {
     if (lesions.length === 0) {
         return 'Your generated note will appear here...';
@@ -580,12 +651,6 @@ ${planItems.length > 0 ? planItems.join('\n') : '- General wound care advice giv
 }
 
 // --- FORM MANAGEMENT ---
-
-/**
- * Loads a lesion's data back into the form for editing.
- * Attached to 'window' so it can be called from onclick attributes.
- * @param {number} id - The ID of the lesion to edit.
- */
 window.startEditLesion = function(id) {
     const lesion = lesions.find(l => l.id === id);
     if (!lesion) return;
@@ -640,7 +705,7 @@ window.startEditLesion = function(id) {
     const isNonDissolvable = lesion.skinSutureType !== 'Dissolvable';
     setChecked('useNonDissolvable', isNonDissolvable);
     
-    // Manually sync visibility when loading for edit
+    // *** BUG FIX: Manually sync visibility when loading for edit ***
     deepSutureContainer.classList.toggle('hidden', !lesion.useDeepSuture);
     skinSutureDetails.classList.toggle('hidden', !isNonDissolvable);
 
@@ -658,10 +723,7 @@ window.startEditLesion = function(id) {
     clearProcedureBtn.style.display = 'none';
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-
-/**
- * Cancels the current edit and resets the lesion form.
- */
+    
 function cancelEdit() {
     resetLesionForm();
 }
@@ -682,6 +744,7 @@ function resetLesionForm(resetProcType = true) {
     checkboxes.forEach(id => getEl(id).checked = false);
     getEl('useNonDissolvable').checked = true; // Default
 
+    // *** BUG FIX HERE ***
     // Manually sync container visibility with the reset checkbox states
     deepSutureContainer.classList.add('hidden'); // Syncs with useDeepSuture = false
     skinSutureDetails.classList.remove('hidden'); // Syncs with useNonDissolvable = true
@@ -717,9 +780,6 @@ function resetLesionForm(resetProcType = true) {
     checkLesionFormCompleteness();
 }
 
-/**
- * Updates the text and 'selected' state of the orientation buttons.
- */
 function updateOrientationButtons() {
     const type = getEl('orientationType').value;
     const desc = getEl('orientationDescription').value;
@@ -738,9 +798,6 @@ function updateOrientationButtons() {
     });
 }
 
-/**
- * Resets the entire procedure, including patient info and all lesions.
- */
 function resetAll() {
     lesions = [];
     lesionCounter = 0;
@@ -750,11 +807,20 @@ function resetAll() {
     
     resetLesionForm(); // Resets the lesion part of the form
     updateAllOutputs(); // Clears outputs and lesion list
+
+    // NEW: Reset edit mode state
+    lesionForm.dataset.isEditingFile = 'false';
+    lesionForm.dataset.originalFilename = '';
+    lesionForm.dataset.originalFromFolder = '';
+    lesionForm.dataset.originalProcedureId = '';
+    lesionForm.dataset.originalDoctorCode = '';
+    saveProcedureBtn.textContent = 'Save Procedure';
+    clearProcedureBtn.textContent = 'Clear Procedure';
+    
+    // NEW: Clear autosave
+    localStorage.removeItem('autosavedProcedure');
 }
 
-/**
- * Re-renders the list of added lesions.
- */
 function updateLesionsList() {
     lesionsListEl.innerHTML = '';
     if (lesions.length === 0) {
@@ -794,11 +860,7 @@ function updateLesionsList() {
     });
 }
 
-/**
- * Removes a lesion from the 'lesions' array.
- * Attached to 'window' so it can be called from onclick attributes.
- * @param {number} id - The ID of the lesion to remove.
- */
+
 window.removeLesion = function(id) {
     lesions = lesions.filter(l => l.id !== id);
     // Renumber the remaining lesions
@@ -812,13 +874,9 @@ window.removeLesion = function(id) {
 
     if (editingLesionId === id) cancelEdit();
     updateAllOutputs();
+    autosaveProcedure(); // Call autosave
 }
-
-/**
- * Copies the text from a given element ID to the clipboard.
- * @param {string} elementId - The ID of the textarea to copy from.
- * @param {HTMLElement} buttonTextElement - The span inside the button to update.
- */
+    
 function copyToClipboard(elementId, buttonTextElement) {
     const outputElement = getEl(elementId);
     if (!outputElement.value || outputElement.value.startsWith('Your')) return;
@@ -827,7 +885,6 @@ function copyToClipboard(elementId, buttonTextElement) {
     outputElement.setSelectionRange(0, 99999);
     
     try {
-        // Use execCommand for compatibility in sandboxed environments
         document.execCommand('copy');
         const originalText = buttonTextElement.textContent;
         buttonTextElement.textContent = 'Copied!';
@@ -839,19 +896,12 @@ function copyToClipboard(elementId, buttonTextElement) {
     }
     window.getSelection().removeAllRanges();
 }
-
-/**
- * Sets the output style (combined/separate) in localStorage.
- * @param {string} style - The style to set ('combined' or 'separate').
- */
+    
 function setOutputStyle(style) {
     localStorage.setItem('medicalNoteGeneratorOutputStyle', style);
     updateOutputVisibility();
 }
 
-/**
- * Toggles the visibility of the output boxes based on the saved style.
- */
 function updateOutputVisibility() {
     const style = localStorage.getItem('medicalNoteGeneratorOutputStyle') || 'combined';
     
