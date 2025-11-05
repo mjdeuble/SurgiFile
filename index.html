@@ -1,38 +1,145 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+    
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clinical Management PWA</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f1f5f9">
+
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #e2e8f0; }
-        .form-section { display:none; }
-        .tab-btn { padding:8px 16px; border-radius:8px; font-weight:600; color:#334155; background:#f1f5f9; }
-        .tab-btn.active { color:#fff; background:#0284c7 }
-        .app-view { display:none }
-        .app-view.active { display:block }
-        .file-list-item { cursor:pointer; transition:background-color .15s }
-        .file-list-item:hover { background:#f8fafc }
-        .file-list-item.selected { background:#ecfefc; border-left:4px solid #14b8a6 }
-        .billing-column-header { border-bottom-width:4px; padding-bottom:8px }
-        .col-header-unprocessed { border-color:#f59e0b }
-        .col-header-awaiting { border-color:#3b82f6 }
-        .col-header-archive { border-color:#94a3b8 }
-        /* PM Mode: hide unprocessed + archive and make single large Awaiting column */
-        .pm-mode-active #unprocessed-column, .pm-mode-active #archive-column { display:none }
-        .pm-mode-active #billing-columns { grid-template-columns: 1fr }
-        #print-billed-list-btn { display:none }
-        .pm-mode-active #print-billed-list-btn { display:inline-flex }
-        /* Print styles */
-        @media print { body * { visibility:hidden } #printable-report, #printable-report * { visibility:visible } #printable-report { position:absolute; left:0; top:0; width:100% } table { width:100%; border-collapse:collapse } th, td { border:1px solid #000; padding:8px; text-align:left; font-size:10pt } th { background:#f4f4f4 } }
-        #printable-report { display:none }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #e2e8f0; /* bg-slate-200 */
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        /* Hide number input spinners */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+        .form-section { display: none; }
+        
+        /* Clock styles */
+        .clock-face { stroke: #94a3b8; stroke-width: 4; fill: white; }
+        .hour-marker { stroke: #94a3b8; stroke-width: 2; }
+        .center-dot { fill: #1e293b; }
+        .hour-text { font-size: 20px; font-weight: 500; fill: #334155; text-anchor: middle; dominant-baseline: middle; cursor: pointer; transition: fill 0.2s, font-weight 0.2s; -webkit-user-select: none; user-select: none; }
+        .hour-text.disabled { cursor: not-allowed; fill: #cbd5e1; }
+        .hour-text:not(.disabled):hover { fill: #0ea5e9; }
+        .hour-text.selected { fill: #0284c7; font-weight: 700; }
+        
+        .main-marker-btn.selected, .modal-marker-btn.selected, .direction-btn.selected, .output-style-btn.selected, .justification-btn.selected, .dermoscopy-btn.selected { background-color: #0284c7; color: white; border-color: #0284c7; }
+        .billing-btn.selected { background-color: #0284c7; color: white; border-color: #0284c7; }
+        .direction-btn:disabled { background-color: #e2e8f0; color: #94a3b8; cursor: not-allowed; }
+
+        /* Style for missing required fields */
+        .missing-field {
+            border-color: #ef4444 !important; /* red-500 */
+            --tw-ring-color: #ef4444;
+            --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+            --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+            box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+        }
+        
+        /* Tab Styles */
+        .tab-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            color: #334155; /* text-slate-700 */
+            background-color: #f1f5f9; /* bg-slate-100 */
+            transition: all 0.2s;
+        }
+        .tab-btn:hover {
+            background-color: #e2e8f0; /* bg-slate-200 */
+        }
+        .tab-btn.active {
+            color: white;
+            background-color: #0284c7; /* bg-sky-600 */
+        }
+        .app-view {
+            display: none; /* Hidden by default */
+        }
+        .app-view.active {
+            display: block; /* Shown by JS */
+        }
+
+        /* Billing View File List Styles */
+        .file-list-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .file-list-item:hover {
+            background-color: #f8fafc; /* bg-slate-50 */
+        }
+        .file-list-item.selected {
+            background-color: #ecfefc; /* bg-teal-50 */
+            border-color: #14b8a6; /* border-teal-500 */
+            border-left-width: 4px;
+        }
+
+        /* Billing Column Colors */
+        .billing-column-header {
+            border-bottom-width: 4px;
+            padding-bottom: 8px;
+        }
+        .col-header-unprocessed { border-color: #f59e0b; } /* amber-500 */
+        .col-header-billed { border-color: #3b82f6; } /* blue-500 */
+        .col-header-archive { border-color: #94a3b8; } /* slate-400 */
+
+        /* PM Mode Styles */
+        .pm-mode-active #unprocessed-column { display: none; }
+        .pm-mode-active #billing-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        #print-billed-list-btn { display: none; }
+        .pm-mode-active #print-billed-list-btn { display: inline-flex; }
+
+        /* Print Styles */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #printable-report, #printable-report * {
+                visibility: visible;
+            }
+            #printable-report {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            th, td {
+                border: 1px solid #000;
+                padding: 8px;
+                text-align: left;
+                font-size: 10pt;
+            }
+            th {
+                background-color: #f4f4f4;
+            }
+        }
+        #printable-report {
+            display: none; /* Hidden by default, only shown for printing */
+        }
+
     </style>
 </head>
 <body class="bg-slate-200 text-slate-800">
+
     <nav class="bg-white shadow-md w-full p-4 sticky top-0 z-40">
         <div class="container mx-auto flex items-center justify-between">
             <h1 id="app-title" class="text-2xl font-bold text-slate-700">Clinical Management PWA</h1>
@@ -44,18 +151,24 @@
         </div>
     </nav>
 
-    <!-- ENTRY VIEW -->
     <div id="entry-view" class="app-view active">
-        <div class="container mx-auto p-4 max-w-7xl">
-            <header class="text-center mb-6 p-6 bg-white rounded-2xl shadow-lg">
-                <h1 class="text-3xl font-bold text-slate-700">Excision Note Generator</h1>
+        <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+            <header class="text-center mb-8 p-6 bg-white rounded-2xl shadow-lg">
+                <h1 class="text-3xl md:text-4xl font-bold text-slate-700">Excision Note Generator</h1>
                 <p class="text-slate-500 mt-2">Part 1: Enter clinical data and generate the operation note.</p>
+                <div class="mt-4 border-t pt-4">
+                    <button id="set-save-folder-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+                        Set Default Save Folder
+                    </button>
+                    <p id="folder-status-msg" class="text-xs text-slate-500 mt-2">Status: No folder set. Files will be downloaded normally.</p>
+                </div>
             </header>
-
+    
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div class="bg-white p-6 rounded-2xl shadow-lg">
                     <form id="lesion-form">
-                        <div class="space-y-4 border-b pb-6 mb-6">
+                        
+                        <div class="space-y-4 border-b border-slate-200 pb-6 mb-6">
                             <h2 class="text-2xl font-semibold">Procedure Details</h2>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -64,74 +177,264 @@
                                 </div>
                                 <div>
                                     <label for="doctorCode" class="block text-sm font-medium text-slate-600 mb-2">Doctor Code</label>
-                                    <!-- Converted to dropdown populated from Settings -->
-                                    <select id="doctorCode" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                        <!-- Options inserted by JS -->
-                                    </select>
+                                    <input type="text" id="doctorCode" placeholder="e.g., DR_MD" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
                                 </div>
                             </div>
                         </div>
-
+                        
+                        <h2 class="text-2xl font-semibold mb-4" id="form-title">Enter Lesion Details</h2>
+    
                         <div>
                             <label for="procedureType" class="block text-sm font-medium text-slate-600 mb-2">1. Procedure Type</label>
-                            <select id="procedureType" name="procedureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                            <select id="procedureType" name="procedureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500">
                                 <option value="" disabled selected>Select a procedure...</option>
                                 <option value="Excision">Excision</option>
                                 <option value="Punch">Punch</option>
                                 <option value="Shave">Shave</option>
                             </select>
                         </div>
-
-                        <!-- (other form sections omitted for brevity but preserved in the original app) -->
-
+    
+                        <div id="dynamic-options-container" class="mt-6 space-y-4 border-t border-slate-200 pt-6 hidden">
+                            <div id="excision-options" class="form-section space-y-4">
+                                <div>
+                                    <label for="excisionClosureType" class="block text-sm font-medium text-slate-600 mb-2">Excision Closure Method</label>
+                                    <select id="excisionClosureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                        <option value="Ellipse">Ellipse</option>
+                                        <option value="Secondary Intention">Secondary Intention</option>
+                                        <option value="Flap Repair">Flap Repair</option>
+                                        <option value="Graft Repair">Graft Repair</option>
+                                        <option value="Graft + Flap">Graft + Flap</option>
+                                    </select>
+                                </div>
+                                <div id="graft-type-container" class="form-section">
+                                    <label for="graftType" class="block text-sm font-medium text-slate-600 mb-2">Graft Type</label>
+                                    <select id="graftType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                        <option value="Split-Skin Graft (SSG)">Split-Skin Graft (SSG)</option>
+                                        <option value="Full-Thickness Skin Graft (FTSG)">Full-Thickness Skin Graft (FTSG)</option>
+                                    </select>
+                                </div>
+                                <div id="justification-container" class="form-section space-y-2">
+                                    <label class="block text-sm font-medium text-slate-600">Justification for Flap/Graft</label>
+                                    <div id="justification-buttons" class="flex flex-wrap gap-2">
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="Defect size/tension prevents primary closure.">Size/Tension</button>
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="Anatomical location with poor skin laxity.">Location</button>
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="To avoid distortion of adjacent anatomical features.">Avoid Distortion</button>
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="To preserve cosmetic appearance (color/texture/contour).">Cosmesis</button>
+                                        <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="To maintain mobility over a joint.">Mobility</button>
+                                    </div>
+                                    <input type="hidden" id="flapGraftJustification">
+                                </div>
+                            </div>
+                            <div id="punch-options" class="form-section">
+                                <label for="punchType" class="block text-sm font-medium text-slate-600 mb-2">Punch Type</label>
+                                <select id="punchType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                    <option value="Punch Biopsy">Punch Biopsy</option>
+                                    <option value="Punch Excision">Punch Excision</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label for="lesionLocation" class="block text-sm font-medium text-slate-600 mb-2">Lesion Location Description</label>
+                                <input type="text" id="lesionLocation" name="lesionLocation" placeholder="e.g., Left forearm, 10cm proximal to wrist" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                            </div>
+    
+                            <div>
+                                <label for="anatomicalRegion" class="block text-sm font-medium text-slate-600 mb-2">Anatomical Region (for billing)</label>
+                                <select id="anatomicalRegion" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                    <option value="">Select billing region...</option>
+                                    <option value="Option1">Option 1: Nose, eyelid, eyebrow, lip, ear, digit, genitalia</option>
+                                    <option value="Option2">Option 2: Face, neck, scalp, distal limbs (from knee/ulnar styloid)</option>
+                                    <option value="Option3">Option 3: Trunk, proximal limbs (areas not in 1 or 2)</option>
+                                </select>
+                            </div>
+    
+                            <div>
+                                <label for="localAnesthetic" class="block text-sm font-medium text-slate-600 mb-2">Local Anesthetic</label>
+                                <select id="localAnesthetic" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                    <option value="Lignocaine 1% with Adrenaline 1:100,000">Lignocaine 1% w/ Adrenaline</option>
+                                    <option value="Lignocaine 1% without Adrenaline">Lignocaine 1% Plain</option>
+                                    <option value="Bupivacaine 0.5%">Bupivacaine 0.5%</option>
+                                </select>
+                            </div>
+                            <div id="lesion-size-container" class="form-section">
+                                <label class="block text-sm font-medium text-slate-600 mb-2">Lesion Dimensions (mm)</label>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <input type="number" id="lesionLength" placeholder="Length" class="w-full bg-slate-50 border rounded-lg p-3">
+                                    <input type="number" id="lesionWidth" placeholder="Width" class="w-full bg-slate-50 border rounded-lg p-3">
+                                </div>
+                            </div>
+                            <div id="margin-container" class="form-section">
+                                <label for="margin" class="block text-sm font-medium text-slate-600 mb-2">Clinical Margin (mm)</label>
+                                <input type="number" id="margin" placeholder="e.g., 4" class="w-full bg-slate-50 border rounded-lg p-3">
+                            </div>
+                            <div id="punch-size-container" class="form-section">
+                                <label for="punchSize" class="block text-sm font-medium text-slate-600 mb-2">Punch Biopsy Size (mm)</label>
+                                <input type="number" id="punchSize" name="punchSize" placeholder="e.g., 3" class="w-full bg-slate-50 border rounded-lg p-3">
+                            </div>
+                             <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-2">Provisional Diagnosis (PDx)</label>
+                                <div class="flex items-center gap-2">
+                                    <div id="pathologyDisplay" class="flex-grow bg-slate-100 border border-slate-300 rounded-lg p-3 h-12 flex items-center text-slate-500 italic cursor-pointer">Click to select...</div>
+                                    <input type="hidden" id="provisionalDiagnoses">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                    <input type="checkbox" id="excludeNMSC" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>Exclude NMSC?</span>
+                                </label>
+                                <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                    <input type="checkbox" id="excludeMelanoma" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>Exclude Melanoma?</span>
+                                </label>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-2">Dermoscopy Used?</label>
+                                <div id="dermoscopy-btn-container" class="flex gap-2">
+                                    <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Y">Yes</button>
+                                    <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="N">No</button>
+                                </div>
+                                <input type="hidden" id="dermoscopyUsed">
+                            </div>
+                            <div id="orientation-input-container" class="form-section">
+                                <label class="block text-sm font-medium text-slate-600 mb-2">Specimen Orientation</label>
+                                <div id="main-marker-btn-container" class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                    <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="None">None</button>
+                                    <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Nick">Nick</button>
+                                    <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Apex">Apex</button>
+                                    <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Suture">Suture</button>
+                                </div>
+                                <input type="hidden" id="orientationType" value="None">
+                                <input type="hidden" id="orientationDescription">
+                            </div>
+                            <div id="closure-details-container" class="form-section space-y-4 pt-4 border-t mt-4">
+                                 <h3 class="text-lg font-semibold text-slate-600">Closure Details</h3>
+                                 <div class="space-y-2 p-3 bg-slate-50 rounded-lg">
+                                     <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                         <input type="checkbox" id="useDeepSuture" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                         <span>Use Deep Sutures (Optional)</span>
+                                     </label>
+                                     <div id="deep-suture-container" class="hidden grid grid-cols-2 gap-4 pt-2">
+                                         <select id="deepSutureSize" class="w-full bg-white border border-slate-300 rounded-lg p-3">
+                                             <option value="3/0">3/0</option>
+                                             <option value="4/0" selected>4/0</option>
+                                             <option value="5/0">5/0</option>
+                                         </select>
+                                         <select id="deepSutureType" class="w-full bg-white border border-slate-300 rounded-lg p-3">
+                                         </select>
+                                     </div>
+                                 </div>
+                                 <div class="space-y-2">
+                                    <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                        <input type="checkbox" id="useNonDissolvable" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                        <span>Non-dissolvable Suture</span>
+                                    </label>
+                                     <div id="skin-suture-details" class="grid grid-cols-2 gap-4">
+                                         <select id="skinSutureSize" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                             <option value="3/0">3/0</option>
+                                             <option value="4/0">4/0</option>
+                                             <option value="5/0" selected>5/0</option>
+                                             <option value="6/0">6/0</option>
+                                         </select>
+                                         <select id="skinSutureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                         </select>
+                                         <div id="skin-suture-removal-container" class="col-span-2">
+                                             <input type="number" id="removalOfSkinSutures" placeholder="Suture Removal (days)" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                         </div>
+                                     </div>
+                                 </div>
+                            </div>
+    
+                        </div>
                     </form>
-
-                    <div class="mt-6 flex flex-col sm:flex-row gap-3">
-                        <button id="add-lesion-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg">Add Lesion</button>
-                        <button id="save-procedure-btn" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg">Generate JSON File</button>
+                    
+                    <div class="mt-8 pt-6 border-t border-slate-200">
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <button id="add-lesion-btn" type="button" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300 shadow-md disabled:bg-slate-300">
+                                Add Lesion
+                            </button>
+                            <button id="cancel-edit-btn" type="button" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-300 shadow-md hidden">
+                                Cancel Edit
+                            </button>
+                        </div>
+                        
+                        <div class="mt-6 flex flex-col sm:flex-row gap-3">
+                             <button id="save-procedure-btn" type="button" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 transition duration-300 shadow-md">
+                                Generate JSON File
+                            </button>
+                            <button id="clear-procedure-btn" type="button" class="w-full sm:w-auto bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300">
+                                Clear Procedure
+                            </button>
+                        </div>
+    
                     </div>
                 </div>
-
+    
                 <div>
-                    <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
-                        <h2 class="text-2xl font-semibold mb-4">Recorded Lesions for this Patient</h2>
+                     <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+                        <h2 class="text-2xl font-semibold mb-4 border-b pb-3">Recorded Lesions for this Patient</h2>
                         <div id="lesions-list" class="space-y-3">
                             <p class="text-slate-500 italic">No lesions added yet.</p>
                         </div>
                     </div>
-
-                    <div id="entry-note-output-container" class="bg-white p-6 rounded-2xl shadow-lg sticky top-8">
-                        <div class="flex justify-between items-center mb-4 border-b pb-3">
-                            <h2 class="text-2xl font-semibold">Generated Note</h2>
-                            <button id="copy-note-btn" class="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg">Copy</button>
+    
+                    <div class="flex items-center gap-4 mb-4">
+                        <label class="text-sm font-medium text-slate-600">Output Style:</label>
+                        <div class="flex gap-2">
+                            <button id="output-btn-combined" class="output-style-btn px-3 py-1 text-sm rounded-md bg-slate-200 text-slate-700" data-value="combined">Combined</button>
+                            <button id="output-btn-separate" class="output-style-btn px-3 py-1 text-sm rounded-md bg-slate-200 text-slate-700" data-value="separate">Separate</button>
                         </div>
-                        <textarea id="entryNoteOutput" rows="12" class="w-full bg-slate-50 border-none rounded-lg p-4 text-sm leading-6" readonly></textarea>
                     </div>
+    
+                     <div id="clinical-request-output-container" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+                         <div class="flex justify-between items-center mb-4 border-b pb-3">
+                             <h2 class="text-2xl font-semibold">Clinical Request</h2>
+                             <button id="copy-request-btn" class="bg-sky-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-600 transition duration-300 flex items-center gap-2">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z"/></svg>
+                                 <span id="copy-request-btn-text">Copy</span>
+                             </button>
+                         </div>
+                         <textarea id="clinicalRequestOutput" rows="8" class="w-full bg-slate-50 border-none rounded-lg p-4 text-sm leading-6 focus:ring-0" readonly>Your clinical request will appear here...</textarea>
+                     </div>
+                    
+                     <div id="entry-note-output-container" class="bg-white p-6 rounded-2xl shadow-lg sticky top-8">
+                         <div class="flex justify-between items-center mb-4 border-b pb-3">
+                             <h2 class="text-2xl font-semibold">Generated Note</h2>
+                             <button id="copy-note-btn" class="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-600 transition duration-300 flex items-center gap-2">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z"/></svg>
+                                 <span id="copy-note-btn-text">Copy</span>
+                             </button>
+                         </div>
+                         <textarea id="entryNoteOutput" rows="18" class="w-full bg-slate-50 border-none rounded-lg p-4 text-sm leading-6 focus:ring-0" readonly>Your generated note will appear here...</textarea>
+                     </div>
                 </div>
             </div>
+    
+            <footer class="text-center mt-12">
+                <p class="text-xs text-slate-500">
+                    Disclaimer: This tool is intended for educational and informational purposes only and does not constitute medical advice. The author makes no warranties regarding the accuracy, completeness, or reliability of the information provided and is not liable for any claims or damages arising from its use. Use at your own risk.
+                </p>
+            </footer>
         </div>
     </div>
 
-    <!-- BILLING VIEW -->
     <div id="billing-view" class="app-view">
-        <div id="billing-view-container" class="container mx-auto p-4 max-w-7xl">
-            <header class="mb-6 p-6 bg-white rounded-2xl shadow-lg">
+        <div id="billing-view-container" class="container mx-auto p-4 md:p-8 max-w-7xl">
+            <header class="mb-8 p-6 bg-white rounded-2xl shadow-lg">
                 <div class="flex justify-between items-center">
-                    <h1 id="billing-title" class="text-3xl font-bold text-slate-700">Billing & Processing</h1>
+                    <h1 id="billing-title" class="text-3xl md:text-4xl font-bold text-slate-700">Billing & Processing</h1>
                     <label class="flex items-center space-x-2 font-medium text-slate-700">
-                        <input type="checkbox" id="pm-mode-toggle" class="h-4 w-4">
+                        <input type="checkbox" id="pm-mode-toggle" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                         <span>Practice Manager Mode</span>
                     </label>
                 </div>
-
                 <div class="grid grid-cols-3 gap-4 text-center mt-6">
                     <div id="unprocessed-dashboard" class="p-4 bg-amber-50 rounded-lg border border-amber-200">
                         <p class="text-sm font-medium text-amber-600">Unprocessed</p>
                         <p id="unprocessed-count-dash" class="text-3xl font-bold text-amber-700">0</p>
                     </div>
                     <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                        <!-- Renamed to Awaiting Billing (label only) -->
-                        <p class="text-sm font-medium text-blue-600">Awaiting Billing</p>
+                        <p class="text-sm font-medium text-blue-600">Billed</p>
                         <p id="billed-count-dash" class="text-3xl font-bold text-blue-700">0</p>
                     </div>
                     <div class="p-4 bg-slate-50 rounded-lg border border-slate-200">
@@ -139,46 +442,73 @@
                         <p id="archive-count-dash" class="text-3xl font-bold text-slate-700">0</p>
                     </div>
                 </div>
-
                 <div class="mt-6 pt-4 border-t flex items-center justify-between gap-4">
                     <div class="flex-grow">
                         <input type="text" id="search-bar" placeholder="Search by patient name..." class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2">
                     </div>
                     <div class="flex-shrink-0 flex gap-2">
-                        <button id="print-billed-list-btn" class="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Print Awaiting Billing List</button>
-                        <button id="load-files-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">Load/Refresh Files</button>
+                         <button id="print-billed-list-btn" class="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-700 transition duration-300">
+                            Print Billed List
+                        </button>
+                        <button id="load-files-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+                            Load/Refresh Files
+                        </button>
                     </div>
                 </div>
             </header>
-
+            
             <div id="billing-columns" class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div id="unprocessed-column" class="flex flex-col gap-4">
                     <h2 class="text-2xl font-semibold text-amber-700 billing-column-header col-header-unprocessed">Unprocessed</h2>
-                    <div id="unprocessed-list" class="space-y-3 max-h-[60vh] overflow-y-auto p-1"></div>
+                    <div id="unprocessed-list" class="space-y-3 max-h-[60vh] overflow-y-auto p-1">
+                    </div>
                 </div>
-
+    
                 <div id="billed-column" class="flex flex-col gap-4">
-                    <h2 class="text-2xl font-semibold text-blue-700 billing-column-header col-header-awaiting">Awaiting Billing</h2>
-                    <div id="billed-list" class="space-y-3 max-h-[60vh] overflow-y-auto p-1"></div>
+                    <h2 class="text-2xl font-semibold text-blue-700 billing-column-header col-header-billed">Billed</h2>
+                    <div id="billed-list" class="space-y-3 max-h-[60vh] overflow-y-auto p-1">
+                    </div>
                 </div>
-
+    
                 <div id="archive-column" class="flex flex-col gap-4">
                     <h2 class="text-2xl font-semibold text-slate-700 billing-column-header col-header-archive">Archive</h2>
-                    <div id="archive-list" class="space-y-3 max-h-[60vh] overflow-y-auto p-1"></div>
+                    <div id="archive-list" class="space-y-3 max-h-[60vh] overflow-y-auto p-1">
+                    </div>
                 </div>
             </div>
 
-            <!-- Billing panel (simplified) -->
             <div id="billing-panel" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50">
                 <div class="w-full max-w-2xl bg-white p-6 rounded-2xl shadow-lg max-h-[90vh] flex flex-col">
                     <div class="flex justify-between items-center mb-4 border-b pb-3">
                         <h2 class="text-2xl font-bold text-slate-700" id="billing-panel-title">Billing Panel</h2>
-                        <button id="close-billing-panel-btn" class="text-slate-500">Close</button>
+                        <button id="close-billing-panel-btn" class="text-slate-500 hover:text-slate-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z"/></svg>
+                        </button>
                     </div>
-                    <div id="billing-panel-content" class="overflow-y-auto space-y-4 pr-2"></div>
-                    <div class="mt-6 flex gap-3">
-                        <button id="save-as-billed-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg">Save as Awaiting Billing</button>
-                        <button id="delete-procedure-btn" class="w-auto bg-red-600 text-white font-bold py-3 px-4 rounded-lg">Delete</button>
+                    
+                    <div id="billing-panel-content" class="overflow-y-auto space-y-4 pr-2">
+                        </div>
+                    
+                    <div id="billing-assistant" class="mt-6 border-t pt-4 space-y-4">
+                        <div id="billing-assistant-lesions">
+                            </div>
+                        <hr/>
+                        <div>
+                            <label for="billing-consult-item" class="block text-sm font-medium text-slate-600 mb-2">Consult Item</label>
+                            <input type="text" id="billing-consult-item" placeholder="e.g., 23" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                        </div>
+                         <div>
+                            <label for="billing-comment" class="block text-sm font-medium text-slate-600 mb-2">Billing Comment (Optional)</label>
+                            <textarea id="billing-comment" rows="2" placeholder="e.g., Patient has concession card." class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3"></textarea>
+                        </div>
+                    </div>
+
+                    <div id="billing-panel-doctor-actions" class="mt-6 flex gap-3">
+                        <button id="save-as-billed-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300">Save as Billed</button>
+                        <button id="delete-procedure-btn" class="w-auto bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition duration-300">Delete</button>
+                    </div>
+                    <div id="billing-panel-pm-actions" class="mt-6 flex gap-3 hidden">
+                        <button id="move-to-archive-btn" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-300">Move to Archive</button>
                     </div>
                 </div>
             </div>
@@ -186,276 +516,87 @@
         </div>
     </div>
 
-    <!-- SETTINGS VIEW -->
     <div id="settings-view" class="app-view">
-        <div class="container mx-auto p-4 max-w-4xl">
-            <header class="text-center mb-6 p-6 bg-white rounded-2xl shadow-lg">
-                <h1 class="text-3xl font-bold text-slate-700">Settings</h1>
-                <p class="text-slate-500 mt-2">Manage app data, including doctors, billing codes and suture types.</p>
+        <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+            <header class="text-center mb-8 p-6 bg-white rounded-2xl shadow-lg">
+                <h1 class="text-3xl md:text-4xl font-bold text-slate-700">Settings</h1>
+                <p class="text-slate-500 mt-2">Manage app data, including billing codes and suture types.</p>
             </header>
-
+            
             <div class="bg-white p-6 rounded-2xl shadow-lg">
                 <h2 class="text-2xl font-semibold mb-4">App Settings Editor</h2>
-                <p class="text-sm text-slate-600 mb-4">Edit the JSON data below to update doctors and other app settings. Invalid JSON will break the application.</p>
-                <textarea id="app-settings-editor" rows="20" class="w-full bg-slate-100 border border-slate-300 rounded-lg p-4 text-sm font-mono"></textarea>
+                <p class="text-sm text-slate-600 mb-4">
+                    Edit the JSON data below to update, add, or remove billing codes and suture types.
+                    <br><strong>Warning:</strong> Invalid JSON will break the application. Use a JSON validator if unsure.
+                </p>
+                <textarea id="app-settings-editor" rows="30" class="w-full bg-slate-100 border border-slate-300 rounded-lg p-4 text-sm font-mono focus:ring-2 focus:ring-blue-500"></textarea>
                 <div class="mt-4 flex justify-end gap-3">
-                    <button id="reset-app-settings-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg">Reset to Defaults</button>
-                    <button id="save-app-settings-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">Save Changes</button>
+                    <button id="reset-app-settings-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300">Reset to Defaults</button>
+                    <button id="save-app-settings-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Save Changes</button>
                 </div>
                 <p id="app-settings-status" class="text-sm mt-2"></p>
             </div>
         </div>
     </div>
+    
+    <div id="pathologyModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-lg">
+            <h2 class="text-xl font-bold text-slate-700 mb-4">Select Provisional Diagnoses</h2>
+            <div id="pathology-checkboxes" class="grid grid-cols-2 gap-2">
+                </div>
+            <div class="mt-4">
+                <input type="text" id="otherPathologyInput" class="w-full bg-slate-50 border rounded-lg p-2" placeholder="Other diagnosis...">
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" id="confirmPathologyBtn" class="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-600">Confirm</button>
+            </div>
+        </div>
+    </div>
 
-    <div id="printable-report"><h1 id="print-title" class="text-2xl font-bold mb-4"></h1><table id="print-table"></table></div>
+    <div id="orientationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="w-full max-w-lg bg-white p-6 md:p-8 rounded-2xl shadow-lg transform transition-all" id="modal-content">
+            <h1 class="text-2xl font-bold text-slate-700 text-center mb-6">Select Orientation Location</h1>
+            
+            <div id="modal-location-selector">
+                <div class="mb-6">
+                    <svg id="clock" viewBox="0 0 200 200" class="w-full max-w-xs mx-auto"></svg>
+                </div>
 
-    <script>
-    // Minimal but complete JS implementing requested changes
-    const getEl = id => document.getElementById(id);
-    const tabEntryBtn = getEl('tab-entry'), tabBillingBtn = getEl('tab-billing'), tabSettingsBtn = getEl('tab-settings');
-    const entryView = getEl('entry-view'), billingView = getEl('billing-view'), settingsView = getEl('settings-view');
+                <div class="grid grid-cols-2 gap-3 mb-6">
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Proximal">Proximal</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Distal">Distal</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Medial">Medial</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Lateral">Lateral</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Left">Left</button>
+                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Right">Right</button>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3">
+                 <button type="button" id="cancelOrientationBtn" class="bg-slate-200 text-slate-700 font-bold py-2 px-4 rounded-lg hover:bg-slate-300">Cancel</button>
+            </div>
+        </div>
+    </div>
 
-    tabEntryBtn.addEventListener('click', ()=>switchTab('entry'));
-    tabBillingBtn.addEventListener('click', ()=>switchTab('billing'));
-    tabSettingsBtn.addEventListener('click', ()=>switchTab('settings'));
+    <div id="printable-report">
+        <h1 id="print-title" class="text-2xl font-bold mb-4"></h1>
+        <table id="print-table" class="w-full">
+            </table>
+    </div>
 
-    function switchTab(name){
-        [tabEntryBtn,tabBillingBtn,tabSettingsBtn].forEach(b=>b.classList.remove('active'));
-        [entryView,billingView,settingsView].forEach(v=>v.classList.remove('active'));
-        if(name==='entry'){ tabEntryBtn.classList.add('active'); entryView.classList.add('active') }
-        if(name==='billing'){ tabBillingBtn.classList.add('active'); billingView.classList.add('active'); loadBillingFiles() }
-        if(name==='settings'){ tabSettingsBtn.classList.add('active'); settingsView.classList.add('active'); loadAppSettingsToEditor() }
-    }
-
-    // App settings stored in localStorage for simplicity
-    const DEFAULT_SETTINGS = {
-        doctors: ["DR_SMITH","DR_JONES","DR_ADAMS"],
-        sutures: ["3/0","4/0","5/0","6/0"],
-        billingCodes: {}
-    };
-    let appSettings = {};
-
-    function loadAppSettings(){
-        try{ appSettings = JSON.parse(localStorage.getItem('appSettings') || 'null') || DEFAULT_SETTINGS }catch(e){ appSettings = DEFAULT_SETTINGS }
-    }
-    function saveAppSettingsToStorage(){ localStorage.setItem('appSettings', JSON.stringify(appSettings, null,2)) }
-
-    // Settings editor
-    const appSettingsEditor = getEl('app-settings-editor');
-    const saveAppSettingsBtn = getEl('save-app-settings-btn');
-    const resetAppSettingsBtn = getEl('reset-app-settings-btn');
-    const appSettingsStatus = getEl('app-settings-status');
-
-    saveAppSettingsBtn.addEventListener('click', ()=>{
-        try{
-            const parsed = JSON.parse(appSettingsEditor.value);
-            appSettings = parsed;
-            saveAppSettingsToStorage();
-            populateDoctorSelect();
-            appSettingsStatus.textContent = 'Saved.';
-            setTimeout(()=>appSettingsStatus.textContent='',2000);
-        }catch(e){ appSettingsStatus.textContent = 'Invalid JSON. Fix and try again.' }
-    });
-    resetAppSettingsBtn.addEventListener('click', ()=>{ appSettings = DEFAULT_SETTINGS; saveAppSettingsToStorage(); loadAppSettingsToEditor(); populateDoctorSelect(); appSettingsStatus.textContent='Reset to defaults.'; setTimeout(()=>appSettingsStatus.textContent='',2000) });
-
-    function loadAppSettingsToEditor(){ loadAppSettings(); appSettingsEditor.value = JSON.stringify(appSettings, null, 2) }
-
-    // Populate doctor dropdown in entry form
-    const doctorSelect = getEl('doctorCode');
-    function populateDoctorSelect(){
-        // clear
-        while(doctorSelect.firstChild) doctorSelect.removeChild(doctorSelect.firstChild);
-        const placeholder = document.createElement('option'); placeholder.value=''; placeholder.textContent='Select doctor...'; placeholder.disabled=true; placeholder.selected=true; doctorSelect.appendChild(placeholder);
-        (appSettings.doctors || []).forEach(d=>{ const opt=document.createElement('option'); opt.value=d; opt.textContent=d; doctorSelect.appendChild(opt) })
-    }
-
-    // Billing filesystem simulation using IndexedDB handles in original app; here we keep folder-name logic in-memory for web use
-    // We'll support both legacy 'Billed' and new 'Awaiting Billing' folder names for reading; writes will use 'Awaiting Billing'.
-
-    // For the PWA file system approach, this app previously stored a FileSystemDirectoryHandle in IndexedDB.
-    // We'll reuse that key name if present, otherwise users will need to set folder via UI (not implemented here). To keep changes minimal we check for handles named both ways.
-    let saveFolderHandle = null; // retrieved from indexedDB in original app; here we won't rewrite folder selection UI but will keep compatibility in loadBillingFiles
-
-    // Global lists
-    let allFiles = { unprocessed: [], awaiting: [], archive: [] };
-
-    // Helper: read all JSON files from a directory handle (if available)
-    async function tryReadDirectory(handle, targetArray, label){
-        if(!handle || typeof handle.values !== 'function') return;
-        try{
-            for await (const entry of handle.values()){
-                if(entry.kind === 'file' && entry.name.endsWith('.json')){
-                    try{
-                        const fh = await handle.getFileHandle(entry.name);
-                        const file = await fh.getFile();
-                        const data = JSON.parse(await file.text());
-                        targetArray.push({ data, fileHandle: fh, name: entry.name, fromFolder: label });
-                    }catch(e){ console.warn('read file failed', e) }
-                }
-            }
-        }catch(e){ console.warn('dir iterate failed', e) }
-    }
-
-    // Main loader: reads from either legacy "Billed" or new "Awaiting Billing" folders
-    async function loadBillingFiles(){
-        // Reset
-        allFiles = { unprocessed: [], awaiting: [], archive: [] };
-
-        // If we have a saveFolderHandle (from original app) read subfolders if possible
-        if(saveFolderHandle && typeof saveFolderHandle.getDirectoryHandle === 'function'){
-            try{
-                const up = await getDirHandleSafe(saveFolderHandle, 'Unprocessed');
-                if(up) await tryReadDirectory(up, allFiles.unprocessed, 'Unprocessed');
-            }catch(e){ console.warn(e) }
-
-            // Try both 'Awaiting Billing' and legacy 'Billed'
-            try{
-                const awaitingDir = await getDirHandleSafe(saveFolderHandle, 'Awaiting Billing')
-                if(awaitingDir) await tryReadDirectory(awaitingDir, allFiles.awaiting, 'Awaiting Billing')
-            }catch(e){ console.warn(e) }
-            try{
-                const billedDir = await getDirHandleSafe(saveFolderHandle, 'Billed')
-                if(billedDir) await tryReadDirectory(billedDir, allFiles.awaiting, 'Billed')
-            }catch(e){ console.warn(e) }
-
-            try{
-                const arch = await getDirHandleSafe(saveFolderHandle, 'Archive');
-                if(arch) await tryReadDirectory(arch, allFiles.archive, 'Archive');
-            }catch(e){ console.warn(e) }
-        }
-
-        renderFileLists();
-    }
-
-    // Utility to get directory handle without throwing
-    async function getDirHandleSafe(parent, name){ try{ return await parent.getDirectoryHandle(name) }catch(e){ return null } }
-
-    // Render lists; group awaiting by doctor
-    const unprocessedListEl = getEl('unprocessed-list'), billedListEl = getEl('billed-list'), archiveListEl = getEl('archive-list');
-    const unprocessedCountDash = getEl('unprocessed-count-dash'), billedCountDash = getEl('billed-count-dash'), archiveCountDash = getEl('archive-count-dash');
-
-    function renderFileLists(){
-        // simple search
-        const q = (getEl('search-bar').value || '').toLowerCase();
-
-        // Unprocessed
-        unprocessedListEl.innerHTML = '';
-        const ups = allFiles.unprocessed.filter(f=>!q||(f.data.patientName||'').toLowerCase().includes(q));
-        ups.forEach(f=>{
-            const div = document.createElement('div'); div.className='file-list-item p-2 rounded-lg'; div.textContent = `${f.data.patientName || 'Unknown'} — ${f.name}`;
-            div.addEventListener('click', ()=>openBillingPanel(f));
-            unprocessedListEl.appendChild(div);
-        });
-        unprocessedCountDash.textContent = ups.length;
-
-        // Awaiting Billing grouped by doctor
-        billedListEl.innerHTML = '';
-        const grouped = {};
-        allFiles.awaiting.forEach(f=>{
-            const doc = f.data.doctorCode || 'Unknown';
-            if(!(doc in grouped)) grouped[doc]=[];
-            grouped[doc].push(f);
-        });
-        let totalAwaiting = 0;
-        Object.keys(grouped).sort().forEach(doc => {
-            const header = document.createElement('div'); header.className='text-sm font-semibold mt-2'; header.textContent = doc;
-            billedListEl.appendChild(header);
-            grouped[doc].forEach(f=>{
-                if(q && !(f.data.patientName||'').toLowerCase().includes(q)) return;
-                const div = document.createElement('div'); div.className='file-list-item p-2 rounded-lg'; div.textContent = `${f.data.patientName || 'Unknown'} — ${f.name}`;
-                div.addEventListener('click', ()=>openBillingPanel(f));
-                billedListEl.appendChild(div);
-                totalAwaiting++;
-            });
-        });
-        billedCountDash.textContent = totalAwaiting;
-
-        // Archive
-        archiveListEl.innerHTML = '';
-        const archs = allFiles.archive.filter(f=>!q||(f.data.patientName||'').toLowerCase().includes(q));
-        archs.forEach(f=>{
-            const div = document.createElement('div'); div.className='file-list-item p-2 rounded-lg'; div.textContent = `${f.data.patientName || 'Unknown'} — ${f.name}`;
-            div.addEventListener('click', ()=>openBillingPanel(f));
-            archiveListEl.appendChild(div);
-        });
-        archiveCountDash.textContent = archs.length;
-    }
-
-    // Open billing panel (simplified behavior)
-    const billingPanel = getEl('billing-panel');
-    const billingPanelContent = getEl('billing-panel-content');
-    function openBillingPanel(fileObj){
-        billingPanelContent.innerHTML = `<pre style="font-family:monospace; white-space:pre-wrap">${JSON.stringify(fileObj.data,null,2)}</pre>`;
-        billingPanel.classList.remove('hidden');
-        billingPanel.dataset.currentFileName = fileObj.name || '';
-        billingPanel.dataset.currentFrom = fileObj.fromFolder || '';
-    }
-    getEl('close-billing-panel-btn').addEventListener('click', ()=>billingPanel.classList.add('hidden'));
-
-    // Save as Awaiting Billing — writes to Awaiting Billing folder if saveFolderHandle available
-    getEl('save-as-billed-btn').addEventListener('click', async ()=>{
-        // When implemented with real folder handle, this will write to 'Awaiting Billing' folder.
-        alert('Save-as-Awaiting-Billing action executed. In this build the file-system write is managed by the original PWA logic.');
-        billingPanel.classList.add('hidden');
-    });
-
-    // Print grouped Awaiting Billing List
-    getEl('print-billed-list-btn').addEventListener('click', ()=>{
-        buildPrintableAwaitingReport();
-        window.print();
-    });
-
-    function buildPrintableAwaitingReport(){
-        const report = getEl('printable-report');
-        const title = getEl('print-title');
-        const table = getEl('print-table');
-        title.textContent = 'Awaiting Billing Report (grouped by doctor)';
-        table.innerHTML = '';
-        const headerRow = `<tr><th>Doctor</th><th>Patient</th><th>File</th></tr>`;
-        let rows = '';
-        Object.keys(allFiles.awaiting.reduce((acc,f)=>{ const d=(f.data.doctorCode||'Unknown'); (acc[d]||(acc[d]=[])).push(f); return acc },{})).forEach(()=>{}); // no-op to satisfy lint
-        // Build rows grouped
-        const grouped = {};
-        allFiles.awaiting.forEach(f=>{ const d=f.data.doctorCode||'Unknown'; (grouped[d]||(grouped[d]=[])).push(f) });
-        Object.keys(grouped).sort().forEach(doc=>{
-            grouped[doc].forEach((f,i)=>{
-                rows += `<tr><td>${i===0?doc:''}</td><td>${f.data.patientName||''}</td><td>${f.name||''}</td></tr>`;
-            });
-        });
-        table.innerHTML = headerRow + rows;
-        report.style.display = 'block';
-    }
-
-    // PM mode toggle
-    const pmModeToggle = getEl('pm-mode-toggle');
-    pmModeToggle.addEventListener('change', ()=>{
-        document.getElementById('billing-view-container').classList.toggle('pm-mode-active', pmModeToggle.checked);
-        document.getElementById('app-title').textContent = pmModeToggle.checked ? 'Billing & Processing (PM View)' : 'Clinical Management PWA';
-    });
-
-    // Simple initialization
-    loadAppSettings(); loadAppSettingsToEditor(); populateDoctorSelect();
-
-    // If the original app stored a folder handle in IndexedDB under 'saveFolderHandle', try to load it to enable real filesystem ops
-    (async function tryLoadSavedFolderHandle(){
-        try{
-            const req = indexedDB.open('file-system-db',1);
-            req.onsuccess = async (e)=>{
-                const db = e.target.result;
-                const tx = db.transaction('keyval','readonly');
-                const store = tx.objectStore('keyval');
-                const getReq = store.get('saveFolderHandle');
-                getReq.onsuccess = async ()=>{
-                    const handle = getReq.result;
-                    if(handle) { saveFolderHandle = handle; /* we won't re-request here */ }
-                }
-            };
-        }catch(e){ console.warn('Could not load saved folder handle', e) }
-    })();
-
-    // Wire up load files button to re-run loader
-    getEl('load-files-btn').addEventListener('click', loadBillingFiles);
-
-    </script>
+    <!--
+    ================================================================
+    (Refactor)
+    All inline JavaScript has been moved to external files.
+    This prevents browser crashing from large outputs and makes
+    the code much easier to manage.
+    ================================================================
+    -->
+    <script src="db.js"></script>
+    <script src="file-system.js"></script>
+    <script src="settings-view.js"></script>
+    <script src="entry-view.js"></script>
+    <script src="billing-view.js"></script>
+    <script src="main.js"></script>
 </body>
 </html>
