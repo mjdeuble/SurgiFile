@@ -22,19 +22,19 @@ const entryView = getEl('entry-view');
 const billingView = getEl('billing-view');
 const settingsView = getEl('settings-view');
 
-// --- NEW Nav Mode Elements ---
+// --- Nav Bar Elements ---
+const appTitle = getEl('app-title');
 const modeBtnDoctor = getEl('mode-btn-doctor');
 const modeBtnPM = getEl('mode-btn-pm');
 const navDoctorContainer = getEl('nav-doctor-container');
 const navDoctorDropdown = getEl('navDoctorDropdown');
-const appModeContainer = getEl('app-mode-container'); // The whole nav bar component
+
 
 // --- Entry View Elements ---
 const entryFormContainer = getEl('entry-form-container'); // Container for billing-only mode
 const billingOnlyModeBtn = getEl('billing-only-mode-btn');
 const entryViewSubtitle = getEl('entry-view-subtitle');
 const finalDefectSizeContainer = getEl('final-defect-size-container');
-const fullClinicalFields = getEl('full-clinical-fields');
 
 const lesionForm = getEl('lesion-form');
 const procedureTypeEl = getEl('procedureType');
@@ -43,7 +43,7 @@ const addLesionBtn = getEl('add-lesion-btn');
 const cancelEditBtn = getEl('cancel-edit-btn');
 
 const patientNameEl = getEl('patientName');
-// const doctorCodeEl = getEl('doctorCode'); // <-- This is now in the nav
+// const doctorCodeEl = getEl('doctorCode'); // <-- This has been removed
 const saveProcedureBtn = getEl('save-procedure-btn');
 const clearProcedureBtn = getEl('clear-procedure-btn');
 
@@ -58,7 +58,6 @@ const outputBtnSeparate = getEl('output-btn-separate');
 
 // --- Billing View Elements ---
 const billingViewContainer = getEl('billing-view-container');
-const appTitle = getEl('app-title');
 const loadFilesBtn = getEl('load-files-btn');
 const searchBar = getEl('search-bar');
 const printBilledListBtn = getEl('print-billed-list-btn');
@@ -73,7 +72,7 @@ const archiveCountDash = getEl('archive-count-dash');
 
 const billingPanel = getEl('billing-panel');
 const billingPanelTitle = getEl('billing-panel-title');
-// const billingPanelContent = getEl('billing-panel-content'); // <-- This is removed
+// const billingPanelContent = getEl('billing-panel-content'); // <-- This has been removed
 const billingAssistantLesions = getEl('billing-assistant-lesions');
 const billingConsultItem = getEl('billing-consult-item');
 const billingComment = getEl('billing-comment');
@@ -82,6 +81,7 @@ const doctorActions = getEl('billing-panel-doctor-actions');
 const pmActions = getEl('billing-panel-pm-actions');
 const saveAsBilledBtn = getEl('save-as-billed-btn');
 const deleteProcedureBtn = getEl('delete-procedure-btn');
+const editProcedureBtn = getEl('edit-procedure-btn');
 const moveToArchiveBtn = getEl('move-to-archive-btn');
 
 // --- Settings View Elements ---
@@ -89,9 +89,9 @@ const appSettingsEditor = getEl('app-settings-editor');
 const saveAppSettingsBtn = getEl('save-app-settings-btn');
 const resetAppSettingsBtn = getEl('reset-app-settings-btn');
 const appSettingsStatus = getEl('app-settings-status');
-const newDoctorNameInput = getEl('new-doctor-name');
-const addDoctorBtn = getEl('add-doctor-btn');
-const addDoctorStatus = getEl('add-doctor-status');
+const newDoctorNameInput = getEl('new-doctor-name'); // <-- NEW
+const addDoctorBtn = getEl('add-doctor-btn'); // <-- NEW
+const addDoctorStatus = getEl('add-doctor-status'); // <-- NEW
 
 // --- Print Elements ---
 const printTitle = getEl('print-title');
@@ -111,21 +111,22 @@ const closureDetailsContainer = getEl('closure-details-container');
 const useDeepSutureEl = getEl('useDeepSuture');
 const deepSutureContainer = getEl('deep-suture-container');
 const useNonDissolvableEl = getEl('useNonDissolvable');
+const useDissolvableEl = getEl('useDissolvable'); // <-- FIX: ID was missing in HTML
 const skinSutureDetails = getEl('skin-suture-details');
-const useDissolvableEl = getEl('useDissolvable');
 const skinSutureDetailsDissolvable = getEl('skin-suture-details-dissolvable');
 
 
 // Form Inputs
+const anatomicalRegionEl = getEl('anatomicalRegion'); // <-- Made global for billing panel
 const excisionClosureTypeEl = getEl('excisionClosureType');
 const punchTypeEl = getEl('punchType');
 const skinSutureTypeEl = getEl('skinSutureType');
 const deepSutureTypeEl = getEl('deepSutureType');
-const skinSutureTypeDissolvableEl = getEl('skinSutureTypeDissolvable');
 const skinSutureSizeEl = getEl('skinSutureSize');
 const deepSutureSizeEl = getEl('deepSutureSize');
 const skinSutureSizeDissolvableEl = getEl('skinSutureSizeDissolvable');
-const anatomicalRegionEl = getEl('anatomicalRegion'); // <-- ADDED FOR BILLING PANEL
+const skinSutureTypeDissolvableEl = getEl('skinSutureTypeDissolvable');
+
 
 const justificationButtons = getEl('justification-buttons');
 const flapGraftJustificationInput = getEl('flapGraftJustification');
@@ -139,7 +140,7 @@ const cancelOrientationBtn = getEl('cancelOrientationBtn');
 const pathologyModal = getEl('pathologyModal');
 const pathologyDisplayEl = getEl('pathologyDisplay');
 const pathologyCheckboxesEl = getEl('pathology-checkboxes');
-const otherPathologyInput = getEl('otherPathologyInput'); // <-- TYPO WAS HERE
+const otherPathologyInput = getEl('otherPathologyInput'); // <-- FIX: Typo was 'otherPathsologyInput'
 const confirmPathologyBtn = getEl('confirmPathologyBtn');
 const dermoscopyBtnContainer = getEl('dermoscopy-btn-container');
 
@@ -159,7 +160,7 @@ let allFiles = { unprocessed: [], billed: [], archive: [] }; // Global state for
 let appSettings = {}; // Holds ALL app settings
 let isBillingOnlyMode = false;
 let currentAppMode = 'Doctor'; // 'Doctor' or 'PM'
-let currentDoctor = null; // The display name of the selected doctor
+let currentDoctor = null; // e.g., "Firstname Lastname"
 
 const pathologyOptions = {
     'BCC': 'Basal cell carcinoma', 'SCC': 'Squamous cell carcinoma', 'IEC': 'IEC/Bowen\'s disease',
@@ -184,16 +185,13 @@ function switchTab(tabName) {
     } else if (tabName === 'billing') {
         tabBillingBtn.classList.add('active');
         billingView.classList.add('active');
-        
         // When switching to billing, re-scan folders and reload files
-        // This ensures the doctor list is up-to-date
+        // This is now the *only* place loadBillingFiles is called on tab switch.
         (async () => {
             if (saveFolderHandle) {
-                // This will scan folders, populate dropdown, and load files
-                await populateDoctorDropdown();
-            } else {
-                // No folder set, just load (which will show empty lists)
-                loadBillingFiles();
+                appSettings.doctorList = await getDoctorListFromFolders();
+                populateDoctorDropdown(); // This re-selects the correct doctor
+                // handleDoctorChange() will be triggered, which calls loadBillingFiles()
             }
         })();
 
@@ -205,10 +203,12 @@ function switchTab(tabName) {
 }
 
 // --- Dynamic Doctor Dropdown Population ---
-async function populateDoctorDropdown() {
+function populateDoctorDropdown() {
     navDoctorDropdown.innerHTML = ''; // Clear existing options
-    const savedDoctor = localStorage.getItem('doctorCode'); // "doctorCode" is the display name
-
+    
+    // appSettings.doctorList is now just a string array, e.g., ["Firstname Lastname", "Other Doctor"]
+    // It's populated by getDoctorListFromFolders()
+    
     if (appSettings.doctorList && appSettings.doctorList.length > 0) {
         appSettings.doctorList.forEach(doctorDisplayName => {
             const option = document.createElement('option');
@@ -216,80 +216,76 @@ async function populateDoctorDropdown() {
             option.textContent = doctorDisplayName;
             navDoctorDropdown.appendChild(option);
         });
-
-        // Restore saved doctor
-        if (savedDoctor && appSettings.doctorList.includes(savedDoctor)) {
-            navDoctorDropdown.value = savedDoctor;
-        } else if (appSettings.doctorList.length > 0) {
-            // Default to the first doctor if no selection saved
-            navDoctorDropdown.value = appSettings.doctorList[0];
-        }
-
     } else {
-        // Fallback if no doctors are found
+        // Fallback if no folders found
         const option = document.createElement('option');
         option.value = "No doctors found";
         option.textContent = "No doctors found";
         navDoctorDropdown.appendChild(option);
     }
+    
+    // Restore saved doctor
+    const savedDoctorCode = localStorage.getItem('doctorCode');
+    if (savedDoctorCode && appSettings.doctorList.includes(savedDoctorCode)) {
+        navDoctorDropdown.value = savedDoctorCode;
+    } else if (appSettings.doctorList.length > 0) {
+        // Default to the first doctor if no selection saved
+        navDoctorDropdown.value = appSettings.doctorList[0];
+    }
 
-    // Trigger change to save and update PM mode if needed
+    // Trigger change to save and update state
     handleDoctorChange();
 }
 
-// --- Handle Doctor Change ---
+
+// --- Handle Mode & Doctor Change ---
+function setAppMode(mode) {
+    // mode is 'Doctor' or 'PM'
+    currentAppMode = mode;
+    localStorage.setItem('appMode', mode);
+
+    if (mode === 'PM') {
+        appTitle.textContent = "Billing (Practice Manager)";
+        modeBtnPM.classList.add('active');
+        modeBtnDoctor.classList.remove('active');
+        navDoctorContainer.style.display = 'none'; // Hide dropdown
+        billingViewContainer.classList.add('pm-mode-active'); // Show PM styles
+        currentDoctor = null; // No single doctor is selected
+    } else {
+        // Doctor Mode
+        appTitle.textContent = "Clinical Management PWA";
+        modeBtnDoctor.classList.add('active');
+        modeBtnPM.classList.remove('active');
+        navDoctorContainer.style.display = 'block'; // Show dropdown
+        billingViewContainer.classList.remove('pm-mode-active'); // Use Doctor styles
+        currentDoctor = navDoctorDropdown.value; // Set the current doctor
+    }
+
+    // When mode changes, we must reload the billing files
+    if (billingView.classList.contains('active')) {
+        loadBillingFiles();
+    }
+    // Re-validate the entry form (in case doctor selection is now invalid)
+    checkLesionFormCompleteness();
+}
+
 function handleDoctorChange() {
     const selectedDoctor = navDoctorDropdown.value;
-    localStorage.setItem('doctorCode', selectedDoctor);
     currentDoctor = selectedDoctor;
+    localStorage.setItem('doctorCode', selectedDoctor);
 
     // When the doctor changes, we must reload the billing files
     if (billingView.classList.contains('active')) {
         loadBillingFiles();
     }
+    // Re-validate the entry form
+    checkLesionFormCompleteness();
 }
 
-// --- Handle Mode Switch (Doctor vs PM) ---
-function setAppMode(mode) {
-    currentAppMode = mode;
-    localStorage.setItem('appMode', mode);
-
-    if (mode === 'PM') {
-        appModeContainer.classList.add('pm-mode-active');
-        modeBtnPM.classList.add('active');
-        modeBtnDoctor.classList.remove('active');
-        appTitle.textContent = "Billing (Practice Manager)";
-        
-        // Hide entry and settings tabs for PM
-        tabEntryBtn.style.display = 'none';
-        tabSettingsBtn.style.display = 'none';
-        // Force switch to billing tab if PM logs in
-        if (!billingView.classList.contains('active')) {
-            switchTab('billing');
-        }
-
-    } else { // 'Doctor' mode
-        appModeContainer.classList.remove('pm-mode-active');
-        modeBtnDoctor.classList.add('active');
-        modeBtnPM.classList.remove('active');
-        appTitle.textContent = "Clinical Management PWA";
-        
-        // Show all tabs
-        tabEntryBtn.style.display = 'block';
-        tabSettingsBtn.style.display = 'block';
-    }
-
-    // Refresh billing files for the new mode
-    if (billingView.classList.contains('active')) {
-        loadBillingFiles();
-    }
-    // Update billing panel buttons visibility
-    toggleBillingPanelActions();
-}
 
 // --- Handle Billing-Only Mode Toggle ---
 function toggleBillingOnlyMode(forceState = null) {
-    // If forceState is null, toggle. Otherwise, set to the forced state.
+    // forceState can be true (on), false (off), or null (toggle)
     isBillingOnlyMode = (forceState !== null) ? forceState : !isBillingOnlyMode;
     
     entryFormContainer.classList.toggle('billing-only-mode', isBillingOnlyMode);
@@ -306,23 +302,16 @@ function toggleBillingOnlyMode(forceState = null) {
         entryViewSubtitle.textContent = 'Part 1: Enter clinical data and generate the operation note.';
     }
     // Re-validate the form for the new mode
-    updateFormUI(); // Update visibility first
-    checkLesionFormCompleteness(); // Then validate
+    updateFormUI(); // Update visibility *before* checking
 }
 
-
-// --- Handle Add Doctor Button ---
+// --- NEW: Handle Add Doctor Button ---
 async function handleAddDoctor() {
     const newName = newDoctorNameInput.value.trim();
     if (!newName) {
         addDoctorStatus.textContent = "Error: Doctor name cannot be empty.";
         addDoctorStatus.className = "text-sm mt-2 text-red-600";
         return;
-    }
-    if (newName.toLowerCase() === 'practice manager') {
-         addDoctorStatus.textContent = "Error: Cannot create a doctor with this name.";
-         addDoctorStatus.className = "text-sm mt-2 text-red-600";
-         return;
     }
 
     try {
@@ -331,7 +320,7 @@ async function handleAddDoctor() {
         
         const result = await addNewDoctorFolder(newName);
         
-        addDoctorStatus.textContent = `${result}`;
+        addDoctorStatus.textContent = `${result} Please refresh the app.`;
         addDoctorStatus.className = "text-sm mt-2 text-green-600";
         newDoctorNameInput.value = ''; // Clear input on success
 
@@ -353,9 +342,11 @@ document.addEventListener('DOMContentLoaded', () => {
     tabBillingBtn.addEventListener('click', () => switchTab('billing'));
     tabSettingsBtn.addEventListener('click', () => switchTab('settings'));
 
-    // --- Connect Mode Listeners ---
+    // --- Connect Nav Bar Listeners ---
     modeBtnDoctor.addEventListener('click', () => setAppMode('Doctor'));
     modeBtnPM.addEventListener('click', () => setAppMode('PM'));
+    navDoctorDropdown.addEventListener('change', handleDoctorChange);
+
 
     // --- Connect Entry View Listeners ---
     lesionForm.addEventListener('change', updateFormUI);
@@ -372,23 +363,19 @@ document.addEventListener('DOMContentLoaded', () => {
     
     cancelOrientationBtn.addEventListener('click', () => orientationModal.classList.add('hidden'));
     
-    useDeepSutureEl.addEventListener('change', () => deepSutureContainer.classList.toggle('hidden', !useDeepSutureEl.checked));
+    useDeepSutureEl.addEventListener('change', () => deepSutureContainer.classList.toggle('hidden'));
     
-    // Suture selection logic
+    // Suture Checkbox Logic
     useNonDissolvableEl.addEventListener('change', () => {
-        if (useNonDissolvableEl.checked) {
-            useDissolvableEl.checked = false;
-            skinSutureDetails.classList.remove('hidden');
-            skinSutureDetailsDissolvable.classList.add('hidden');
-        }
+        skinSutureDetails.classList.remove('hidden');
+        skinSutureDetailsDissolvable.classList.add('hidden');
+        useDissolvableEl.checked = false;
         checkLesionFormCompleteness();
     });
     useDissolvableEl.addEventListener('change', () => {
-        if (useDissolvableEl.checked) {
-            useNonDissolvableEl.checked = false;
-            skinSutureDetails.classList.add('hidden');
-            skinSutureDetailsDissolvable.classList.remove('hidden');
-        }
+        skinSutureDetails.classList.add('hidden');
+        skinSutureDetailsDissolvable.classList.remove('hidden');
+        useNonDissolvableEl.checked = false;
         checkLesionFormCompleteness();
     });
 
@@ -425,7 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
             appSettings.doctorList = await getDoctorListFromFolders();
             populateDoctorDropdown();
         }
-        // loadBillingFiles() is already called by populateDoctorDropdown via handleDoctorChange
+        // populateDoctorDropdown already triggers loadBillingFiles via handleDoctorChange
     });
     searchBar.addEventListener('input', () => renderFileLists()); // Re-render on search
     printBilledListBtn.addEventListener('click', printBilledList);
@@ -434,20 +421,29 @@ document.addEventListener('DOMContentLoaded', () => {
     saveAsBilledBtn.addEventListener('click', saveBilledFile);
     deleteProcedureBtn.addEventListener('click', deleteBillingFile);
     moveToArchiveBtn.addEventListener('click', archiveBilledFile);
+    editProcedureBtn.addEventListener('click', () => {
+        // Get the first lesion from the file and switch to the entry tab to edit
+        if (currentBillingFile.data && currentBillingFile.data.lesions.length > 0) {
+            lesions = currentBillingFile.data.lesions; // Load all lesions
+            patientNameEl.value = currentBillingFile.data.patientName;
+            switchTab('entry');
+            startEditLesion(lesions[0].id); // Start edit with the first lesion
+            billingPanel.classList.add('hidden'); // Close panel
+        } else {
+            alert("Error: Cannot find lesion data in this file.");
+        }
+    });
+
 
     // --- Connect Settings View Listeners ---
     saveAppSettingsBtn.addEventListener('click', saveAppSettings);
     resetAppSettingsBtn.addEventListener('click', resetAppSettings);
-    addDoctorBtn.addEventListener('click', handleAddDoctor);
+    addDoctorBtn.addEventListener('click', handleAddDoctor); // <-- NEW
 
     // --- Connect PWA/File System Listeners ---
     setSaveFolderBtn.addEventListener('click', setSaveFolder);
     billingOnlyModeBtn.addEventListener('click', () => toggleBillingOnlyMode(null)); // Pass null to toggle
 
-
-
-    // --- Connect Doctor Dropdown Listener ---
-    navDoctorDropdown.addEventListener('change', handleDoctorChange);
 
     // --- Modal & Clock Listeners ---
      mainMarkerBtnContainer.addEventListener('click', (e) => {
@@ -478,13 +474,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Initial App Load ---
     loadAppSettings(); // Load settings first
     
-    // The loadSavedFolder() call is now in db.js's onsuccess event.
-    
-    // Restore the last app mode
+    // Restore saved app mode
     const savedMode = localStorage.getItem('appMode') || 'Doctor';
     setAppMode(savedMode);
-
-
+    
+    // The loadSavedFolder() call is now in db.js 'onsuccess' event.
+    // This ensures that the database and settings are fully loaded
+    // *before* we try to scan the folders for the doctor list.
+    
     // Populate pathology modal
     Object.entries(pathologyOptions).forEach(([key, value]) => {
         const label = document.createElement('label');
