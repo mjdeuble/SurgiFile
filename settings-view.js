@@ -82,7 +82,7 @@ const defaultAppSettings = {
     ],
     "sutures": {
         "deep": ["Vicryl", "Monocryl", "PDS II", "Monosyn"],
-        "skin": ["Prolene", "Nylon",WELCOME"],
+        "skin": ["Prolene", "Nylon"], // <-- ****** TYPO REMOVED HERE ******
         "skin_dissolvable": ["Monocryl", "Monosyn", "PDS II", "Vicryl Rapide"]
     }
 };
