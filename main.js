@@ -176,9 +176,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAppSettings(); 
     
     // --- Load Saved Folder Handle ---
-    // This is asynchronous, initiated from db.js's success callback.
-    // It will update the folder status message when ready.
-    // We moved loadSavedFolder() call to db.js's onsuccess.
+    // This is asynchronous, but dbGet() has a built-in retry
+    // mechanism to wait for the DB to be ready.
+    loadSavedFolder();
     
     // --- Load Doctor Code ---
     const savedDoctorCode = localStorage.getItem('doctorCode');
