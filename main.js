@@ -140,7 +140,9 @@ const cancelOrientationBtn = getEl('cancelOrientationBtn');
 const pathologyModal = getEl('pathologyModal');
 const pathologyDisplayEl = getEl('pathologyDisplay');
 const pathologyCheckboxesEl = getEl('pathology-checkboxes');
-const otherPathologyInput = getEl('otherPathologyInput'); // <-- FIX: Typo was 'otherPathsologyInput'
+// ****** THIS IS THE FIX ******
+const otherPathologyInput = getEl('otherPathologyInput'); // <-- Typo 'otherPathsologyInput' fixed
+// ****************************
 const confirmPathologyBtn = getEl('confirmPathologyBtn');
 const dermoscopyBtnContainer = getEl('dermoscopy-btn-container');
 
