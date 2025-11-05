@@ -409,14 +409,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Initial App Load ---
     loadAppSettings(); // Load settings first
     
-    // This is now triggered by db.js onsuccess callback
-    // dbOpenRequest.onsuccess = (event) => {
-    //     db = event.target.result;
-    //     console.log("Database connection ready.");
-    //     loadSavedFolder(); // Load folder, which then populates doctors
-    // };
+    // The loadSavedFolder() call was previously here, but it has been
+    // moved to the db.js 'onsuccess' event.
+    // This ensures that the database and settings are fully loaded
+    // *before* we try to scan the folders for the doctor list.
+    
     // We moved this call to db.js to ensure load order
-    loadSavedFolder(); // Load folder, which then populates doctors
+    // loadSavedFolder(); // <-- THIS CALL IS NOW CORRECTLY REMOVED
 
     // Populate pathology modal
     Object.entries(pathologyOptions).forEach(([key, value]) => {
