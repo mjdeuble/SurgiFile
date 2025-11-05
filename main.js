@@ -113,6 +113,7 @@ const skinSutureTypeEl = getEl('skinSutureType');
 const deepSutureTypeEl = getEl('deepSutureType');
 const skinSutureSizeEl = getEl('skinSutureSize');
 const deepSutureSizeEl = getEl('deepSutureSize');
+const anatomicalRegionEl = getEl('anatomicalRegion'); // <-- THIS IS THE FIX
 
 const justificationButtons = getEl('justification-buttons');
 const flapGraftJustificationInput = getEl('flapGraftJustification');
