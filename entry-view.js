@@ -1,13 +1,16 @@
 // --- MAIN FORM LOGIC ---
 
-// This file controls the "Clinical Entry" tab, including:
+// This file controls the "Clinical Entry" and "Manual Billing" tabs, including:
 // - All form UI logic (showing/hiding sections)
 // - Form validation
 // - Adding, updating, and removing lesions
 // - Saving the final procedure to a .json file
 // - Generating the text for the output notes
-// - Controlling the Pathology and Orientation modals
 
+/**
+ * Updates the visibility of form sections based on dropdown selections
+ * and the current mode (Clinical vs. Billing-Only)
+ */
 function updateFormUI(event) {
     if (event && event.target.id === 'procedureType') {
         const currentProcedure = procedureTypeEl.value;
@@ -21,38 +24,50 @@ function updateFormUI(event) {
     const excisionClosure = excisionClosureTypeEl.value;
     const punchType = punchTypeEl.value;
 
+    // Hide all dynamic sections first
     document.querySelectorAll('.form-section').forEach(el => el.style.display = 'none');
-    dynamicOptionsContainer.style.display = procedure ? 'block' : 'none';
-
+    
     if (!procedure) {
+        dynamicOptionsContainer.style.display = 'none';
         checkLesionFormCompleteness();
         return;
     }
     
-    // Show fields based on mode
+    // Show the main dynamic container
+    dynamicOptionsContainer.style.display = 'block';
+
+    // --- Mode-Specific Field Visibility ---
     if (isBillingOnlyMode) {
+        // --- MANUAL BILLING MODE ---
+        // Show only the bare minimum for billing
         finalDefectSizeContainer.style.display = 'block';
+        
+        if (procedure === 'Excision') {
+            excisionOptions.style.display = 'block';
+            graftTypeContainer.style.display = (excisionClosure === 'Graft Repair' || excisionClosure === 'Graft + Flap') ? 'block' : 'none';
+            // Justification is NOT shown in billing-only mode
+        } else if (procedure === 'Punch') {
+            punchOptions.style.display = 'block';
+            // Punch size/lesion size is NOT shown, only finalDefectSize
+        }
+        // Shave needs no extra options
+        
     } else {
-        // Full clinical mode
+        // --- FULL CLINICAL NOTE MODE ---
         getEl('full-clinical-fields').style.display = 'block';
         orientationInputContainer.style.display = 'block';
-    }
 
-
-    switch (procedure) {
-        case 'Excision':
-            excisionOptions.style.display = 'block'; // Always show closure for billing
-            if (!isBillingOnlyMode) {
+        switch (procedure) {
+            case 'Excision':
+                excisionOptions.style.display = 'block';
                 lesionSizeContainer.style.display = 'block';
                 marginContainer.style.display = 'block';
                 graftTypeContainer.style.display = (excisionClosure === 'Graft Repair' || excisionClosure === 'Graft + Flap') ? 'block' : 'none';
                 justificationContainer.style.display = (excisionClosure === 'Graft Repair' || excisionClosure === 'Flap Repair' || excisionClosure === 'Graft + Flap') ? 'block' : 'none';
                 closureDetailsContainer.style.display = (excisionClosure !== 'Secondary Intention') ? 'block' : 'none';
-            }
-            break;
-        case 'Punch':
-            punchOptions.style.display = 'block'; // Always show punch type for billing
-            if (!isBillingOnlyMode) {
+                break;
+            case 'Punch':
+                punchOptions.style.display = 'block';
                 closureDetailsContainer.style.display = 'block';
                 if (punchType === 'Punch Biopsy') {
                     punchSizeContainer.style.display = 'block';
@@ -60,26 +75,32 @@ function updateFormUI(event) {
                     lesionSizeContainer.style.display = 'block';
                     marginContainer.style.display = 'block';
                 }
-            }
-            break;
-        case 'Shave':
-             if (!isBillingOnlyMode) {
+                break;
+            case 'Shave':
                 lesionSizeContainer.style.display = 'block';
                 marginContainer.style.display = 'block';
-            }
-            // No other options for Shave
-            break;
+                // No other options for Shave
+                break;
+            case 'Wedge Excision':
+                 lesionSizeContainer.style.display = 'block';
+                 marginContainer.style.display = 'block';
+                 closureDetailsContainer.style.display = 'block';
+                 break;
+        }
     }
     
     checkLesionFormCompleteness();
 }
 
+/**
+ * Checks if all required fields are filled and enables/disables the Add Lesion button.
+ * Highlights missing fields.
+ */
 function checkLesionFormCompleteness() {
-    // Helper to validate a single field and highlight it if invalid
+    // Helper to validate a single field
     const validateAndHighlight = (element, isRequired) => {
         let isValid = true;
         if (isRequired) {
-            // Check for value, or for a select, check it's not the default "" value
             if (!element.value || (element.tagName === 'SELECT' && element.value === "")) {
                 element.classList.add('missing-field');
                 isValid = false;
@@ -96,9 +117,8 @@ function checkLesionFormCompleteness() {
     const getVal = (id) => getEl(id).value;
     const procedure = getVal('procedureType');
 
-    // --- NEW: Check for selected doctor ---
-    // If in Doctor mode, a doctor must be selected.
-    // currentDoctor is from main.js
+    // --- Check for selected doctor ---
+    // In Doctor mode, a doctor must be selected.
     if (currentAppMode === 'Doctor' && (!currentDoctor || currentDoctor === "No doctors found")) {
         isAllValid = false;
         navDoctorDropdown.classList.add('missing-field');
@@ -111,24 +131,18 @@ function checkLesionFormCompleteness() {
         return;
     }
 
-    // Validate common fields
+    // --- Validate common fields (required in both modes) ---
     isAllValid &= validateAndHighlight(getEl('lesionLocation'), true);
     isAllValid &= validateAndHighlight(getEl('anatomicalRegion'), true);
     isAllValid &= validateAndHighlight(getEl('provisionalDiagnoses'), true);
-    isAllValid &= validateAndHighlight(getEl('dermoscopyUsed'), true);
     
     if (isBillingOnlyMode) {
         // --- Billing-Only Mode Validation ---
         isAllValid &= validateAndHighlight(getEl('finalDefectSize'), true);
+        isAllValid &= validateAndHighlight(getEl('dermoscopyUsed'), true); // Still needed for audit
         
-        // Closure type is still needed for billing
          if (procedure === 'Excision') {
             const excisionClosure = getVal('excisionClosureType');
-            const isComplexClosure = excisionClosure === 'Graft Repair' || excisionClosure === 'Flap Repair' || excisionClosure === 'Graft + Flap';
-            justificationContainer.style.display = isComplexClosure ? 'block' : 'none';
-            // Justification is optional for billing-only
-            // isAllValid &= validateAndHighlight(getEl('flapGraftJustification'), isComplexClosure);
-            graftTypeContainer.style.display = (excisionClosure === 'Graft Repair' || excisionClosure === 'Graft + Flap') ? 'block' : 'none';
             if (excisionClosure === 'Graft Repair' || excisionClosure === 'Graft + Flap') {
                  isAllValid &= validateAndHighlight(getEl('graftType'), true);
             }
@@ -137,9 +151,11 @@ function checkLesionFormCompleteness() {
     } else {
         // --- Full Clinical Mode Validation ---
         isAllValid &= validateAndHighlight(getEl('localAnesthetic'), true);
+        isAllValid &= validateAndHighlight(getEl('dermoscopyUsed'), true);
 
         switch (procedure) {
             case 'Excision':
+            case 'Wedge Excision':
                 isAllValid &= validateAndHighlight(getEl('lesionLength'), true);
                 isAllValid &= validateAndHighlight(getEl('lesionWidth'), true);
                 isAllValid &= validateAndHighlight(getEl('margin'), true);
@@ -191,12 +207,16 @@ function checkLesionFormCompleteness() {
 
 
 // --- DATA LOGIC ---
+
+/**
+ * Collects data from the form and adds or updates a lesion in the `lesions` array.
+ */
 function addOrUpdateLesion() {
     const isUpdating = editingLesionId !== null;
     const getVal = id => getEl(id).value;
     const getChecked = id => getEl(id).checked;
     
-    // Calculate defect size
+    // --- Defect Size Calculation ---
     let defectSize = 0;
     if (isBillingOnlyMode) {
         defectSize = parseFloat(getVal('finalDefectSize')) || 0;
@@ -207,44 +227,48 @@ function addOrUpdateLesion() {
         if (getVal('procedureType') === 'Punch' && getVal('punchType') === 'Punch Biopsy') {
             defectSize = parseFloat(getVal('punchSize')) || 0;
         } else {
+            // Defect size is the longest axis of the lesion + 2x margin
             defectSize = Math.max(length, width) + (2 * margin);
         }
     }
-
+    
+    // --- Suture Logic ---
+    let skinSutureDetails = {};
+    if (!isBillingOnlyMode) {
+        skinSutureDetails = {
+            useDeepSuture: getChecked('useDeepSuture'),
+            deepSutureSize: getVal('deepSutureSize'),
+            deepSutureType: getVal('deepSutureType'),
+            useDissolvable: getChecked('useDissolvable'),
+            skinSutureSize: getChecked('useNonDissolvable') ? getVal('skinSutureSize') : (getChecked('useDissolvable') ? getVal('skinSutureSizeDissolvable') : null),
+            skinSutureType: getChecked('useNonDissolvable') ? getVal('skinSutureType') : (getChecked('useDissolvable') ? getVal('skinSutureTypeDissolvable') : 'None'),
+            skinSutureRemoval: getChecked('useNonDissolvable') ? getVal('removalOfSkinSutures') : null,
+        };
+    }
 
     const lesionData = {
         id: isUpdating ? editingLesionId : ++lesionCounter,
+        billingOnly: isBillingOnlyMode, // Set the flag
         procedure: getVal('procedureType'),
         excisionClosureType: getVal('excisionClosureType'),
         punchType: getVal('punchType'),
         graftType: getVal('graftType'),
-        justification: getVal('flapGraftJustification'),
+        justification: isBillingOnlyMode ? '' : getVal('flapGraftJustification'),
         location: getVal('lesionLocation'),
         anatomicalRegion: getVal('anatomicalRegion'),
-        anesthetic: getVal('localAnesthetic'),
+        anesthetic: isBillingOnlyMode ? '' : getVal('localAnesthetic'),
         pathology: getVal('provisionalDiagnoses'),
-        excludeNMSC: getChecked('excludeNMSC'),
-        excludeMelanoma: getChecked('excludeMelanoma'),
-        dermoscopyUsed: getVal('dermoscopyUsed'),
-        length: getVal('lesionLength'),
-        width: getVal('lesionWidth'),
-        margin: getVal('margin'),
-        punchSize: getVal('punchSize'),
+        excludeNMSC: getChecked('excludeNMSC'), // Still need this for audit
+        excludeMelanoma: getChecked('excludeMelanoma'), // Still need this for audit
+        dermoscopyUsed: getVal('dermoscopyUsed'), // Still need this for audit
+        length: isBillingOnlyMode ? '' : getVal('lesionLength'),
+        width: isBillingOnlyMode ? '' : getVal('lesionWidth'),
+        margin: isBillingOnlyMode ? '' : getVal('margin'),
+        punchSize: isBillingOnlyMode ? '' : getVal('punchSize'),
         defectSize: defectSize, // Save the calculated defect size
-        orientationType: getVal('orientationType'),
-        orientationDescription: getVal('orientationDescription'),
-        useDeepSuture: getChecked('useDeepSuture'),
-        deepSutureSize: getVal('deepSutureSize'),
-        deepSutureType: getVal('deepSutureType'),
-        
-        // NEW Suture Logic
-        skinSutureSize: getChecked('useNonDissolvable') ? getVal('skinSutureSize') : (getChecked('useDissolvable') ? getVal('skinSutureSizeDissolvable') : null),
-        skinSutureType: getChecked('useNonDissolvable') ? getVal('skinSutureType') : (getChecked('useDissolvable') ? getVal('skinSutureTypeDissolvable') : 'None'),
-        skinSutureRemoval: getChecked('useNonDissolvable') ? getVal('removalOfSkinSutures') : null,
-        useDissolvable: getChecked('useDissolvable'), // Store this flag
-
-        // NEW: Add billing-only flag
-        billingOnly: isBillingOnlyMode
+        orientationType: isBillingOnlyMode ? 'None' : getVal('orientationType'),
+        orientationDescription: isBillingOnlyMode ? '' : getVal('orientationDescription'),
+        ...skinSutureDetails
     };
 
 
@@ -259,22 +283,24 @@ function addOrUpdateLesion() {
     resetLesionForm();
 }
 
+/**
+ * Saves the entire procedure (patient info + all lesions) to a .json file.
+ */
 async function saveProcedure() {
     const patientName = patientNameEl.value.trim();
     
-    // --- NEW: Get doctor from the correct mode ---
-    // currentAppMode and currentDoctor are global vars from main.js
+    // currentAppMode and currentDoctor are global vars from app.js
     let doctorDisplayName = '';
     if (currentAppMode === 'PM') {
-        // In PM mode, saving is complex. For now, let's block it.
-        alert("Please switch to 'Doctor' mode to save a new procedure.");
+        // This should be impossible, as the tab is hidden
+        console.error("Save button was clicked in PM mode. This shouldn't happen.");
         return;
     } else {
-        doctorDisplayName = currentDoctor; // e.g., "Firstname Lastname"
+        doctorDisplayName = currentDoctor;
     }
 
     if (!doctorDisplayName || doctorDisplayName === "No doctors found") {
-        alert("No doctor selected. Please select a doctor from the dropdown.");
+        alert("No doctor selected. Please select a doctor from the dropdown in the top navigation bar.");
         navDoctorDropdown.classList.add('missing-field');
         return;
     } else {
@@ -299,46 +325,41 @@ async function saveProcedure() {
 
     // Create the procedure record
     const procedureRecord = {
-        procedureId: editingLesionId ? editingLesionId : Date.now(), // Reuse ID if editing
-        doctorCode: doctorDisplayName, // The display name, e.g., "Firstname Lastname"
+        procedureId: editingProcedureFile ? editingProcedureFile.data.procedureId : Date.now(), // Reuse ID if editing
+        doctorCode: doctorDisplayName,
         patientName: patientName,
         procedureDate: new Date().toISOString(),
         lesions: lesions, // The array of lesion objects
-        status: 'Unprocessed' // Default status for the manager app
+        status: 'Unprocessed' // Default status
     };
 
     // Generate filename
-    const timestamp = procedureRecord.procedureId;
-    // Filename uses folder-safe name
-    const doctorFolderName = doctorDisplayName.replace(/\s+/g, '_'); 
-    const filename = `${doctorFolderName}_${timestamp}.json`;
+    const filename = `${doctorDisplayName.replace(/\s+/g, '_')}_${procedureRecord.procedureId}.json`;
 
     try {
-        if (editingLesionId && editingLesionDoctor) {
+        if (editingProcedureFile) {
             // This is an edit of an *existing* file from the billing page
             // We must overwrite the original file
             
             // Check if the doctor was changed
-            if (editingLesionDoctor !== doctorDisplayName) {
-                // This is complex: it means moving the file *and* deleting the old one.
-                // For now, let's just save as a *new* file and alert the user.
+            if (editingProcedureFile.fromDoctor !== doctorDisplayName) {
+                // This is complex. For now, just save as a *new* file.
                 // A true "move" is complex and risky.
-                // Let's create a NEW record instead.
                 procedureRecord.procedureId = Date.now(); // Brand new ID
-                const newFilename = `${doctorFolderName}_${procedureRecord.procedureId}.json`;
+                const newFilename = `${doctorDisplayName.replace(/\s+/g, '_')}_${procedureRecord.procedureId}.json`;
                 await saveFileToFolder(procedureRecord, newFilename, doctorDisplayName);
-                alert(`Doctor was changed. A new procedure file has been created for ${doctorDisplayName}. The original file for ${editingLesionDoctor} is unmodified.`);
+                alert(`Doctor was changed. A new procedure file has been created for ${doctorDisplayName}. The original file for ${editingProcedureFile.fromDoctor} is unmodified.`);
                 
             } else {
-                // Simple overwrite
-                await overwriteFile(currentBillingFile.handle, procedureRecord, editingLesionDoctor, 'Unprocessed');
+                // Simple overwrite in the same folder
+                await overwriteFile(editingProcedureFile.handle, procedureRecord, editingProcedureFile.fromDoctor, editingProcedureFile.fromFolder);
                 alert(`Procedure for ${patientName} has been updated.`);
             }
 
         } else {
             // This is a brand new procedure
             await saveFileToFolder(procedureRecord, filename, doctorDisplayName);
-            alert(`Procedure for ${patientName} saved to billing for Dr. ${doctorDisplayName}.`);
+            alert(`Procedure for ${patientName} saved to "Unprocessed" billing for Dr. ${doctorDisplayName}.`);
         }
         
         resetAll(); // Clear the form
@@ -352,36 +373,21 @@ async function saveProcedure() {
 }
 
 
-function downloadJSON(data, filename) {
-    const jsonString = JSON.stringify(data, null, 2); // Pretty print JSON
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    
-    URL.revokeObjectURL(url);
-}
-
-function updateAllOutputs() {
-    updateLesionsList();
-    const requestText = generateClinicalRequest();
-    const noteText = generateEntryNote();
-    clinicalRequestOutputEl.value = requestText;
-    entryNoteOutputEl.value = noteText;
-    updateOutputVisibility();
-}
-
+/**
+ * Generates the clinical request text (for pathology).
+ * @returns {string} The formatted text.
+ */
 function generateClinicalRequest() {
     if (lesions.length === 0) {
         return 'Your clinical request will appear here...';
     }
 
     return lesions.map(lesion => {
+        // Skip billing-only entries
+        if (lesion.billingOnly) {
+            return `Lesion ${lesion.id} (${lesion.location}) was entered for billing-only. No clinical note.`;
+        }
+
         const auditParts = [];
         auditParts.push(lesion.location);
         auditParts.push(lesion.pathology);
@@ -406,6 +412,9 @@ function generateClinicalRequest() {
             case 'Shave':
                 managementCode = 'SxEx';
                 break;
+            case 'Wedge Excision':
+                managementCode = 'Wedge';
+                break;
         }
         auditParts.push(managementCode);
         
@@ -422,11 +431,7 @@ function generateClinicalRequest() {
         if (lesion.procedure === 'Shave') procedureNameFull = 'Shave Excision';
         dimensionParts.push(procedureNameFull);
 
-        if (lesion.billingOnly) {
-            // Billing only mode
-            diameter = lesion.defectSize;
-        }
-        else if (lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy') {
+        if (lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy') {
             dimensionParts.push(`Punch: ${lesion.punchSize}mm`);
             diameter = parseFloat(lesion.punchSize);
         } else {
@@ -449,19 +454,24 @@ function generateClinicalRequest() {
     }).join('\n');
 }
 
+/**
+ * Generates the full operation note text.
+ * @returns {string} The formatted text.
+ */
 function generateEntryNote() {
     if (lesions.length === 0) {
         return 'Your generated note will appear here...';
     }
     
     const patientName = patientNameEl.value.trim();
-    // --- NEW: Get doctor from global state ---
     const doctorCode = (currentAppMode === 'Doctor') ? currentDoctor : 'Practice Manager';
 
     let header = "PATIENT: " + (patientName || "N/A") + "\n";
-    header += "DOCTOR: " + (doctorCode || "N/A") + "\n\n";
+    header += "DOCTOR: "_ + (doctorCode || "N/A") + "\n\n";
 
+    // Filter out billing-only lesions
     const clinicalLesions = lesions.filter(l => !l.billingOnly);
+    
     if (clinicalLesions.length === 0) {
         return `${header}No clinical note to generate. All entries are for billing-only.`;
     }
@@ -478,7 +488,8 @@ function generateEntryNote() {
 
         switch (lesion.procedure) {
             case 'Excision':
-                procedureTitle = `Excision with ${lesion.excisionClosureType}`;
+            case 'Wedge Excision':
+                procedureTitle = `${lesion.procedure} with ${lesion.excisionClosureType}`;
                 findingsParts.push(`A ${lesion.length}x${lesion.width}mm lesion excised with ${lesion.margin}mm clinical margins.`);
                 if (lesion.justification) {
                     findingsParts.push(`Justification for complex closure: ${lesion.justification}`);
@@ -496,7 +507,6 @@ function generateEntryNote() {
                              closureParts[closureParts.length - 1] += ' and a flap.';
                          }
                      }
-                    // NEW: Check for dissolvable vs. non-dissolvable
                     if (lesion.useDissolvable) {
                          closureParts.push(`Skin closed with ${lesion.skinSutureSize} ${lesion.skinSutureType}.`);
                     } else { // non-dissolvable
@@ -511,7 +521,6 @@ function generateEntryNote() {
                 } else { // Punch Excision
                     findingsParts.push(`A ${lesion.length}x${lesion.width}mm lesion was excised via punch technique with a ${lesion.margin}mm margin.`);
                 }
-                // NEW: Check for dissolvable vs. non-dissolvable
                 if (lesion.useDissolvable) {
                     closureParts.push(`Skin closed with ${lesion.skinSutureSize} ${lesion.skinSutureType}.`);
                 } else { // non-dissolvable
@@ -530,13 +539,10 @@ function generateEntryNote() {
             specimenText += ` Orientation marker (${lesion.orientationType}) at ${lesion.orientationDescription}.`;
         }
 
-        // Get the full text of the selected anatomical region
         let regionText = "N/A";
         if (lesion.anatomicalRegion) {
             const option = Array.from(anatomicalRegionEl.options).find(opt => opt.value === lesion.anatomicalRegion);
-            if (option) {
-                regionText = option.text;
-            }
+            if (option) regionText = option.text;
         }
 
         return `
@@ -553,12 +559,11 @@ PROCEDURE ${lesion.id}: ${procedureTitle} of the ${lesion.location}
 
     const planItems = [];
     clinicalLesions.forEach(l => {
-        if (l.billingOnly) return; // Skip plan for billing-only entries
-
         let needsPlan = false;
         let planText = '';
 
         if (l.procedure === 'Excision' && l.excisionClosureType !== 'Secondary Intention') needsPlan = true;
+        if (l.procedure === 'Wedge Excision') needsPlan = true;
         if (l.procedure === 'Punch') needsPlan = true;
         
         if(needsPlan) {
@@ -571,7 +576,7 @@ PROCEDURE ${lesion.id}: ${procedureTitle} of the ${lesion.location}
         }
     });
     
-    const openWoundLesions = clinicalLesions.filter(l => !l.billingOnly && (l.procedure === 'Shave' || (l.procedure === 'Excision' && l.excisionClosureType === 'Secondary Intention')));
+    const openWoundLesions = clinicalLesions.filter(l => (l.procedure === 'Shave' || (l.procedure === 'Excision' && l.excisionClosureType === 'Secondary Intention')));
     if (openWoundLesions.length > 0) {
          planItems.push('- For open wounds, advised to keep clean and apply antiseptic/dressing as needed.');
     }
@@ -590,6 +595,11 @@ ${planItems.length > 0 ? planItems.join('\n') : '- General wound care advice giv
 }
 
 // --- FORM MANAGEMENT ---
+
+/**
+ * Populates the form to edit a lesion.
+ * @param {number} id - The ID of the lesion to edit.
+ */
 window.startEditLesion = function(id) {
     const lesion = lesions.find(l => l.id === id);
     if (!lesion) return;
@@ -606,31 +616,29 @@ window.startEditLesion = function(id) {
         modeBtnPM.disabled = true;
         navDoctorDropdown.disabled = true;
         
-        editingLesionDoctor = currentBillingFile.fromDoctor; // Store original doctor
-        editingLesionId = currentBillingFile.data.procedureId; // Use file ID
+        // Store the original file data
+        editingProcedureFile = {
+            handle: currentBillingFile.handle,
+            data: currentBillingFile.data,
+            fromFolder: currentBillingFile.fromFolder,
+            fromDoctor: currentBillingFile.fromDoctor
+        };
+        editingLesionId = id; // This is the lesion ID
     } else {
         // This is just editing a lesion from the temporary list
         editingLesionId = id;
     }
 
-
     const setVal = (elId, val) => getEl(elId).value = val;
     const setChecked = (elId, val) => getEl(elId).checked = val;
 
-    // --- NEW: Set Billing Mode ---
+    // --- Set Correct Entry Tab ---
     // Manually set mode before calling updateFormUI
     isBillingOnlyMode = lesion.billingOnly;
-    entryFormContainer.classList.toggle('billing-only-mode', isBillingOnlyMode);
     if (isBillingOnlyMode) {
-        billingOnlyModeBtn.textContent = 'Enter Full Clinical Mode';
-        billingOnlyModeBtn.classList.remove('bg-amber-500', 'hover:bg-amber-600');
-        billingOnlyModeBtn.classList.add('bg-green-600', 'hover:bg-green-700');
-        entryViewSubtitle.textContent = 'Part 1: Enter minimal data for billing purposes only.';
+        switchTab('manual-billing');
     } else {
-        billingOnlyModeBtn.textContent = 'Enter Billing-Only Mode';
-        billingOnlyModeBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
-        billingOnlyModeBtn.classList.add('bg-amber-500', 'hover:bg-amber-600');
-        entryViewSubtitle.textContent = 'Part 1: Enter clinical data and generate the operation note.';
+        switchTab('clinical-note');
     }
     setVal('finalDefectSize', lesion.defectSize);
     // ---
@@ -674,33 +682,33 @@ window.startEditLesion = function(id) {
         btn.classList.toggle('selected', btn.dataset.value === lesion.dermoscopyUsed);
     });
 
-    setChecked('useDeepSuture', lesion.useDeepSuture);
-    setVal('deepSutureSize', lesion.deepSutureSize);
-    setVal('deepSutureType', lesion.deepSutureType);
-    
-    // NEW: Handle dissolvable/non-dissolvable
-    const isDissolvable = lesion.useDissolvable;
-    setChecked('useDissolvable', isDissolvable);
-    setChecked('useNonDissolvable', !isDissolvable);
+    // Only set suture info if it's a clinical note
+    if (!isBillingOnlyMode) {
+        setChecked('useDeepSuture', lesion.useDeepSuture);
+        setVal('deepSutureSize', lesion.deepSutureSize);
+        setVal('deepSutureType', lesion.deepSutureType);
+        
+        const isDissolvable = lesion.useDissolvable;
+        setChecked('useDissolvable', isDissolvable);
+        setChecked('useNonDissolvable', !isDissolvable);
 
-    deepSutureContainer.classList.toggle('hidden', !lesion.useDeepSuture);
-    skinSutureDetails.classList.toggle('hidden', isDissolvable);
-    skinSutureDetailsDissolvable.classList.toggle('hidden', !isDissolvable);
+        deepSutureContainer.classList.toggle('hidden', !lesion.useDeepSuture);
+        skinSutureDetails.classList.toggle('hidden', isDissolvable);
+        skinSutureDetailsDissolvable.classList.toggle('hidden', !isDissolvable);
 
-    if(isDissolvable) {
-        setVal('skinSutureSizeDissolvable', lesion.skinSutureSize);
-        setVal('skinSutureTypeDissolvable', lesion.skinSutureType);
-    } else {
-        setVal('skinSutureSize', lesion.skinSutureSize);
-        setVal('skinSutureType', lesion.skinSutureType);
-        setVal('removalOfSkinSutures', lesion.skinSutureRemoval);
+        if(isDissolvable) {
+            setVal('skinSutureSizeDissolvable', lesion.skinSutureSize);
+            setVal('skinSutureTypeDissolvable', lesion.skinSutureType);
+        } else {
+            setVal('skinSutureSize', lesion.skinSutureSize);
+            setVal('skinSutureType', lesion.skinSutureType);
+            setVal('removalOfSkinSutures', lesion.skinSutureRemoval);
+        }
     }
     
-    updateFormUI(); // Re-run to ensure visibility is correct after setting all values
+    updateFormUI(); // Re-run to ensure visibility
     
-    // Use the file procedure ID if we have it, otherwise the lesion list ID
-    const displayId = editingLesionId || id;
-    formTitle.textContent = `Editing Lesion ${displayId}`;
+    formTitle.textContent = `Editing Lesion ${id}`;
     addLesionBtn.textContent = 'Update Lesion';
     saveProcedureBtn.textContent = 'Update Procedure in Billing';
     cancelEditBtn.style.display = 'block';
@@ -708,6 +716,9 @@ window.startEditLesion = function(id) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+/**
+ * Cancels the edit and resets the form.
+ */
 function cancelEdit() {
     resetLesionForm();
     
@@ -715,47 +726,43 @@ function cancelEdit() {
     modeBtnDoctor.disabled = false;
     modeBtnPM.disabled = false;
     navDoctorDropdown.disabled = false;
-    editingLesionDoctor = null;
-    currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' }; // Clear file
+    
+    editingLesionId = null;
+    editingProcedureFile = null; // Clear file
+    currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' };
 }
 
 /**
- * Resets just the lesion-specific form fields, not the patient info.
+ * Resets just the lesion-specific form fields.
  * @param {boolean} [resetProcType=true] - Whether to reset the procedureType dropdown.
  */
 function resetLesionForm(resetProcType = true) {
     editingLesionId = null;
 
-    // Manually reset fields inside the dynamic container
-    const dynamicFields = ['lesionLocation', 'anatomicalRegion', 'lesionLength', 'lesionWidth', 'margin', 'punchSize', 'finalDefectSize', 'flapGraftJustification', 'provisionalDiagnoses', 'dermoscopyUsed', 'orientationType', 'orientationDescription'];
+    const dynamicFields = ['lesionLocation', 'anatomicalRegion', 'lesionLength', 'lesionWidth', 'margin', 'punchSize', 'finalDefectSize', 'flapGraftJustification', 'provisionalDiagnoses', 'dermoscopyUsed', 'orientationType', 'orientationDescription', 'removalOfSkinSutures'];
     dynamicFields.forEach(id => getEl(id).value = '');
     
-    // Reset checkboxes
     const checkboxes = ['excludeNMSC', 'excludeMelanoma', 'useDeepSuture', 'useDissolvable'];
     checkboxes.forEach(id => getEl(id).checked = false);
     getEl('useNonDissolvable').checked = true; // Default
 
-    // Manually sync container visibility with the reset checkbox states
-    deepSutureContainer.classList.add('hidden'); // Syncs with useDeepSuture = false
-    skinSutureDetails.classList.remove('hidden'); // Syncs with useNonDissolvable = true
-    skinSutureDetailsDissolvable.classList.add('hidden'); // Syncs with useDissolvable = false
+    deepSutureContainer.classList.add('hidden');
+    skinSutureDetails.classList.remove('hidden');
+    skinSutureDetailsDissolvable.classList.add('hidden');
 
-    // Reset selects to their default
     if(resetProcType) getEl('procedureType').selectedIndex = 0;
     getEl('excisionClosureType').selectedIndex = 0;
     getEl('punchType').selectedIndex = 0;
     getEl('graftType').selectedIndex = 0;
     getEl('localAnesthetic').selectedIndex = 0;
     getEl('deepSutureSize').value = '4/0';
-    getEl('deepSutureType').selectedIndex = 0; // Will be set to first item in dynamic list
+    getEl('deepSutureType').selectedIndex = 0;
     getEl('skinSutureSize').value = '5/0';
-    getEl('skinSutureType').selectedIndex = 0; // Will be set to first item in dynamic list
-    getEl('removalOfSkinSutures').value = '';
+    getEl('skinSutureType').selectedIndex = 0;
     getEl('skinSutureSizeDissolvable').value = '5/0';
     getEl('skinSutureTypeDissolvable').selectedIndex = 0;
     getEl('anatomicalRegion').selectedIndex = 0;
 
-    // Reset display elements
     pathologyDisplayEl.textContent = 'Click to select...';
     pathologyDisplayEl.classList.add('italic', 'text-slate-500');
     document.querySelectorAll('.dermoscopy-btn, .justification-btn').forEach(btn => btn.classList.remove('selected'));
@@ -769,29 +776,13 @@ function resetLesionForm(resetProcType = true) {
     cancelEditBtn.style.display = 'none';
     clearProcedureBtn.style.display = 'block';
     
-    // Re-run UI and validation logic
     updateFormUI();
     checkLesionFormCompleteness();
 }
 
-function updateOrientationButtons() {
-    const type = getEl('orientationType').value;
-    const desc = getEl('orientationDescription').value;
-
-    mainMarkerBtnContainer.querySelectorAll('.main-marker-btn').forEach(btn => {
-        const btnType = btn.dataset.value;
-        btn.classList.remove('selected');
-        btn.textContent = btnType; // Reset text
-
-        if (btnType === type) {
-            btn.classList.add('selected');
-            if (type !== 'None' && desc) {
-                btn.textContent = `${type}: ${desc}`;
-            }
-        }
-    });
-}
-
+/**
+ * Resets the entire form, including patient info and all lesions.
+ */
 function resetAll() {
     lesions = [];
     lesionCounter = 0;
@@ -802,13 +793,18 @@ function resetAll() {
     modeBtnDoctor.disabled = false;
     modeBtnPM.disabled = false;
     navDoctorDropdown.disabled = false;
-    editingLesionDoctor = null;
-    currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' }; // Clear file
+
+    editingLesionId = null;
+    editingProcedureFile = null; // Clear file
+    currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' };
     
-    resetLesionForm(); // Resets the lesion part of the form
-    updateAllOutputs(); // Clears outputs and lesion list
+    resetLesionForm();
+    updateAllOutputs();
 }
 
+/**
+ * Updates the list of lesions added to the current procedure.
+ */
 function updateLesionsList() {
     lesionsListEl.innerHTML = '';
     if (lesions.length === 0) {
@@ -820,13 +816,10 @@ function updateLesionsList() {
         const listItem = document.createElement('div');
         listItem.className = 'bg-slate-100 p-3 rounded-lg flex justify-between items-center transition-all';
         
-        // Get the prefix of the anatomical region for display
         let regionText = 'No Region';
         if (lesion.anatomicalRegion) {
             const option = Array.from(anatomicalRegionEl.options).find(opt => opt.value === lesion.anatomicalRegion);
-            if (option) {
-                regionText = option.text.split(':')[0];
-            }
+            if (option) regionText = option.text.split(':')[0];
         }
         
         const billingOnlyText = lesion.billingOnly ? '<span class="text-amber-600 font-medium ml-2">[Billing-Only]</span>' : '';
@@ -849,10 +842,13 @@ function updateLesionsList() {
     });
 }
 
-
+/**
+ * Removes a lesion from the temporary list.
+ * @param {number} id - The ID of the lesion to remove.
+ */
 window.removeLesion = function(id) {
     // Cannot remove a lesion if we are editing a file from billing
-    if (editingLesionId && currentBillingFile.handle) {
+    if (editingProcedureFile) {
         alert("You cannot remove lesions when editing a saved procedure. Please cancel the edit first.");
         return;
     }
@@ -871,6 +867,23 @@ window.removeLesion = function(id) {
     updateAllOutputs();
 }
 
+/**
+ * Updates both output textareas and the lesion list.
+ */
+function updateAllOutputs() {
+    updateLesionsList();
+    const requestText = generateClinicalRequest();
+    const noteText = generateEntryNote();
+    clinicalRequestOutputEl.value = requestText;
+    entryNoteOutputEl.value = noteText;
+    updateOutputVisibility();
+}
+
+/**
+ * Copies text from a textarea to the clipboard.
+ * @param {string} elementId - The ID of the textarea.
+ * @param {HTMLElement} buttonTextElement - The <span> inside the copy button.
+ */
 function copyToClipboard(elementId, buttonTextElement) {
     const outputElement = getEl(elementId);
     if (!outputElement.value || outputElement.value.startsWith('Your')) return;
@@ -879,6 +892,7 @@ function copyToClipboard(elementId, buttonTextElement) {
     outputElement.setSelectionRange(0, 99999);
     
     try {
+        // Use execCommand as a fallback for iframe environments
         document.execCommand('copy');
         const originalText = buttonTextElement.textContent;
         buttonTextElement.textContent = 'Copied!';
@@ -891,11 +905,18 @@ function copyToClipboard(elementId, buttonTextElement) {
     window.getSelection().removeAllRanges();
 }
 
+/**
+ * Sets the output style (combined or separate) in localStorage.
+ * @param {string} style - "combined" or "separate".
+ */
 function setOutputStyle(style) {
     localStorage.setItem('medicalNoteGeneratorOutputStyle', style);
     updateOutputVisibility();
 }
 
+/**
+ * Shows/hides the output textareas based on the selected style.
+ */
 function updateOutputVisibility() {
     const style = localStorage.getItem('medicalNoteGeneratorOutputStyle') || 'combined';
     
@@ -925,56 +946,23 @@ function updateOutputVisibility() {
     }
 }
 
+/**
+ * Updates the orientation buttons based on form values.
+ */
+function updateOrientationButtons() {
+    const type = getEl('orientationType').value;
+    const desc = getEl('orientationDescription').value;
 
-// --- MODAL & CLOCK LOGIC ---
+    mainMarkerBtnContainer.querySelectorAll('.main-marker-btn').forEach(btn => {
+        const btnType = btn.dataset.value;
+        btn.classList.remove('selected');
+        btn.textContent = btnType; // Reset text
 
-function openOrientationModal() {
-    if (modalSelectedLocationElement) modalSelectedLocationElement.classList.remove('selected');
-    
-    const currentDescription = getEl('orientationDescription').value;
-    if(currentDescription) {
-        const currentLocationEl = modalLocationSelector.querySelector(`[data-value="${currentDescription}"]`);
-        if(currentLocationEl) {
-            currentLocationEl.classList.add('selected');
-            modalSelectedLocationElement = currentLocationEl;
+        if (btnType === type) {
+            btn.classList.add('selected');
+            if (type !== 'None' && desc) {
+                btn.textContent = `${type}: ${desc}`;
+            }
         }
-    }
-    
-    orientationModal.classList.remove('hidden');
-}
-
-
-// --- PATHOLOGY MODAL ---
-function openPathologyModal() {
-    const selected = (getEl('provisionalDiagnoses').value || '').split(';').filter(Boolean);
-    pathologyCheckboxesEl.querySelectorAll('input').forEach(input => {
-        input.checked = selected.includes(input.value);
     });
-    const otherValue = selected.find(s => !pathologyOptions[s]);
-    otherPathologyInput.value = otherValue || '';
-    pathologyModal.classList.remove('hidden');
-}
-
-function confirmPathologySelection() {
-    const selected = [];
-    pathologyCheckboxesEl.querySelectorAll('input:checked').forEach(input => {
-        selected.push(input.value);
-    });
-    const otherValue = otherPathologyInput.value.trim();
-    if (otherValue) {
-        selected.push(otherValue);
-    }
-    
-    getEl('provisionalDiagnoses').value = selected.join(';');
-    
-    if (selected.length > 0) {
-        pathologyDisplayEl.textContent = selected.join(', ');
-        pathologyDisplayEl.classList.remove('italic', 'text-slate-500');
-    } else {
-        pathologyDisplayEl.textContent = 'Click to select...';
-        pathologyDisplayEl.classList.add('italic', 'text-slate-500');
-    }
-    
-    pathologyModal.classList.add('hidden');
-    checkLesionFormCompleteness();
 }
