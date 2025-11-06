@@ -166,16 +166,30 @@ window.checkLesionFormCompleteness = function() {
                 }
                 if (getVal('excisionClosureType') !== 'Secondary Intention') {
                      // Check if at least one suture type is selected
-                    if (!getEl('useNonDissolvable').checked && !getEl('useDissolvable').checked) {
-                        getEl('useNonDissolvable').classList.add('missing-field');
-                        getEl('useDissolvable').classList.add('missing-field');
-                        isAllValid = false;
-                    } else {
-                        getEl('useNonDissolvable').classList.remove('missing-field');
-                        getEl('useDissolvable').classList.remove('missing-field');
-                    }
-                }
-                break;
+-                    if (!getEl('useNonDissolvable').checked && !getEl('useDissolvable').checked) {
+-                        getEl('useNonDissolvable').classList.add('missing-field');
+-                        getEl('useDissolvable').classList.add('missing-field');
+-                        isAllValid = false;
+-                    } else {
+-                        getEl('useNonDissolvable').classList.remove('missing-field');
+-                        getEl('useDissolvable').classList.remove('missing-field');
+-                    }
++                    // *** FIX: Updated suture validation ***
++                    // Deep sutures are optional.
++                    // Skin sutures are optional (but checked by default).
++                    if (getEl('useSkinSuture').checked) {
++                        isAllValid &= validateAndHighlight(getEl('skinSutureSize'), true);
++                        isAllValid &= validateAndHighlight(getEl('skinSutureType'), true);
++                        
++                        // Check if removal is required
++                        const skinSutureType = getVal('skinSutureType');
++                        const isDissolvable = appSettings.sutures.skin_dissolvable.includes(skinSutureType);
++                        if (skinSutureType && !isDissolvable) {
++                             isAllValid &= validateAndHighlight(getEl('removalOfSkinSutures'), true);
++                        }
++                    }
+                 }
+                 break;
             case 'Punch':
                 if (getVal('punchType') === 'Punch Biopsy') {
                     isAllValid &= validateAndHighlight(getEl('punchSize'), true);
@@ -185,15 +199,27 @@ window.checkLesionFormCompleteness = function() {
                     isAllValid &= validateAndHighlight(getEl('margin'), true);
                 }
                  // Check if at least one suture type is selected
-                if (!getEl('useNonDissolvable').checked && !getEl('useDissolvable').checked) {
-                    getEl('useNonDissolvable').classList.add('missing-field');
-                    getEl('useDissolvable').classList.add('missing-field');
-                    isAllValid = false;
-                } else {
-                    getEl('useNonDissolvable').classList.remove('missing-field');
-                    getEl('useDissolvable').classList.remove('missing-field');
-                }
-                break;
+-                if (!getEl('useNonDissolvable').checked && !getEl('useDissolvable').checked) {
+-                    getEl('useNonDissolvable').classList.add('missing-field');
+-                    getEl('useDissolvable').classList.add('missing-field');
+-                    isAllValid = false;
+-                } else {
+-                    getEl('useNonDissolvable').classList.remove('missing-field');
+-                    getEl('useDissolvable').classList.remove('missing-field');
+-                }
++                // *** FIX: Updated suture validation ***
++                if (getEl('useSkinSuture').checked) {
++                    isAllValid &= validateAndHighlight(getEl('skinSutureSize'), true);
++                    isAllValid &= validateAndHighlight(getEl('skinSutureType'), true);
++                    
++                    // Check if removal is required
++                    const skinSutureType = getVal('skinSutureType');
++                    const isDissolvable = appSettings.sutures.skin_dissolvable.includes(skinSutureType);
++                    if (skinSutureType && !isDissolvable) {
++                         isAllValid &= validateAndHighlight(getEl('removalOfSkinSutures'), true);
++                    }
++                }
+                 break;
             case 'Shave':
                 isAllValid &= validateAndHighlight(getEl('lesionLength'), true);
                 isAllValid &= validateAndHighlight(getEl('lesionWidth'), true);
@@ -235,14 +261,19 @@ window.addOrUpdateLesion = function() {
     // --- Suture Logic ---
     let skinSutureDetails = {};
     if (!isBillingOnlyMode) {
+        // *** FIX: Updated suture data collection ***
+        const skinSutureType = getVal('skinSutureType');
+        const isSkinSutureDissolvable = appSettings.sutures.skin_dissolvable.includes(skinSutureType);
+        
         skinSutureDetails = {
             useDeepSuture: getChecked('useDeepSuture'),
             deepSutureSize: getVal('deepSutureSize'),
             deepSutureType: getVal('deepSutureType'),
-            useDissolvable: getChecked('useDissolvable'),
-            skinSutureSize: getChecked('useNonDissolvable') ? getVal('skinSutureSize') : (getChecked('useDissolvable') ? getVal('skinSutureSizeDissolvable') : null),
-            skinSutureType: getChecked('useNonDissolvable') ? getVal('skinSutureType') : (getChecked('useDissolvable') ? getVal('skinSutureTypeDissolvable') : 'None'),
-            skinSutureRemoval: getChecked('useNonDissolvable') ? getVal('removalOfSkinSutures') : null,
+            useSkinSuture: getChecked('useSkinSuture'), // New field
+            useDissolvable: isSkinSutureDissolvable, // Derived field
+            skinSutureSize: getChecked('useSkinSuture') ? getVal('skinSutureSize') : null,
+            skinSutureType: getChecked('useSkinSuture') ? skinSutureType : 'None',
+            skinSutureRemoval: getChecked('useSkinSuture') && !isSkinSutureDissolvable ? getVal('removalOfSkinSutures') : null,
         };
     }
 
@@ -689,20 +720,20 @@ window.startEditLesion = function(id) {
         setVal('deepSutureSize', lesion.deepSutureSize);
         setVal('deepSutureType', lesion.deepSutureType);
         
-        const isDissolvable = lesion.useDissolvable;
-        setChecked('useDissolvable', isDissolvable);
-        setChecked('useNonDissolvable', !isDissolvable);
-
+        // *** FIX: Updated suture UI logic ***
+        setChecked('useSkinSuture', lesion.useSkinSuture);
+        
         deepSutureContainer.classList.toggle('hidden', !lesion.useDeepSuture);
-        skinSutureDetails.classList.toggle('hidden', isDissolvable);
-        skinSutureDetailsDissolvable.classList.toggle('hidden', !isDissolvable);
+        skinSutureDetails.classList.toggle('hidden', !lesion.useSkinSuture);
 
-        if(isDissolvable) {
-            setVal('skinSutureSizeDissolvable', lesion.skinSutureSize);
-            setVal('skinSutureTypeDissolvable', lesion.skinSutureType);
-        } else {
+        if(lesion.useSkinSuture) {
             setVal('skinSutureSize', lesion.skinSutureSize);
             setVal('skinSutureType', lesion.skinSutureType);
+            
+            // Manually trigger check for suture removal box
+            const isDissolvable = appSettings.sutures.skin_dissolvable.includes(lesion.skinSutureType);
+            const removalBox = getEl('skin-suture-removal-container');
+            removalBox.style.display = isDissolvable ? 'none' : 'block';
             setVal('removalOfSkinSutures', lesion.skinSutureRemoval);
         }
     }
@@ -743,31 +774,28 @@ window.resetLesionForm = function(resetProcType = true) {
     const dynamicFields = ['lesionLocation', 'anatomicalRegion', 'lesionLength', 'lesionWidth', 'margin', 'punchSize', 'finalDefectSize', 'flapGraftJustification', 'provisionalDiagnoses', 'dermoscopyUsed', 'orientationType', 'orientationDescription', 'removalOfSkinSutures'];
     dynamicFields.forEach(id => getEl(id).value = '');
     
-    const checkboxes = ['excludeNMSC', 'excludeMelanoma', 'useDeepSuture', 'useDissolvable'];
-    checkboxes.forEach(id => getEl(id).checked = false);
-    getEl('useNonDissolvable').checked = true; // Default
-
-    deepSutureContainer.classList.add('hidden');
-    skinSutureDetails.classList.remove('hidden');
-    skinSutureDetailsDissolvable.classList.add('hidden');
-
-    if(resetProcType) getEl('procedureType').selectedIndex = 0;
-    getEl('excisionClosureType').selectedIndex = 0;
-    getEl('punchType').selectedIndex = 0;
-    getEl('graftType').selectedIndex = 0;
-    getEl('localAnesthetic').selectedIndex = 0;
+-    const checkboxes = ['excludeNMSC', 'excludeMelanoma', 'useDeepSuture', 'useDissolvable'];
++    // *** FIX: Updated suture checkboxes ***
++    const checkboxes = ['excludeNMSC', 'excludeMelanoma', 'useDeepSuture'];
+     checkboxes.forEach(id => getEl(id).checked = false);
+-    getEl('useNonDissolvable').checked = true; // Default
++    getEl('useSkinSuture').checked = true; // Default
+ 
+     deepSutureContainer.classList.add('hidden');
+     skinSutureDetails.classList.remove('hidden');
+-    skinSutureDetailsDissolvable.classList.add('hidden');
++    getEl('skin-suture-removal-container').style.display = 'none'; // Default hide
+ 
+     if(resetProcType) getEl('procedureType').selectedIndex = 0;
     getEl('deepSutureSize').value = '4/0';
     getEl('deepSutureType').selectedIndex = 0;
     getEl('skinSutureSize').value = '5/0';
-    getEl('skinSutureType').selectedIndex = 0;
-    getEl('skinSutureSizeDissolvable').value = '5/0';
-    getEl('skinSutureTypeDissolvable').selectedIndex = 0;
-    getEl('anatomicalRegion').selectedIndex = 0;
-
-    pathologyDisplayEl.textContent = 'Click to select...';
-    pathologyDisplayEl.classList.add('italic', 'text-slate-500');
-    document.querySelectorAll('.dermoscopy-btn, .justification-btn').forEach(btn => btn.classList.remove('selected'));
-    
+-    getEl('skinSutureType').selectedIndex = 0;
+-    getEl('skinSutureSizeDissolvable').value = '5/0';
+-    getEl('skinSutureTypeDissolvable').selectedIndex = 0;
++    getEl('skinSutureType').value = ''; // Default to "select type"
+     getEl('anatomicalRegion').selectedIndex = 0;
+ 
     getEl('orientationType').value = 'None';
     updateOrientationButtons();
     
