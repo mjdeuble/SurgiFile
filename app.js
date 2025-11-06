@@ -13,155 +13,164 @@ if ('serviceWorker' in navigator) {
 
 // --- DOM Element References ---
 // This section defines all querySelector constants for the app
-const getEl = (id) => document.getElementById(id);
+//
+// *** FIX ***
+// Changed all top-level 'const' and 'let' to 'var' to make them
+// globally accessible to other scripts (like events.js).
+// 'const' is script-scoped, 'var' is globally-scoped.
+//
+var getEl = (id) => document.getElementById(id);
 
 // --- Tab View Elements ---
-const tabClinicalNoteBtn = getEl('tab-clinical-note');
-const tabManualBillingBtn = getEl('tab-manual-billing');
-const tabBillingBtn = getEl('tab-billing');
-const tabSettingsBtn = getEl('tab-settings');
-const entryView = getEl('entry-view');
-const billingView = getEl('billing-view');
-const settingsView = getEl('settings-view');
+var tabClinicalNoteBtn = getEl('tab-clinical-note');
+var tabManualBillingBtn = getEl('tab-manual-billing');
+var tabBillingBtn = getEl('tab-billing');
+var tabSettingsBtn = getEl('tab-settings');
+var entryView = getEl('entry-view');
+var billingView = getEl('billing-view');
+var settingsView = getEl('settings-view');
 
 // --- Nav Bar Mode Elements ---
-const modeBtnDoctor = getEl('mode-btn-doctor');
-const modeBtnPM = getEl('mode-btn-pm');
-const navDoctorDropdownContainer = getEl('nav-doctor-dropdown-container');
-const navDoctorDropdown = getEl('nav-doctor-dropdown');
-const appTitle = getEl('app-title');
+var modeBtnDoctor = getEl('mode-btn-doctor');
+var modeBtnPM = getEl('mode-btn-pm');
+var navDoctorDropdownContainer = getEl('nav-doctor-dropdown-container');
+var navDoctorDropdown = getEl('nav-doctor-dropdown');
+var appTitle = getEl('app-title');
 
 // --- Entry View Elements ---
-const entryFormContainer = getEl('entry-form-container'); // Container for billing-only mode
-const entryViewSubtitle = getEl('entry-view-subtitle');
-const finalDefectSizeContainer = getEl('final-defect-size-container');
-const fullClinicalFieldsContainer = getEl('full-clinical-fields');
+var entryFormContainer = getEl('entry-form-container'); // Container for billing-only mode
+var entryViewSubtitle = getEl('entry-view-subtitle');
+var finalDefectSizeContainer = getEl('final-defect-size-container');
+var fullClinicalFieldsContainer = getEl('full-clinical-fields');
 
-const lesionForm = getEl('lesion-form');
-const procedureTypeEl = getEl('procedureType');
-const dynamicOptionsContainer = getEl('dynamic-options-container');
-const addLesionBtn = getEl('add-lesion-btn');
-const cancelEditBtn = getEl('cancel-edit-btn');
+var lesionForm = getEl('lesion-form');
+var procedureTypeEl = getEl('procedureType');
+var dynamicOptionsContainer = getEl('dynamic-options-container');
+var addLesionBtn = getEl('add-lesion-btn');
+var cancelEditBtn = getEl('cancel-edit-btn');
 
-const patientNameEl = getEl('patientName');
+var patientNameEl = getEl('patientName');
 // doctorCodeEl is now navDoctorDropdown
-const saveProcedureBtn = getEl('save-procedure-btn');
-const clearProcedureBtn = getEl('clear-procedure-btn');
+var saveProcedureBtn = getEl('save-procedure-btn');
+var clearProcedureBtn = getEl('clear-procedure-btn');
 
-const lesionsListEl = getEl('lesions-list');
-const entryNoteOutputEl = getEl('entryNoteOutput');
-const clinicalRequestOutputEl = getEl('clinicalRequestOutput');
-const formTitle = getEl('form-title');
-const clinicalRequestContainer = getEl('clinical-request-output-container');
-const entryNoteContainer = getEl('entry-note-output-container');
-const outputBtnCombined = getEl('output-btn-combined');
-const outputBtnSeparate = getEl('output-btn-separate');
+var lesionsListEl = getEl('lesions-list');
+var entryNoteOutputEl = getEl('entryNoteOutput');
+var clinicalRequestOutputEl = getEl('clinicalRequestOutput');
+var formTitle = getEl('form-title');
+var clinicalRequestContainer = getEl('clinical-request-output-container');
+var entryNoteContainer = getEl('entry-note-output-container');
+var outputBtnCombined = getEl('output-btn-combined');
+var outputBtnSeparate = getEl('output-btn-separate');
 
 // --- Billing View Elements ---
-const billingViewContainer = getEl('billing-view-container');
-const loadFilesBtn = getEl('load-files-btn');
-const searchBar = getEl('search-bar');
-const printBilledListBtn = getEl('print-billed-list-btn');
-const unprocessedSection = getEl('unprocessed-section');
-const unprocessedList = getEl('unprocessed-list');
-const unprocessedCountDash = getEl('unprocessed-count-dash');
-const billedSection = getEl('billed-section');
-const billedHeader = getEl('billed-header');
-const billedList = getEl('billed-list');
-const billedCountDash = getEl('billed-count-dash');
-const archiveSection = getEl('archive-section');
-const archiveHeader = getEl('archive-header');
-const archiveList = getEl('archive-list');
-const archiveCountDash = getEl('archive-count-dash');
+var billingViewContainer = getEl('billing-view-container');
+var loadFilesBtn = getEl('load-files-btn');
+var searchBar = getEl('search-bar');
+var archiveSearch = getEl('archive-search'); // <-- FIX: This was missing
+var printBilledListBtn = getEl('print-billed-list-btn');
+var batchArchiveBtn = getEl('batch-archive-btn'); // <-- FIX: This was missing
+var unprocessedSection = getEl('unprocessed-section');
+var unprocessedHeader = getEl('unprocessed-header'); // <-- FIX: This was missing
+var unprocessedList = getEl('unprocessed-list');
+var unprocessedCountDash = getEl('unprocessed-count-dash');
+var billedSection = getEl('billed-section');
+var billedHeader = getEl('billed-header');
+var billedList = getEl('billed-list');
+var billedCountDash = getEl('billed-count-dash');
+var archiveSection = getEl('archive-section');
+var archiveHeader = getEl('archive-header');
+var archiveList = getEl('archive-list');
+var archiveCountDash = getEl('archive-count-dash');
 
-const billingPanel = getEl('billing-panel');
-const billingPanelTitle = getEl('billing-panel-title');
-const billingAssistantLesions = getEl('billing-assistant-lesions');
-const billingConsultItem = getEl('billing-consult-item');
-const billingComment = getEl('billing-comment');
-const closeBillingPanelBtn = getEl('close-billing-panel-btn');
-const doctorActions = getEl('billing-panel-doctor-actions');
-const pmActions = getEl('billing-panel-pm-actions');
-const saveAsBilledBtn = getEl('save-as-billed-btn');
-const deleteProcedureBtn = getEl('delete-procedure-btn');
-const moveToArchiveBtn = getEl('move-to-archive-btn');
-const editProcedureBtn = getEl('edit-procedure-btn');
+var billingPanel = getEl('billing-panel');
+var billingPanelTitle = getEl('billing-panel-title');
+var billingAssistantLesions = getEl('billing-assistant-lesions');
+var billingConsultItem = getEl('billing-consult-item');
+var billingComment = getEl('billing-comment');
+var closeBillingPanelBtn = getEl('close-billing-panel-btn');
+var doctorActions = getEl('billing-panel-doctor-actions');
+var pmActions = getEl('billing-panel-pm-actions');
+var saveAsBilledBtn = getEl('save-as-billed-btn');
+var deleteProcedureBtn = getEl('delete-procedure-btn');
+var moveToArchiveBtn = getEl('move-to-archive-btn');
+var editProcedureBtn = getEl('edit-procedure-btn');
 
 // --- Settings View Elements ---
-const setSaveFolderBtn = getEl('set-save-folder-btn');
-const folderStatusMsg = getEl('folder-status-msg');
-const appSettingsEditor = getEl('app-settings-editor');
-const saveAppSettingsBtn = getEl('save-app-settings-btn');
-const resetAppSettingsBtn = getEl('reset-app-settings-btn');
-const appSettingsStatus = getEl('app-settings-status');
-const newDoctorNameInput = getEl('new-doctor-name');
-const addDoctorBtn = getEl('add-doctor-btn');
-const addDoctorStatus = getEl('add-doctor-status');
+var setSaveFolderBtn = getEl('set-save-folder-btn');
+var folderStatusMsg = getEl('folder-status-msg');
+var appSettingsEditor = getEl('app-settings-editor');
+var saveAppSettingsBtn = getEl('save-app-settings-btn');
+var resetAppSettingsBtn = getEl('reset-app-settings-btn');
+var appSettingsStatus = getEl('app-settings-status');
+var newDoctorNameInput = getEl('new-doctor-name');
+var addDoctorBtn = getEl('add-doctor-btn');
+var addDoctorStatus = getEl('add-doctor-status');
 
 // --- Print Elements ---
-const printTitle = getEl('print-title');
-const printTable = getEl('print-table');
+var printTitle = getEl('print-title');
+var printTable = getEl('print-table');
 
 // --- Entry Form Sections ---
-const excisionOptions = getEl('excision-options');
-const graftTypeContainer = getEl('graft-type-container');
-const justificationContainer = getEl('justification-container');
-const punchOptions = getEl('punch-options');
-const lesionSizeContainer = getEl('lesion-size-container');
-const marginContainer = getEl('margin-container');
-const punchSizeContainer = getEl('punch-size-container');
-const orientationInputContainer = getEl('orientation-input-container');
-const closureDetailsContainer = getEl('closure-details-container');
-const useDeepSutureEl = getEl('useDeepSuture');
-const deepSutureContainer = getEl('deep-suture-container');
-const useNonDissolvableEl = getEl('useNonDissolvable');
-const skinSutureDetails = getEl('skin-suture-details');
-const useDissolvableEl = getEl('useDissolvable');
-const skinSutureDetailsDissolvable = getEl('skin-suture-details-dissolvable');
+var excisionOptions = getEl('excision-options');
+var graftTypeContainer = getEl('graft-type-container');
+var justificationContainer = getEl('justification-container');
+var punchOptions = getEl('punch-options');
+var lesionSizeContainer = getEl('lesion-size-container');
+var marginContainer = getEl('margin-container');
+var punchSizeContainer = getEl('punch-size-container');
+var orientationInputContainer = getEl('orientation-input-container');
+var closureDetailsContainer = getEl('closure-details-container');
+var useDeepSutureEl = getEl('useDeepSuture');
+var deepSutureContainer = getEl('deep-suture-container');
+var useNonDissolvableEl = getEl('useNonDissolvable');
+var skinSutureDetails = getEl('skin-suture-details');
+var useDissolvableEl = getEl('useDissolvable');
+var skinSutureDetailsDissolvable = getEl('skin-suture-details-dissolvable');
 
 // --- Entry Form Inputs ---
-const anatomicalRegionEl = getEl('anatomicalRegion');
-const excisionClosureTypeEl = getEl('excisionClosureType');
-const punchTypeEl = getEl('punchType');
-const skinSutureTypeEl = getEl('skinSutureType');
-const deepSutureTypeEl = getEl('deepSutureType');
-const skinSutureSizeEl = getEl('skinSutureSize');
-const deepSutureSizeEl = getEl('deepSutureSize');
-const skinSutureTypeDissolvableEl = getEl('skinSutureTypeDissolvable');
-const skinSutureSizeDissolvableEl = getEl('skinSutureSizeDissolvable');
-const justificationButtons = getEl('justification-buttons');
-const flapGraftJustificationInput = getEl('flapGraftJustification');
+var anatomicalRegionEl = getEl('anatomicalRegion');
+var excisionClosureTypeEl = getEl('excisionClosureType');
+var punchTypeEl = getEl('punchType');
+var skinSutureTypeEl = getEl('skinSutureType');
+var deepSutureTypeEl = getEl('deepSutureType');
+var skinSutureSizeEl = getEl('skinSutureSize');
+var deepSutureSizeEl = getEl('deepSutureSize');
+var skinSutureTypeDissolvableEl = getEl('skinSutureTypeDissolvable');
+var skinSutureSizeDissolvableEl = getEl('skinSutureSizeDissolvable');
+var justificationButtons = getEl('justification-buttons');
+var flapGraftJustificationInput = getEl('flapGraftJustification');
 
 // --- Modal References ---
-const mainMarkerBtnContainer = getEl('main-marker-btn-container');
-const orientationModal = getEl('orientationModal');
-const clock = getEl('clock');
-const modalLocationSelector = getEl('modal-location-selector');
-const cancelOrientationBtn = getEl('cancelOrientationBtn');
-const pathologyModal = getEl('pathologyModal');
-const pathologyDisplayEl = getEl('pathologyDisplay');
-const pathologyCheckboxesEl = getEl('pathology-checkboxes');
-const otherPathologyInput = getEl('otherPathologyInput');
-const confirmPathologyBtn = getEl('confirmPathologyBtn');
-const dermoscopyBtnContainer = getEl('dermoscopy-btn-container');
+var mainMarkerBtnContainer = getEl('main-marker-btn-container');
+var orientationModal = getEl('orientationModal');
+var clock = getEl('clock');
+var modalLocationSelector = getEl('modal-location-selector');
+var cancelOrientationBtn = getEl('cancelOrientationBtn');
+var pathologyModal = getEl('pathologyModal');
+var pathologyDisplayEl = getEl('pathologyDisplay');
+var pathologyCheckboxesEl = getEl('pathology-checkboxes');
+var otherPathologyInput = getEl('otherPathologyInput');
+var confirmPathologyBtn = getEl('confirmPathologyBtn');
+var dermoscopyBtnContainer = getEl('dermoscopy-btn-container');
 
 // --- PWA File System Elements ---
-let saveFolderHandle = null; // This will store our main billing folder permission
-let currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' }; // State for the open billing file
+var saveFolderHandle = null; // This will store our main billing folder permission
+var currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' }; // State for the open billing file
 
 // --- State Management ---
-let lesions = []; // This is now a temporary list for the current procedure
-let lesionCounter = 0;
-let editingLesionId = null;
-let editingProcedureFile = null; // Store the original file data when editing
-let modalSelectedLocationElement = null;
-let allFiles = { unprocessed: [], billed: [], archive: [] }; // Global state for billing files
-let appSettings = {}; // Holds ALL app settings
-let isBillingOnlyMode = false;
-let currentAppMode = 'Doctor'; // 'Doctor' or 'PM'
-let currentDoctor = null; // The display name of the selected doctor
+var lesions = []; // This is now a temporary list for the current procedure
+var lesionCounter = 0;
+var editingLesionId = null;
+var editingProcedureFile = null; // Store the original file data when editing
+var modalSelectedLocationElement = null;
+var allFiles = { unprocessed: [], billed: [], archive: [] }; // Global state for billing files
+var appSettings = {}; // Holds ALL app settings
+var isBillingOnlyMode = false;
+var currentAppMode = 'Doctor'; // 'Doctor' or 'PM'
+var currentDoctor = null; // The display name of the selected doctor
 
-const pathologyOptions = {
+var pathologyOptions = {
     'BCC': 'Basal cell carcinoma', 'SCC': 'Squamous cell carcinoma', 'IEC': 'IEC/Bowen\'s disease',
     'MMis': 'Melanoma in situ', 'MMinv': 'Melanoma invasive', 'DN': 'Naevus: dysplastic', 'BN': 'Naevus: banal',
     'SebK': 'Seborrhoeic keratosis', 'SK': 'Solar keratosis', 'KA': 'Keratoacanthoma', 'B Cyst': 'Benign cyst',
