@@ -6,12 +6,15 @@
 // - Adding new doctor folders
 // - Reading, writing, and moving procedure .json files
 
+/**
+ * Prompts the user to select a directory for saving files.
+ * Stores the handle in IndexedDB.
+ */
 async function setSaveFolder() {
     try {
         const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
         
         // We only need to request permission and save the handle.
-        // The "addNewDoctorFolder" function will create subfolders.
         if (await verifyFolderPermission(handle, true)) { // Request permission
             
             await dbSet('saveFolderHandle', handle);
@@ -23,8 +26,9 @@ async function setSaveFolder() {
             folderStatusMsg.classList.add('text-green-600');
 
             // After setting the folder, do an initial scan
-            appSettings.doctorList = await getDoctorListFromFolders();
-            populateDoctorDropdown();
+            const doctors = await getDoctorListFromFolders();
+            appSettings.doctorList = doctors; // Update global state
+            populateDoctorDropdown(doctors); // Repopulate and select
 
         } else {
              throw new Error('Permission to write to folder was not granted.');
@@ -39,7 +43,11 @@ async function setSaveFolder() {
     }
 }
 
+/**
+ * Loads the saved folder handle from IndexedDB on app start.
+ */
 async function loadSavedFolder() {
+    let doctors = [];
     try {
         const handle = await dbGet('saveFolderHandle');
         if (handle) {
@@ -51,7 +59,7 @@ async function loadSavedFolder() {
                 folderStatusMsg.classList.add('text-green-600');
 
                 // Folder is loaded, so scan it for doctors
-                appSettings.doctorList = await getDoctorListFromFolders();
+                doctors = await getDoctorListFromFolders();
 
             } else {
                 console.log('Permission for saved folder was revoked.');
@@ -59,27 +67,28 @@ async function loadSavedFolder() {
                 folderStatusMsg.classList.add('text-red-600');
                 saveFolderHandle = null;
                 await dbDel('saveFolderHandle');
-
                 // No folder is loaded, so the list is empty
-                appSettings.doctorList = [];
             }
         } else {
-            // No handle was ever saved, so this is a true first load.
-            appSettings.doctorList = [];
+            // No handle was ever saved.
+            folderStatusMsg.textContent = 'Status: No default save folder set.';
+            folderStatusMsg.classList.add('text-amber-600');
         }
     } catch (err) {
         console.error('Error loading saved folder:', err);
-        // Fallback in case of other errors
-        appSettings.doctorList = [];
     }
-
-    // After all checks, populate the dropdown with the correct list
-    populateDoctorDropdown();
+    
+    // Update global doctor list and populate dropdown
+    appSettings.doctorList = doctors;
+    populateDoctorDropdown(doctors);
 }
 
 
+/**
+ * Scans the save folder handle for directories (doctors).
+ * @returns {Promise<string[]>} A list of doctor display names.
+ */
 async function getDoctorListFromFolders() {
-    // Start with a fresh, empty list.
     let dynamicDoctorList = [];
 
     if (!saveFolderHandle) {
@@ -89,7 +98,6 @@ async function getDoctorListFromFolders() {
 
     try {
         for await (const entry of saveFolderHandle.values()) {
-            // We only care about directories, and we skip "system" folders
             if (entry.kind === 'directory' && !entry.name.startsWith('.')) {
                 // Convert folder name back to display name
                 const displayName = entry.name.replace(/_/g, ' ');
@@ -103,17 +111,20 @@ async function getDoctorListFromFolders() {
     }
 }
 
+/**
+ * Creates a new set of folders for a new doctor.
+ * @param {string} doctorDisplayName - The display name (e.g., "Firstname Lastname")
+ */
 async function addNewDoctorFolder(doctorDisplayName) {
     if (!saveFolderHandle) {
         throw new Error("Please set the Default Save Folder first.");
     }
 
-    const folderName = doctorDisplayName.replace(/\s+/g, '_'); // e.g., "Firstname Lastname" -> "Firstname_Lastname"
+    const folderName = doctorDisplayName.replace(/\s+/g, '_'); // "Firstname_Lastname"
 
     try {
         // Check if folder already exists
         await saveFolderHandle.getDirectoryHandle(folderName, { create: false });
-        // If the above line *doesn't* throw an error, the folder exists.
         return `Folder for 'Dr. ${doctorDisplayName}' already exists.`;
 
     } catch (e) {
@@ -131,7 +142,12 @@ async function addNewDoctorFolder(doctorDisplayName) {
     }
 }
 
-
+/**
+ * Verifies read/write permission for a folder handle.
+ * @param {FileSystemDirectoryHandle} handle - The folder handle to check.
+ * @param {boolean} [requestIfNeeded=false] - Whether to prompt the user if permission isn't granted.
+ * @returns {Promise<boolean>} True if permission is granted.
+ */
 async function verifyFolderPermission(handle, requestIfNeeded = false) {
     const options = { mode: 'readwrite' };
     if (await handle.queryPermission(options) === 'granted') {
@@ -145,6 +161,12 @@ async function verifyFolderPermission(handle, requestIfNeeded = false) {
     return false;
 }
 
+/**
+ * Saves a new procedure file to the correct "Unprocessed" folder.
+ * @param {object} data - The procedure data object.
+ * @param {string} filename - The new file's name.
+ * @param {string} doctorDisplayName - The doctor to save under.
+ */
 async function saveFileToFolder(data, filename, doctorDisplayName) {
     if (!saveFolderHandle) {
         throw new Error("No default folder is set.");
@@ -172,6 +194,13 @@ async function saveFileToFolder(data, filename, doctorDisplayName) {
     }
 }
 
+/**
+ * Overwrites an existing file in its current location.
+ * @param {FileSystemFileHandle} fileHandle - The handle of the file to overwrite.
+ * @param {object} data - The new data to write.
+ * @param {string} doctorDisplayName - The display name of the doctor.
+ * @param {string} fromFolder - The folder the file is in (e.g., "Unprocessed").
+ */
 async function overwriteFile(fileHandle, data, doctorDisplayName, fromFolder) {
      if (!saveFolderHandle) {
         throw new Error("No default folder is set.");
@@ -198,6 +227,15 @@ async function overwriteFile(fileHandle, data, doctorDisplayName, fromFolder) {
     }
 }
 
+/**
+ * Moves a file from one folder to another, writing new data.
+ * If toDir is "Archive", it creates Year/Month subfolders.
+ * @param {string} fromDir - "Unprocessed" or "Billed"
+ * @param {string} toDir - "Billed" or "Archive"
+ * @param {FileSystemFileHandle} fileHandle - The original file handle.
+ * @param {object} newData - The updated data to save.
+ * @param {string} doctorDisplayName - The doctor's display name.
+ */
 async function moveFile(fromDir, toDir, fileHandle, newData, doctorDisplayName) {
     if (!saveFolderHandle) {
         throw new Error("No default folder is set.");
@@ -208,10 +246,34 @@ async function moveFile(fromDir, toDir, fileHandle, newData, doctorDisplayName) 
     try {
         const doctorDir = await saveFolderHandle.getDirectoryHandle(doctorFolderName);
         const fromDirHandle = await doctorDir.getDirectoryHandle(fromDir);
-        const toDirHandle = await doctorDir.getDirectoryHandle(toDir);
+        
+        let targetDirHandle;
+
+        // --- NEW ARCHIVE LOGIC ---
+        if (toDir === 'Archive') {
+            const now = new Date();
+            const year = now.getFullYear().toString(); // "2025"
+            const month = (now.getMonth() + 1).toString().padStart(2, '0'); // "11"
+            const monthName = now.toLocaleString('default', { month: 'short' }); // "Nov"
+            const monthFolderName = `${month}-${monthName}`; // "11-Nov"
+
+            // Get/create /Archive
+            const archiveDir = await doctorDir.getDirectoryHandle('Archive', { create: true });
+            // Get/create /Archive/2025
+            const yearDir = await archiveDir.getDirectoryHandle(year, { create: true });
+            // Get/create /Archive/2025/11-Nov
+            targetDirHandle = await yearDir.getDirectoryHandle(monthFolderName, { create: true });
+            
+            console.log(`Archiving to: ${doctorFolderName}/Archive/${year}/${monthFolderName}`);
+
+        } else {
+            // Standard move (e.g., to "Billed")
+            targetDirHandle = await doctorDir.getDirectoryHandle(toDir, { create: true });
+        }
+        // --- END NEW LOGIC ---
         
         // 1. Write the new/updated file to the destination
-        const newFileHandle = await toDirHandle.getFileHandle(fileHandle.name, { create: true });
+        const newFileHandle = await targetDirHandle.getFileHandle(fileHandle.name, { create: true });
         const writable = await newFileHandle.createWritable();
         await writable.write(JSON.stringify(newData, null, 2));
         await writable.close();
@@ -219,7 +281,7 @@ async function moveFile(fromDir, toDir, fileHandle, newData, doctorDisplayName) 
         // 2. Delete the old file from the source
         await fromDirHandle.removeEntry(fileHandle.name);
 
-        console.log(`Moved ${fileHandle.name} from ${doctorFolderName}/${fromDir} to ${doctorFolderName}/${toDir}`);
+        console.log(`Moved ${fileHandle.name} from ${doctorFolderName}/${fromDir} to ${targetDirHandle.name}`);
     } catch (e) {
         console.error('Error moving file:', e);
         alert(`Error moving file: ${e.message}`);
