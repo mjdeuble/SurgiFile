@@ -91,31 +91,14 @@
             background-color: #0284c7; /* bg-sky-600 */
             color: white;
         }
-        #nav-doctor-dropdown-container {
-            display: none; /* Hidden by default */
-        }
-        #nav-doctor-dropdown-container.active {
-            display: block; /* Show when in Doctor mode */
-        }
-
 
         /* Billing View File List Styles */
         .file-list-item {
             cursor: pointer;
             transition: background-color 0.2s;
-            display: flex; /* For checkbox alignment */
-            align-items: center;
-            gap: 8px;
         }
         .file-list-item:hover {
             background-color: #f8fafc; /* bg-slate-50 */
-        }
-        .file-list-item-content {
-            flex-grow: 1;
-        }
-        .file-list-item .batch-process-check {
-            display: none; /* Hide checkbox by default */
-            margin-left: 4px;
         }
 
         /* Billing Column Colors & Layout */
@@ -133,6 +116,10 @@
             max-height: 45vh; /* Set max height for scroll */
             overflow-y: auto;
             transition: all 0.3s ease-in-out;
+            border-width: 1px;
+            padding: 4px;
+            margin-top: 1rem;
+            border-color: #e2e8f0; /* bg-slate-200 */
         }
         .billing-list-section.collapsed {
             max-height: 0;
@@ -143,84 +130,22 @@
         }
         
         /* --- Role-Specific UI --- */
-
+        
         /* When in Doctor Mode... */
         .doctor-mode-active #billing-columns {
-            /* Archive is collapsed by default */
-            #archive-list {
-                max-height: 0;
-                overflow: hidden;
-                border-width: 0;
-                padding: 0;
-                margin-top: 0;
-            }
-            /* Billed is collapsed by default */
-            #billed-list {
-                max-height: 0;
-                overflow: hidden;
-                border-width: 0;
-                padding: 0;
-                margin-top: 0;
-            }
+            /* (Defaults are set in app.js: unprocessed open, others collapsed) */
         }
-        .doctor-mode-active #archive-header.expanded #archive-list,
-        .doctor-mode-active #billed-header.expanded #billed-list {
-            /* Show if doctor expands it */
-            max-height: 45vh;
-            border-width: 1px;
-            padding: 4px;
-            margin-top: 1rem;
-        }
-        
+
         /* When in PM Mode... */
-        body.pm-mode-active #tab-clinical-note,
-        body.pm-mode-active #tab-manual-billing {
-            display: none; /* Hide clinical entry tabs for PM */
+        .pm-mode-active #unprocessed-section {
+            display: none; /* Hide the unprocessed section for PMs */
         }
-
-        .pm-mode-active #unprocessed-section .billing-list-section,
-        .pm-mode-active #archive-section .billing-list-section {
-             /* PM: Unprocessed and Archive are collapsed by default */
-            max-height: 0;
-            overflow: hidden;
-            border-width: 0;
-            padding: 0;
-            margin-top: 0;
+        .pm-mode-active #print-billed-list-btn {
+             display: inline-flex; /* Show the print button for PMs */
         }
-        .pm-mode-active #billed-section .billing-list-section {
-            /* PM: Billed is EXPANDED by default */
-            max-height: 45vh;
+        .pm-mode-active #batch-archive-container {
+            display: block; /* Show batch archive button */
         }
-        
-        /* Allow PM to expand/collapse */
-        .pm-mode-active #unprocessed-header.expanded #unprocessed-list,
-        .pm-mode-active #archive-header.expanded #archive-list {
-            max-height: 45vh;
-            border-width: 1px;
-            padding: 4px;
-            margin-top: 1rem;
-        }
-        /* Allow PM to collapse Billed list */
-        .pm-mode-active #billed-header:not(.expanded) #billed-list {
-            max-height: 0;
-            overflow: hidden;
-            border-width: 0;
-            padding: 0;
-            margin-top: 0;
-        }
-
-
-        .pm-mode-active #print-billed-list-btn,
-        .pm-mode-active #batch-archive-btn {
-             /* Show the print and batch buttons for PMs */
-            display: inline-flex;
-        }
-        
-        /* Show batch checkbox for PM in Billed list */
-        .pm-mode-active .from-folder-Billed .batch-process-check {
-            display: block;
-        }
-
 
         /* Print Styles */
         @media print {
@@ -249,6 +174,7 @@
             th {
                 background-color: #f4f4f4;
             }
+            .w-8 { width: 2rem; }
         }
         #printable-report {
             display: none; /* Hidden by default, only shown for printing */
@@ -269,9 +195,9 @@
             border-color: #0284c7; /* border-sky-600 */
             background-color: #f0f9ff; /* bg-sky-50 */
         }
-        .billing-suggestion.recommended {
-             border-color: #16a34a; /* border-green-600 */
-             background-color: #f0fdf4; /* bg-green-50 */
+        .billing-suggestion.disabled {
+            background-color: #f8fafc; /* bg-slate-50 */
+            opacity: 0.7;
         }
         .billing-suggestion .confirm-btn {
             background-color: #0ea5e9; /* bg-sky-500 */
@@ -293,7 +219,7 @@
             cursor: not-allowed;
         }
         
-        /* Billing-Only Mode Toggle */
+        /* Billing-Only Mode Toggle (driven by class on entry-form-container) */
         .billing-only-mode #full-clinical-fields {
             display: none !important;
         }
@@ -311,18 +237,22 @@
             <h1 id="app-title" class="text-2xl font-bold text-slate-700">Clinical Management PWA</h1>
             
             <div class="flex items-center gap-4">
+                <!-- Mode Buttons -->
                 <div class="flex items-center gap-4">
                     <span class="font-semibold text-slate-600">Mode:</span>
                     <button id="mode-btn-doctor" class="mode-btn active">Doctor</button>
                     <button id="mode-btn-pm" class="mode-btn">Practice Manager</button>
                     
                     <div id="nav-doctor-dropdown-container" class="active">
-                         <select id="navDoctorDropdown" class="bg-slate-100 border border-slate-300 rounded-lg p-2 font-medium text-slate-700"></select>
+                         <select id="nav-doctor-dropdown" class="bg-slate-100 border border-slate-300 rounded-lg p-2 font-medium text-slate-700"></select>
                     </div>
                 </div>
 
-                <div class="w-px h-8 bg-slate-300"></div> <button id="tab-clinical-note" class="tab-btn active">Clinical Note Entry</button>
-                <button id="tab-manual-billing" class="tab-btn">Enter Manual Billing</button>
+                <div class="w-px h-8 bg-slate-300"></div> <!-- Divider -->
+
+                <!-- Tab Buttons -->
+                <button id="tab-clinical-note" class="tab-btn active">Clinical Note Entry</button>
+                <button id="tab-manual-billing" class="tab-btn">Manual Billing</button>
                 <button id="tab-billing" class="tab-btn">Billing & Processing</button>
                 <button id="tab-settings" class="tab-btn">Settings</button>
             </div>
@@ -336,6 +266,7 @@
                 <p id="entry-view-subtitle" class="text-slate-500 mt-2">Part 1: Enter clinical data and generate the operation note.</p>
             </header>
             
+            <!-- This container will be used to hide/show sections -->
             <div id="entry-form-container">
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div class="bg-white p-6 rounded-2xl shadow-lg">
@@ -347,7 +278,7 @@
                                     <label for="patientName" class="block text-sm font-medium text-slate-600 mb-2">Patient Name</label>
                                     <input type="text" id="patientName" placeholder="e.g., John Smith" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
                                 </div>
-                                </div>
+                            </div>
                             
                             <h2 class="text-2xl font-semibold mb-4" id="form-title">Enter Lesion Details</h2>
             
@@ -364,11 +295,7 @@
             
                             <div id="dynamic-options-container" class="mt-6 space-y-4 border-t border-slate-200 pt-6">
                                 
-                                <div id="final-defect-size-container" class="form-section">
-                                    <label for="finalDefectSize" class="block text-sm font-medium text-slate-600 mb-2">Final Defect Size (mm)</label>
-                                    <input type="number" id="finalDefectSize" placeholder="Enter final defect diameter" class="w-full bg-slate-50 border rounded-lg p-3">
-                                </div>
-                                
+                                <!-- Common Fields (for both modes) -->
                                 <div>
                                     <label for="lesionLocation" class="block text-sm font-medium text-slate-600 mb-2">Lesion Location Description</label>
                                     <input type="text" id="lesionLocation" name="lesionLocation" placeholder="e.g., Left forearm, 10cm proximal to wrist" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
@@ -378,6 +305,7 @@
                                     <label for="anatomicalRegion" class="block text-sm font-medium text-slate-600 mb-2">Anatomical Region (for billing)</label>
                                     <select id="anatomicalRegion" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
                                         <option value="">Select billing region...</option>
+                                        <!-- Compliant Area Definitions -->
                                         <option value="Area1">Area 1: Nose, eyelid, eyebrow, lip, ear, digit, genitalia (or contiguous)</option>
                                         <option value="Area2">Area 2: Face, neck, scalp, nipple, distal limbs (from knee/ulnar styloid)</option>
                                         <option value="Area3">Area 3: Trunk, proximal limbs (areas not in 1 or 2)</option>
@@ -391,7 +319,33 @@
                                         <input type="hidden" id="provisionalDiagnoses">
                                     </div>
                                 </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                        <input type="checkbox" id="excludeNMSC" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span>Exclude NMSC?</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                        <input type="checkbox" id="excludeMelanoma" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span>Exclude Melanoma?</span>
+                                    </label>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-600 mb-2">Dermoscopy Used?</label>
+                                    <div id="dermoscopy-btn-container" class="flex gap-2">
+                                        <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Y">Yes</button>
+                                        <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="N">No</button>
+                                    </div>
+                                    <input type="hidden" id="dermoscopyUsed">
+                                </div>
 
+
+                                <!-- Billing-Only Mode Field -->
+                                <div id="final-defect-size-container" class="form-section">
+                                    <label for="finalDefectSize" class="block text-sm font-medium text-slate-600 mb-2">Final Defect Size (mm)</label>
+                                    <input type="number" id="finalDefectSize" placeholder="Enter final defect diameter" class="w-full bg-slate-50 border rounded-lg p-3">
+                                </div>
+                                
+                                <!-- Procedure-Specific Fields -->
                                 <div id="excision-options" class="form-section space-y-4">
                                     <label for="excisionClosureType" class="block text-sm font-medium text-slate-600 mb-2">Excision Closure Method</label>
                                     <select id="excisionClosureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
@@ -409,33 +363,16 @@
                                         <option value="Punch Excision">Punch Excision</option>
                                     </select>
                                 </div>
+                                <div id="graft-type-container" class="form-section">
+                                    <label for="graftType" class="block text-sm font-medium text-slate-600 mb-2">Graft Type</label>
+                                    <select id="graftType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                        <option value="Split-Skin Graft (SSG)">Split-Skin Graft (SSG)</option>
+                                        <option value="Full-Thickness Skin Graft (FTSG)">Full-Thickness Skin Graft (FTSG)</option>
+                                    </select>
+                                </div>
 
+                                <!-- Full Clinical Mode Fields -->
                                 <div id="full-clinical-fields" class="form-section space-y-4">
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <label class="flex items-center space-x-2 font-medium text-slate-700">
-                                            <input type="checkbox" id="excludeNMSC" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                            <span>Exclude NMSC?</span>
-                                        </label>
-                                        <label class="flex items-center space-x-2 font-medium text-slate-700">
-                                            <input type="checkbox" id="excludeMelanoma" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                            <span>Exclude Melanoma?</span>
-                                        </label>
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-slate-600 mb-2">Dermoscopy Used?</label>
-                                        <div id="dermoscopy-btn-container" class="flex gap-2">
-                                            <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Y">Yes</button>
-                                            <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="N">No</button>
-                                        </div>
-                                        <input type="hidden" id="dermoscopyUsed">
-                                    </div>
-                                    <div id="graft-type-container" class="form-section">
-                                        <label for="graftType" class="block text-sm font-medium text-slate-600 mb-2">Graft Type</label>
-                                        <select id="graftType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                            <option value="Split-Skin Graft (SSG)">Split-Skin Graft (SSG)</option>
-                                            <option value="Full-Thickness Skin Graft (FTSG)">Full-Thickness Skin Graft (FTSG)</option>
-                                        </select>
-                                    </div>
                                     <div id="justification-container" class="form-section space-y-2">
                                         <label class="block text-sm font-medium text-slate-600">Justification for Flap/Graft</label>
                                         <div id="justification-buttons" class="flex flex-wrap gap-2">
@@ -472,6 +409,7 @@
                                     </div>
                                 </div>
 
+                                <!-- Orientation Input (Full clinical mode only) -->
                                 <div id="orientation-input-container" class="form-section">
                                     <label class="block text-sm font-medium text-slate-600 mb-2">Specimen Orientation</label>
                                     <div id="main-marker-btn-container" class="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -484,6 +422,7 @@
                                     <input type="hidden" id="orientationDescription">
                                 </div>
                                 
+                                <!-- Closure Details (Full clinical mode only) -->
                                 <div id="closure-details-container" class="form-section space-y-4 pt-4 border-t mt-4">
                                         <h3 class="text-lg font-semibold text-slate-600">Closure Details</h3>
                                         <div class="space-y-2 p-3 bg-slate-50 rounded-lg">
@@ -520,6 +459,7 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        <!-- Dissolvable Suture Options -->
                                         <div class="space-y-2 p-3 bg-slate-50 rounded-lg">
                                             <label class="flex items-center space-x-2 font-medium text-slate-700">
                                                 <input type="checkbox" id="useDissolvable" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
@@ -602,7 +542,9 @@
                         </div>
                     </div>
                 </div>
-            </div> <footer class="text-center mt-12">
+            </div> <!-- End of entry-form-container -->
+    
+            <footer class="text-center mt-12">
                 <p class="text-xs text-slate-500">
                     Disclaimer: This tool is intended for educational and informational purposes only and does not constitute medical advice. The author makes no warranties regarding the accuracy, completeness, or reliability of the information provided and is not liable for any claims or damages arising from its use. Use at your own risk.
                 </p>
@@ -619,11 +561,11 @@
                 
                 <div class="mt-6 pt-4 border-t flex items-center justify-between gap-4">
                     <div class="flex-grow">
-                        <input type="text" id="search-bar" placeholder="Search by patient name... (billings > 1 month old require search)" class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2">
+                        <input type="text" id="search-bar" placeholder="Search by patient name..." class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2">
                     </div>
                     <div class="flex-shrink-0 flex gap-2">
                          <button id="print-billed-list-btn" class="hidden bg-gray-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-700 transition duration-300">
-                            Print Billed List
+                            Print Ready List
                         </button>
                         <button id="load-files-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
                             Refresh Database
@@ -632,38 +574,48 @@
                 </div>
             </header>
             
+            <!-- Single-Column Layout -->
             <div id="billing-columns" class="space-y-6">
                 
+                <!-- UNPROCESSED SECTION -->
                 <div id="unprocessed-section">
                     <h2 id="unprocessed-header" class="text-2xl font-semibold text-amber-700 billing-column-header col-header-unprocessed flex justify-between items-center">
-                        <span>Ready to Bill</span>
+                        <span>Unprocessed</span>
                         <span id="unprocessed-count-dash" class="text-xl font-bold ml-2"></span>
                     </h2>
                     <div id="unprocessed-list" class="billing-list-section space-y-3 p-1 mt-4">
-                        </div>
+                        <!-- List items here -->
+                    </div>
                 </div>
     
+                <!-- BILLED / "Ready to Bill" SECTION -->
                 <div id="billed-section">
                     <h2 id="billed-header" class="text-2xl font-semibold text-blue-700 billing-column-header col-header-billed flex justify-between items-center">
-                        <span>Billed (Last 30 Days)</span>
-                        <div class="flex items-center gap-2">
-                            <button id="batch-archive-btn" class="hidden bg-slate-600 text-white font-bold py-1 px-3 rounded-lg hover:bg-slate-700 transition duration-300 text-sm">
-                                Batch Archive Selected
-                            </button>
-                            <span id="billed-count-dash" class="text-xl font-bold ml-2"></span>
-                        </div>
+                        <span>Ready to Bill</span>
+                        <span id="billed-count-dash" class="text-xl font-bold ml-2"></span>
                     </h2>
-                    <div id="billed-list" class="billing-list-section space-y-3 p-1 mt-4">
-                         </div>
+                    <div id="batch-archive-container" class="hidden my-4 p-4 bg-slate-100 rounded-lg">
+                        <button id="batch-archive-btn" class="w-full bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 transition duration-300 disabled:bg-slate-400">
+                            Batch Archive Selected Items
+                        </button>
+                    </div>
+                    <div id="billed-list" class="billing-list-section space-y-3 p-1 mt-0">
+                         <!-- List items here -->
+                    </div>
                 </div>
     
+                <!-- ARCHIVE SECTION -->
                 <div id="archive-section">
                     <h2 id="archive-header" class="text-2xl font-semibold text-slate-700 billing-column-header col-header-archive flex justify-between items-center">
                         <span>Archive</span>
                         <span id="archive-count-dash" class="text-xl font-bold ml-2"></span>
                     </h2>
-                    <div id="archive-list" class="billing-list-section space-y-3 p-1 mt-4 collapsed">
-                         </div>
+                    <div class="my-4">
+                        <input type="text" id="archive-search" placeholder="Search archive by patient..." class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2">
+                    </div>
+                    <div id="archive-list" class="billing-list-section space-y-3 p-1 mt-0">
+                         <!-- List items here -->
+                    </div>
                 </div>
             </div>
 
@@ -676,9 +628,11 @@
                         </button>
                     </div>
                     
-                    <div id="billing-assistant" class="overflow-y-auto space-y-4 pr-2">
+                    <!-- Content area -->
+                    <div class="overflow-y-auto space-y-4 pr-2">
                          <div id="billing-assistant-lesions" class="space-y-4">
-                            </div>
+                            <!-- Lesion cards injected here -->
+                         </div>
                         <hr/>
                         <div>
                             <label for="billing-consult-item" class="block text-sm font-medium text-slate-600 mb-2">Consult Item</label>
@@ -690,13 +644,14 @@
                         </div>
                     </div>
 
+                    <!-- Panel Action Buttons -->
                     <div id="billing-panel-doctor-actions" class="mt-6 flex gap-3">
                         <button id="edit-procedure-btn" class="w-auto bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Edit</button>
                         <button id="save-as-billed-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300">Save as Billed</button>
                         <button id="delete-procedure-btn" class="w-auto bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition duration-300">Delete</button>
                     </div>
                     <div id="billing-panel-pm-actions" class="mt-6 flex gap-3 hidden">
-                        <button id="move-to-archive-btn" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-300">Move to Archive</button>
+                        <button id="move-to-archive-btn" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-300">Archive this one item</button>
                     </div>
                 </div>
             </div>
@@ -713,13 +668,10 @@
             
              <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
                 <h2 class="text-2xl font-semibold mb-4">Step 1: Set Save Folder</h2>
-                <p class="text-sm text-slate-600 mb-4">
-                    You must set a default save folder for the application to be able to save and load procedures.
-                </p>
                 <button id="set-save-folder-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
                     Set Default Save Folder
                 </button>
-                <p id="folder-status-msg" class="text-sm text-slate-500 mt-2">Status: No folder set. Files will be downloaded normally.</p>
+                <p id="folder-status-msg" class="text-sm text-slate-500 mt-2">Status: No folder set.</p>
             </div>
 
              <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
@@ -792,21 +744,33 @@
         </div>
     </div>
 
-    <div id="printable-report">
+    <!-- Printable Report (Hidden by default) -->
+    <div id="printable-report" class="p-4">
         <h1 id="print-title" class="text-2xl font-bold mb-4"></h1>
         <table id="print-table" class="w-full">
-            </table>
+            <!-- Content injected by JS -->
+        </table>
     </div>
 
-
+    <!-- 
+      NEW SCRIPT LOAD ORDER
+      All logic is now modularized and loaded in order.
+      - app.js: Global state, variables, and core logic
+      - db.js: IndexedDB helpers (runs early)
+      - file-system.js: File system logic (depends on db.js)
+      - settings-view.js: App settings, billing codes
+      - entry-view.js: Logic for the entry tab
+      - billing-view.js: Logic for the billing tab
+      - modals.js: Logic for popup modals
+      - events.js: Attaches all event listeners (runs last)
+    -->
     <script src="app.js"></script>
-    
     <script src="db.js"></script>
     <script src="file-system.js"></script>
     <script src="settings-view.js"></script>
-    
     <script src="entry-view.js"></script>
     <script src="billing-view.js"></script>
+    <script src="modals.js"></script>
     <script src="events.js"></script>
     
 </body>
