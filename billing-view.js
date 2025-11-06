@@ -614,24 +614,14 @@ window.printBilledList = function() {
         return;
     }
 
-    // We don't need the doctor header from the title anymore
-    // let doctorHeader = (currentAppMode === 'PM') ? 'All Doctors' : currentDoctor;
-    printTitle.innerHTML = `Billing Run Sheet - ${new Date().toLocaleDateString()}`;
+    // Get the main report element
+    const reportElement = getEl('printable-report');
     
-    // Updated table headers
-    let tableHTML = `
-        <thead>
-            <tr>
-                <th class="w-8">[ ]</th>
-                <th>Patient Name</th>
-                <th>Date</th>
-                <th>Consult</th>
-                <th>Procedure Items</th>
-                <th>Comment</th>
-            </tr>
-        </thead>
-        <tbody>
-    `;
+    // We will build a new HTML string, NOT a table.
+    let reportHTML = ``;
+    
+    // Add the main title
+    reportHTML += `<h1 style="font-size: 24px; font-weight: bold; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px;">Billing Run Sheet - ${new Date().toLocaleDateString()}</h1>`;
     
     let currentDoctorHeader = ""; // Track the last printed doctor header
     
@@ -639,72 +629,77 @@ window.printBilledList = function() {
         const data = item.data;
         const doctor = data.doctorCode;
 
-        // 1. Check if we need to print a new Doctor Header
+        // 1. Heading 1 - Doctor
         // (This works because itemsToPrint is already sorted by doctor in PM mode)
         if (doctor !== currentDoctorHeader) {
-            tableHTML += `
-                <tr class="doctor-header" style="background-color: #f1f5f9; font-weight: bold;">
-                    <td colspan="6" style="padding: 10px; border-top: 2px solid #94a3b8;">
-                        Dr. ${doctor}
-                    </td>
-                </tr>
+            reportHTML += `
+                <div class="doctor-group" style="margin-top: 25px; padding-top: 15px; border-top: 2px solid #94a3b8; page-break-before: auto;">
+                    <h2 style="font-size: 20px; font-weight: bold; color: #0284c7;">Dr. ${doctor}</h2>
+                </div>
             `;
             currentDoctorHeader = doctor; // Update the tracker
         }
         
-        // 2. Print the main procedure row
+        // 2. Subheading - Patient
         const date = new Date(data.procedureDate).toLocaleDateString();
-        const consult = data.consultItem || '';
-        const procedures = data.lesions.map(l => l.procedureItemNumber || '').filter(Boolean).join(', ');
-        const comment = data.billingComment || '';
-        
-        tableHTML += `
-            <tr class="patient-row">
-                <td>[ &nbsp; ]</td>
-                <td>${data.patientName}</td>
-                <td>${date}</td>
-                <td>${consult}</td>
-                <td>${procedures}</td>
-                <td>${comment}</td>
-            </tr>
+        reportHTML += `
+            <div class="patient-record" style="margin-left: 20px; margin-top: 15px; padding-bottom: 15px; border-bottom: 1px dashed #ccc;">
+                <div style="font-size: 16px; font-weight: bold;">Patient: ${data.patientName}</div>
         `;
         
-        // 3. Print the NEW details row for lesions
-        let detailsHTML = data.lesions.map(lesion => {
+        // 3. Subheading - Date
+        reportHTML += `
+                <div style="font-size: 14px; margin-left: 10px;">Date: ${date}</div>
+        `;
+        
+        // 4. Lesion Details
+        reportHTML += data.lesions.map(lesion => {
             const location = lesion.location || 'N/A';
             const histo = lesion.pathology ? lesion.pathology.replace(/;/g, ', ') : 'N/A';
             
-            let repairType = ''; // Only for excisions
-            if (lesion.procedure === 'Excision' || lesion.procedure === 'Wedge Excision') {
-                repairType = ` - ${lesion.excisionClosureType || 'N/A'}`;
+            // Get dimensions string
+            let dimensions = 'N/A';
+            if (lesion.billingOnly) {
+                dimensions = 'Billing-Only (No clinical dimensions)';
+            } else if (lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy') {
+                dimensions = `${lesion.punchSize}mm Punch`;
+            } else if (lesion.length && lesion.width) {
+                dimensions = `${lesion.length}mm x ${lesion.width}mm (Margin: ${lesion.margin || 0}mm)`;
             }
             
-            // e.g., "L) Arm (Histo: BCC - Flap Repair)"
+            const defectSize = lesion.defectSize ? `${lesion.defectSize.toFixed(1)}mm` : 'N/A';
+            const procedureItems = lesion.procedureItemNumber || 'N/A';
+
             return `
-                <div style="margin-left: 10px;">
-                    <strong>Lesion ${lesion.id}:</strong> ${location} 
-                    (Histo: ${histo}${repairType})
+                <div class="lesion-details" style="margin-left: 10px; margin-top: 10px; padding-left: 10px; border-left: 2px solid #e2e8f0;">
+                    <div style="font-weight: bold;">Lesion ${lesion.id}: ${location}</div>
+                    <div style="margin-left: 15px;">Dimensions: ${dimensions}</div>
+                    <div style="margin-left: 15px;">Defect Size: ${defectSize}</div>
+                    <div style="margin-left: 15px;">Histology Type (PDx): ${histo}</div>
+                    <div style="margin-left: 15px;">Procedure Items: ${procedureItems}</div>
                 </div>
             `;
         }).join('');
+        
+        // 5. Overall Billing Info (Consult and Comment)
+        const consultItems = data.consultItem || 'N/A';
+        const billingComment = data.billingComment || 'N/A';
 
-        tableHTML += `
-            <tr class="details-row">
-                <td></td> <!-- Empty checkbox col -->
-                <td colspan="5" style="padding: 5px 15px; border-bottom: 1px solid #e2e8f0;">
-                    ${detailsHTML}
-                </td>
-            </tr>
+        reportHTML += `
+                <div class="billing-summary" style="margin-left: 10px; margin-top: 10px;">
+                    <div>Consult Items: ${consultItems}</div>
+                    <div>Billing Comment: ${billingComment}</div>
+                </div>
+            </div> <!-- End patient-record -->
         `;
     });
     
-    tableHTML += `</tbody>`;
-    printTable.innerHTML = tableHTML;
+    // --- Update the DOM ---
+    // We will now write directly to printable-report's innerHTML,
+    // replacing the title and table that were there before.
+    reportElement.innerHTML = reportHTML;
     
     // --- FIX: Force the printable report to be visible ---
-    // The CSS @media print rule seems to be failing, so we'll
-    // override it with JavaScript.
-    const reportElement = getEl('printable-report');
     reportElement.style.display = 'block'; // 1. Force it to be visible
     elementToHideAfterPrint = reportElement; // 2. Store it so 'onafterprint' can hide it
     
