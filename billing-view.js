@@ -614,15 +614,16 @@ window.printBilledList = function() {
         return;
     }
 
-    let doctorHeader = (currentAppMode === 'PM') ? 'All Doctors' : currentDoctor;
-    printTitle.innerHTML = `Billing Run Sheet - ${doctorHeader} - ${new Date().toLocaleDateString()}`;
+    // We don't need the doctor header from the title anymore
+    // let doctorHeader = (currentAppMode === 'PM') ? 'All Doctors' : currentDoctor;
+    printTitle.innerHTML = `Billing Run Sheet - ${new Date().toLocaleDateString()}`;
     
+    // Updated table headers
     let tableHTML = `
         <thead>
             <tr>
                 <th class="w-8">[ ]</th>
                 <th>Patient Name</th>
-                ${currentAppMode === 'PM' ? '<th>Doctor</th>' : ''}
                 <th>Date</th>
                 <th>Consult</th>
                 <th>Procedure Items</th>
@@ -632,22 +633,67 @@ window.printBilledList = function() {
         <tbody>
     `;
     
+    let currentDoctorHeader = ""; // Track the last printed doctor header
+    
     itemsToPrint.forEach(item => {
         const data = item.data;
+        const doctor = data.doctorCode;
+
+        // 1. Check if we need to print a new Doctor Header
+        // (This works because itemsToPrint is already sorted by doctor in PM mode)
+        if (doctor !== currentDoctorHeader) {
+            tableHTML += `
+                <tr class="doctor-header" style="background-color: #f1f5f9; font-weight: bold;">
+                    <td colspan="6" style="padding: 10px; border-top: 2px solid #94a3b8;">
+                        Dr. ${doctor}
+                    </td>
+                </tr>
+            `;
+            currentDoctorHeader = doctor; // Update the tracker
+        }
+        
+        // 2. Print the main procedure row
         const date = new Date(data.procedureDate).toLocaleDateString();
         const consult = data.consultItem || '';
         const procedures = data.lesions.map(l => l.procedureItemNumber || '').filter(Boolean).join(', ');
         const comment = data.billingComment || '';
         
         tableHTML += `
-            <tr>
+            <tr class="patient-row">
                 <td>[ &nbsp; ]</td>
                 <td>${data.patientName}</td>
-                 ${currentAppMode === 'PM' ? `<td>${data.doctorCode}</td>` : ''}
                 <td>${date}</td>
                 <td>${consult}</td>
                 <td>${procedures}</td>
                 <td>${comment}</td>
+            </tr>
+        `;
+        
+        // 3. Print the NEW details row for lesions
+        let detailsHTML = data.lesions.map(lesion => {
+            const location = lesion.location || 'N/A';
+            const histo = lesion.pathology ? lesion.pathology.replace(/;/g, ', ') : 'N/A';
+            
+            let repairType = ''; // Only for excisions
+            if (lesion.procedure === 'Excision' || lesion.procedure === 'Wedge Excision') {
+                repairType = ` - ${lesion.excisionClosureType || 'N/A'}`;
+            }
+            
+            // e.g., "L) Arm (Histo: BCC - Flap Repair)"
+            return `
+                <div style="margin-left: 10px;">
+                    <strong>Lesion ${lesion.id}:</strong> ${location} 
+                    (Histo: ${histo}${repairType})
+                </div>
+            `;
+        }).join('');
+
+        tableHTML += `
+            <tr class="details-row">
+                <td></td> <!-- Empty checkbox col -->
+                <td colspan="5" style="padding: 5px 15px; border-bottom: 1px solid #e2e8f0;">
+                    ${detailsHTML}
+                </td>
             </tr>
         `;
     });
