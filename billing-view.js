@@ -263,7 +263,12 @@ window.openBillingPanel = function(item) {
                 <p><strong>PDx:</strong> ${l.pathology.replace(/;/g, ', ')}</p>
                 <p><strong>Region:</strong> ${regionText}</p>
                 <p><strong>Defect Size:</strong> <span class="font-bold text-base">${l.defectSize.toFixed(1)}mm</span></p>
-                ${isComplex ? `<p><strong>Closure:</strong> ${l.excisionClosureType} ${l.graftType ? `(${l.graftType})` : ''}</p>` : ''}
+                ${isComplex ? `
+                    <p><strong>Closure:</strong> 
+                    ${l.excisionClosureType} 
+                    ${(l.excisionClosureType === 'Graft Repair' || l.excisionClosureType === 'Graft + Flap') && l.graftType ? `(${l.graftType})` : ''}
+                    </p>
+                ` : ''}
             </div>
 
             <div class="mt-4">
@@ -364,7 +369,8 @@ window.handleHistoClick = function(event, lesion) {
     if (excisionCodes.length > 0) {
         excisionCodes.forEach(code => {
             // Create suggestion, auto-confirm if it's the only one
-            const btn = createBillingSuggestion(code.item, code.desc, 'excision', true);
+            // *** FIX: Removed 'true' - no longer auto-confirmed ***
+            const btn = createBillingSuggestion(code.item, code.desc, 'excision');
             excisionContainer.appendChild(btn);
         });
         getEl(`excision-code-container-${lesion.id}`).classList.remove('hidden');
@@ -398,7 +404,8 @@ window.handleHistoClick = function(event, lesion) {
                     reason = `(Defect ${defectSize.toFixed(1)}mm < min size ${code.minSize}mm)`;
                 }
 
-                const btn = createBillingSuggestion(code.item, code.desc, 'repair', isRecommended, isDisabled, reason);
+                // *** FIX: Removed isRecommended & isDisabled - no longer auto-confirmed ***
+                const btn = createBillingSuggestion(code.item, code.desc, 'repair', false, isDisabled, reason);
                 repairContainer.appendChild(btn);
             });
             getEl(`repair-code-container-${lesion.id}`).classList.remove('hidden');
@@ -431,13 +438,16 @@ window.findExcisionCode = function(histoType, region, size) {
  */
 window.createBillingSuggestion = function(item, desc, type, isRecommended = false, isDisabled = false, reason = '') {
     const suggestionEl = document.createElement('div');
-    suggestionEl.className = `billing-suggestion ${isRecommended ? 'confirmed' : ''} ${isDisabled ? 'disabled' : ''}`;
+    // *** FIX: Removed isRecommended from class list logic ***
+    suggestionEl.className = `billing-suggestion ${isDisabled ? 'disabled' : ''}`;
     suggestionEl.dataset.item = item;
     suggestionEl.dataset.type = type;
 
-    const btnText = isRecommended ? 'Added' : 'Confirm';
+    // *** FIX: Button text defaults to "Add" ***
+    const btnText = 'Add';
     const reasonHTML = reason ? `<span class="text-xs text-red-600 ml-2">${reason}</span>` : '';
-    const recommendedHTML = isRecommended ? `<span class="text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">Recommended</span>` : '';
+    // *** FIX: Removed "Recommended" text block ***
+    const recommendedHTML = '';
 
     suggestionEl.innerHTML = `
         <div class="flex-grow">
@@ -467,7 +477,8 @@ window.handleConfirmClick = function(event, lesionId, groupType) {
     
     // Toggle confirmed state
     suggestionEl.classList.toggle('confirmed');
-    target.textContent = suggestionEl.classList.contains('confirmed') ? 'Added' : 'Confirm';
+    // *** FIX: Toggle text between "Add" and "Remove" ***
+    target.textContent = suggestionEl.classList.contains('confirmed') ? 'Remove' : 'Add';
     
     // If it's an excision, re-check repair code rules
     if (groupType === 'excision') {
@@ -665,6 +676,16 @@ window.printBilledList = function() {
                 dimensions = `${lesion.punchSize}mm Punch`;
             } else if (lesion.length && lesion.width) {
                 dimensions = `${lesion.length}mm x ${lesion.width}mm (Margin: ${lesion.margin || 0}mm)`;
+            }
+            
+            // *** FIX: More specific logic for repair type ***
+            let repairType = '';
+            if (lesion.procedure === 'Excision' || lesion.procedure === 'Wedge Excision') {
+                repairType = ` - ${lesion.excisionClosureType || 'N/A'}`;
+                // Only add graft type if it's a graft repair
+                if (lesion.excisionClosureType === 'Graft Repair' || lesion.excisionClosureType === 'Graft + Flap') {
+                    repairType += ` (${lesion.graftType || 'N/A'})`;
+                }
             }
             
             const defectSize = lesion.defectSize ? `${lesion.defectSize.toFixed(1)}mm` : 'N/A';
