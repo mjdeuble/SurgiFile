@@ -131,7 +131,16 @@ const defaultAppSettings = {
     "sutures": {
         "deep": ["Vicryl", "Monocryl", "PDS II", "Monosyn"],
         "skin": ["Prolene", "Nylon", "Ethilon"],
-        "skin_dissolvable": ["Monocryl", "Monosyn", "PDS II", "Vicryl Rapide"]
+        "skin_dissolvable": ["Monocryl", "Monosyn", "PDS II", "Vicryl Rapide"],
+        "skin_all": [
+            "Prolene", 
+            "Nylon", 
+            "Ethilon", 
+            "Monocryl", 
+            "Monosyn", 
+            "PDS II", 
+            "Vicryl Rapide"
+        ]
     }
 };
 
@@ -166,6 +175,12 @@ window.loadAppSettings = function() {
                  setTimeout(() => {
                     alert("Your application settings were outdated and have been reset to the new 2025 MBS billing logic.");
                  }, 1000);
+            }
+
+            // 4. Add new skin_all suture list if it's missing (for migration)
+            if (!appSettings.sutures.skin_all) {
+                appSettings.sutures.skin_all = defaultAppSettings.sutures.skin_all;
+                needsResave = true;
             }
 
         } catch (e) {
@@ -230,7 +245,6 @@ window.populateSutureDropdowns = function() {
     // Clear existing options
     deepSutureTypeEl.innerHTML = '';
     skinSutureTypeEl.innerHTML = '';
-    skinSutureTypeDissolvableEl.innerHTML = '';
 
 
     // Populate Deep Sutures
@@ -241,24 +255,21 @@ window.populateSutureDropdowns = function() {
         deepSutureTypeEl.appendChild(option);
     });
     
-    // Populate Skin Sutures
-    appSettings.sutures.skin.forEach(suture => {
-        const option = document.createElement('option');
-        option.value = suture;
+    // *** FIX: Populate new combined Skin Suture dropdown ***
+    // Add a default "Select" option
+    const defaultOption = document.createElement('option');
+    defaultOption.value = "";
+    defaultOption.textContent = "Select suture type...";
+    skinSutureTypeEl.appendChild(defaultOption);
+    
+    appSettings.sutures.skin_all.forEach(suture => {
+         const option = document.createElement('option');
+         option.value = suture;
         option.textContent = suture;
         skinSutureTypeEl.appendChild(option);
     });
-
-    // Populate Skin Sutures (Dissolvable)
-    appSettings.sutures.skin_dissolvable.forEach(suture => {
-        const option = document.createElement('option');
-        option.value = suture;
-        option.textContent = suture;
-        skinSutureTypeDissolvableEl.appendChild(option);
-    });
-
-    // Set defaults
-    deepSutureSizeEl.value = "4/0";
-    skinSutureSizeEl.value = "5/0";
-    skinSutureSizeDissolvableEl.value = "5/0";
+    
+     // Set defaults
+     deepSutureSizeEl.value = "4/0";
+     skinSutureSizeEl.value = "5/0";
 }
