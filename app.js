@@ -186,7 +186,8 @@ var pathologyOptions = {
  * Switches the main view between Entry, Billing, and Settings
  * @param {string} tabName - The name of the tab to switch to
  */
-function switchTab(tabName) {
+// *** FIX: Make function global by attaching to window ***
+window.switchTab = function(tabName) {
     // Deselect all tabs and hide all views
     [tabClinicalNoteBtn, tabManualBillingBtn, tabBillingBtn, tabSettingsBtn].forEach(btn => btn.classList.remove('active'));
     [entryView, billingView, settingsView].forEach(view => view.classList.remove('active'));
@@ -226,7 +227,8 @@ function switchTab(tabName) {
 /**
  * Updates the Entry tab UI based on isBillingOnlyMode
  */
-function updateEntryModeUI() {
+// *** FIX: Make function global by attaching to window ***
+window.updateEntryModeUI = function() {
     entryFormContainer.classList.toggle('billing-only-mode', isBillingOnlyMode);
     if (isBillingOnlyMode) {
         entryViewSubtitle.textContent = 'Part 1: Enter minimal billing data for a procedure performed previously.';
@@ -241,7 +243,8 @@ function updateEntryModeUI() {
  * Sets the app mode to 'Doctor' or 'PM'
  * @param {string} mode - The mode to switch to ('Doctor' or 'PM')
  */
-function setAppMode(mode) {
+// *** FIX: Make function global by attaching to window ***
+window.setAppMode = function(mode) {
     currentAppMode = mode;
     localStorage.setItem('appMode', mode);
 
@@ -298,7 +301,8 @@ function setAppMode(mode) {
  * Populates the doctor dropdown list from the scanned folder names
  * @param {string[]} doctors - An array of doctor display names
  */
-function populateDoctorDropdown(doctors) {
+// *** FIX: Make function global by attaching to window ***
+window.populateDoctorDropdown = function(doctors) {
     const savedDoctor = localStorage.getItem('currentDoctor');
     navDoctorDropdown.innerHTML = ''; // Clear old options
 
@@ -337,7 +341,8 @@ function populateDoctorDropdown(doctors) {
 /**
  * Handles the logic when the doctor dropdown selection changes
  */
-function handleDoctorChange() {
+// *** FIX: Make function global by attaching to window ***
+window.handleDoctorChange = function() {
     currentDoctor = navDoctorDropdown.value;
     localStorage.setItem('currentDoctor', currentDoctor);
 
