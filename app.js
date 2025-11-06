@@ -123,10 +123,8 @@ var orientationInputContainer = getEl('orientation-input-container');
 var closureDetailsContainer = getEl('closure-details-container');
 var useDeepSutureEl = getEl('useDeepSuture');
 var deepSutureContainer = getEl('deep-suture-container');
-var useNonDissolvableEl = getEl('useNonDissolvable');
+var useSkinSutureEl = getEl('useSkinSuture'); // <-- FIX: Added this new element
 var skinSutureDetails = getEl('skin-suture-details');
-var useDissolvableEl = getEl('useDissolvable');
-var skinSutureDetailsDissolvable = getEl('skin-suture-details-dissolvable');
 
 // --- Entry Form Inputs ---
 var anatomicalRegionEl = getEl('anatomicalRegion');
@@ -136,8 +134,6 @@ var skinSutureTypeEl = getEl('skinSutureType');
 var deepSutureTypeEl = getEl('deepSutureType');
 var skinSutureSizeEl = getEl('skinSutureSize');
 var deepSutureSizeEl = getEl('deepSutureSize');
-var skinSutureTypeDissolvableEl = getEl('skinSutureTypeDissolvable');
-var skinSutureSizeDissolvableEl = getEl('skinSutureSizeDissolvable');
 var justificationButtons = getEl('justification-buttons');
 var flapGraftJustificationInput = getEl('flapGraftJustification');
 
