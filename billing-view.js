@@ -8,6 +8,17 @@
 // - Moving files between folders (save as billed, archive)
 // - Batch processing and printing
 
+// This variable will hold the report element so we can hide it after printing
+let elementToHideAfterPrint = null;
+
+// This event fires after the print dialog is closed
+window.onafterprint = () => {
+    if (elementToHideAfterPrint) {
+        elementToHideAfterPrint.style.display = 'none';
+        elementToHideAfterPrint = null;
+    }
+};
+
 /**
  * Loads all billing files based on the current app mode (Doctor or PM)
  * and the selected doctor.
@@ -644,6 +655,13 @@ window.printBilledList = function() {
     tableHTML += `</tbody>`;
     printTable.innerHTML = tableHTML;
     
-    // Use the print-specific stylesheet to show the report
+    // --- FIX: Force the printable report to be visible ---
+    // The CSS @media print rule seems to be failing, so we'll
+    // override it with JavaScript.
+    const reportElement = getEl('printable-report');
+    reportElement.style.display = 'block'; // 1. Force it to be visible
+    elementToHideAfterPrint = reportElement; // 2. Store it so 'onafterprint' can hide it
+    
+    // 3. Call print. The 'onafterprint' event will handle hiding it.
     window.print();
 }
