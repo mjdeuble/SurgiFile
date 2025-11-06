@@ -236,12 +236,23 @@ function setAppMode(mode) {
     currentAppMode = mode;
     localStorage.setItem('appMode', mode);
 
-    if (mode === 'PM') {
+    // Show/hide entry tabs based on mode
+    const isPM = (mode === 'PM');
+    tabClinicalNoteBtn.style.display = isPM ? 'none' : 'inline-block';
+    tabManualBillingBtn.style.display = isPM ? 'none' : 'inline-block';
+
+    if (isPM) {
         modeBtnPM.classList.add('active');
         modeBtnDoctor.classList.remove('active');
         navDoctorDropdownContainer.classList.add('hidden'); // Hide dropdown in PM mode
         appTitle.textContent = "Billing & Processing (PM View)";
         currentDoctor = null; // PM is not a doctor
+
+        // If PM mode is set while on an entry tab, force switch to billing
+        if (entryView.classList.contains('active')) {
+            switchTab('billing');
+        }
+
     } else { // Doctor mode
         modeBtnDoctor.classList.add('active');
         modeBtnPM.classList.remove('active');
@@ -252,20 +263,21 @@ function setAppMode(mode) {
     }
 
     // Update the billing view to reflect the new mode
-    billingViewContainer.classList.toggle('pm-mode-active', mode === 'PM');
-    billingViewContainer.classList.toggle('doctor-mode-active', mode === 'Doctor');
+    billingViewContainer.classList.toggle('pm-mode-active', isPM);
+    billingViewContainer.classList.toggle('doctor-mode-active', !isPM);
 
-    // Make the correct sections collapsible
-    if (mode === 'PM') {
-        // PM: Billed is always expanded, Archive is collapsible
+    // Set default collapse states based on mode
+    if (isPM) {
+        // PM: Billed is always expanded, Archive is collapsed
+        unprocessedList.classList.add('collapsed'); // (is hidden by CSS anyway)
         billedList.classList.remove('collapsed');
+        archiveList.classList.add('collapsed');
     } else {
-        // Doctor: Billed is collapsible, Archive is collapsible
-        const isBilledCollapsed = localStorage.getItem('billedCollapsed') === 'true';
-        billedList.classList.toggle('collapsed', isBilledCollapsed);
+        // Doctor: Unprocessed is expanded, Billed & Archive are collapsed
+        unprocessedList.classList.remove('collapsed');
+        billedList.classList.add('collapsed');
+        archiveList.classList.add('collapsed');
     }
-    const isArchiveCollapsed = localStorage.getItem('archiveCollapsed') !== 'false'; // Default to collapsed
-    archiveList.classList.toggle('collapsed', isArchiveCollapsed);
 
     // Refresh the file list for the new mode
     if (billingView.classList.contains('active')) {
@@ -287,6 +299,13 @@ function populateDoctorDropdown(doctors) {
         option.textContent = "No doctors found";
         navDoctorDropdown.appendChild(option);
         currentDoctor = null;
+
+        // *** REQUEST #7 ***
+        // If no doctors are found AND no save folder is set,
+        // redirect to the settings page.
+        if (!saveFolderHandle) {
+            switchTab('settings');
+        }
         return;
     }
 
