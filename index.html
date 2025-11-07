@@ -269,7 +269,8 @@
             
             <!-- This container will be used to hide/show sections -->
             <div id="entry-form-container">
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- FIX: Added id="entry-grid-container" to allow column toggling -->
+                <div id="entry-grid-container" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div class="bg-white p-6 rounded-2xl shadow-lg">
                         <form id="lesion-form">
                             
@@ -313,7 +314,8 @@
                                     </select>
                                 </div>
                                 
-                                <div>
+                                <!-- FIX: Added id="pathology-container" to this div -->
+                                <div id="pathology-container">
                                     <label class="block text-sm font-medium text-slate-600 mb-2">Provisional Diagnosis (PDx)</label>
                                     <div class="flex items-center gap-2">
                                         <div id="pathologyDisplay" class="flex-grow bg-slate-100 border border-slate-300 rounded-lg p-3 h-12 flex items-center text-slate-500 italic cursor-pointer">Click to select...</div>
@@ -489,15 +491,18 @@
                         </div>
                     </div>
             
-                    <div>
-                        <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+                    <!-- FIX: Added id="output-column" to this entire div -->
+                    <div id="output-column">
+                        <!-- FIX: Added id="lesions-list-container" to this div -->
+                        <div id="lesions-list-container" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
                             <h2 class="text-2xl font-semibold mb-4 border-b pb-3">Recorded Lesions for this Patient</h2>
                             <div id="lesions-list" class="space-y-3">
                                 <p class="text-slate-500 italic">No lesions added yet.</p>
                             </div>
                         </div>
             
-                        <div class="flex items-center gap-4 mb-4">
+                        <!-- FIX: Added id="output-style-container" to this div -->
+                        <div id="output-style-container" class="flex items-center gap-4 mb-4">
                             <label class="text-sm font-medium text-slate-600">Output Style:</label>
                             <div class="flex gap-2">
                                 <button id="output-btn-combined" class="output-style-btn px-3 py-1 text-sm rounded-md bg-slate-200 text-slate-700" data-value="combined">Combined</button>
