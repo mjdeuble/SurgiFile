@@ -41,6 +41,7 @@ window.updateFormUI = function(event) {
         // --- MANUAL BILLING MODE ---
         // Show only the bare minimum for billing
         finalDefectSizeContainer.style.display = 'block';
+        pathologyContainer.style.display = 'none'; // <-- FIX: Hide PDx container
         
         if (procedure === 'Excision') {
             excisionOptions.style.display = 'block';
@@ -56,6 +57,7 @@ window.updateFormUI = function(event) {
         // --- FULL CLINICAL NOTE MODE ---
         getEl('full-clinical-fields').style.display = 'block';
         orientationInputContainer.style.display = 'block';
+        pathologyContainer.style.display = 'block'; // <-- FIX: Show PDx container
 
         switch (procedure) {
             case 'Excision':
@@ -149,7 +151,10 @@ window.checkLesionFormCompleteness = function() {
     // --- Validate common fields (required in both modes) ---
     isAllValid &= validateAndHighlight(getEl('lesionLocation'), true);
     isAllValid &= validateAndHighlight(getEl('anatomicalRegion'), true);
-    isAllValid &= validateAndHighlight(getEl('provisionalDiagnoses'), true);
+    // --- FIX: Only validate PDx if NOT in billing-only mode ---
+    if (!isBillingOnlyMode) {
+        isAllValid &= validateAndHighlight(getEl('provisionalDiagnoses'), true);
+    }
     
     if (isBillingOnlyMode) {
         // --- Billing-Only Mode Validation ---
@@ -293,7 +298,8 @@ window.addOrUpdateLesion = function() {
         location: getVal('lesionLocation'),
         anatomicalRegion: getVal('anatomicalRegion'),
         anesthetic: isBillingOnlyMode ? '' : getVal('localAnesthetic'),
-        pathology: getVal('provisionalDiagnoses'),
+        // --- FIX: Set pathology based on mode ---
+        pathology: isBillingOnlyMode ? 'Manual Billing Entry' : getVal('provisionalDiagnoses'),
         excludeNMSC: getChecked('excludeNMSC'), // Still need this for audit
         excludeMelanoma: getChecked('excludeMelanoma'), // Still need this for audit
         dermoscopyUsed: getVal('dermoscopyUsed'), // Still need this for audit
@@ -422,10 +428,8 @@ window.generateClinicalRequest = function() {
     }
 
     return lesions.map(lesion => {
-        // Skip billing-only entries
-        if (lesion.billingOnly) {
-            return `Lesion ${lesion.id} (${lesion.location}) was entered for billing-only. No clinical note.`;
-        }
+        // --- FIX: Removed the 'if (lesion.billingOnly)' check ---
+        // We now want to generate an audit string for all lesions.
 
         const auditParts = [];
         auditParts.push(lesion.location);
