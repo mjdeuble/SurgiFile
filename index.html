@@ -1,768 +1,729 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+// --- BILLING VIEW LOGIC ---
 
-    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-    <link rel="apple-touch-icon" href="icon-192.png">
+// This file manages all logic for the "Billing & Processing" tab:
+// - Loading files from the doctor folders
+// - Rendering the Unprocessed, Ready to Bill, and Archive lists
+// - Handling search/filtering
+// - Opening and managing the Billing Panel (assistant)
+// - Moving files between folders (save as billed, archive)
+// - Batch processing and printing
+
+// This variable will hold the report element so we can hide it after printing
+let elementToHideAfterPrint = null;
+
+// This event fires after the print dialog is closed
+window.onafterprint = () => {
+    if (elementToHideAfterPrint) {
+        elementToHideAfterPrint.style.display = 'none';
+        elementToHideAfterPrint = null;
+    }
+};
+
+/**
+ * Loads all billing files based on the current app mode (Doctor or PM)
+ * and the selected doctor.
+ */
+window.loadBillingFiles = async function() {
+    if (!saveFolderHandle || !(await verifyFolderPermission(saveFolderHandle, true))) {
+        if (currentAppMode === 'Doctor' && !currentDoctor) {
+            // This is fine, just means no folder is set
+        }
+        // Even if no folder, we must clear the lists
+        allFiles = { unprocessed: [], billed: [], archive: [] };
+        renderFileLists(); // Render empty lists
+        return;
+    }
+
+    allFiles = { unprocessed: [], billed: [], archive: [] }; // Reset global state
+
+    // Determine which doctors to scan
+    let doctorsToScan = [];
+    if (currentAppMode === 'PM') {
+        doctorsToScan = appSettings.doctorList || [];
+    } else if (currentDoctor) {
+        doctorsToScan = [currentDoctor];
+    }
+
+    for (const doctorDisplayName of doctorsToScan) {
+        const doctorFolderName = doctorDisplayName.replace(/\s+/g, '_');
+        try {
+            const doctorDir = await saveFolderHandle.getDirectoryHandle(doctorFolderName, { create: false });
+
+            // 1. Load Unprocessed
+            try {
+                const unprocessedDir = await doctorDir.getDirectoryHandle('Unprocessed');
+                for await (const entry of unprocessedDir.values()) {
+                    if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                        const fileHandle = await unprocessedDir.getFileHandle(entry.name);
+                        const file = await fileHandle.getFile();
+                        const data = JSON.parse(await file.text());
+                        allFiles.unprocessed.push({ data, fileHandle, fromFolder: 'Unprocessed', fromDoctor: doctorDisplayName });
+                    }
+                }
+            } catch (e) { console.error(`No 'Unprocessed' folder for ${doctorDisplayName}?`, e); }
+
+            // 2. Load Billed
+            try {
+                const billedDir = await doctorDir.getDirectoryHandle('Billed');
+                for await (const entry of billedDir.values()) {
+                    if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                        const fileHandle = await billedDir.getFileHandle(entry.name);
+                        const file = await fileHandle.getFile();
+                        const data = JSON.parse(await file.text());
+                        allFiles.billed.push({ data, fileHandle, fromFolder: 'Billed', fromDoctor: doctorDisplayName });
+                    }
+                }
+            } catch (e) { console.error(`No 'Billed' folder for ${doctorDisplayName}?`, e); }
+
+            // 3. Load Archive (scans all sub-folders, Year/Month)
+            try {
+                const archiveDir = await doctorDir.getDirectoryHandle('Archive');
+                // Pass true for recursive scan
+                await scanFolderRecursive(archiveDir, allFiles.archive, doctorDisplayName, 'Archive');
+            } catch (e) { console.error(`No 'Archive' folder for ${doctorDisplayName}?`, e); }
+
+        } catch (e) {
+            console.error(`Could not find folder for doctor: ${doctorDisplayName}`, e);
+        }
+    }
+
+
+    // Sort files
+    // Unprocessed: Newest first
+    allFiles.unprocessed.sort((a, b) => b.data.procedureId - a.data.procedureId);
     
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clinical Management PWA</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    // Billed ("Ready to Bill"):
+    if (currentAppMode === 'PM') {
+        // PM Mode: Sort by Doctor, then Patient
+        allFiles.billed.sort((a, b) => {
+            if (a.data.doctorCode < b.data.doctorCode) return -1;
+            if (a.data.doctorCode > b.data.doctorCode) return 1;
+            // If doctors are same, sort by patient name
+            if (a.data.patientName < b.data.patientName) return -1;
+            if (a.data.patientName > b.data.patientName) return 1;
+            return 0;
+        });
+    } else {
+        // Doctor Mode: Newest first
+        allFiles.billed.sort((a, b) => b.data.procedureId - a.data.procedureId);
+    }
+
+    // Archive: Newest first
+    allFiles.archive.sort((a, b) => b.data.procedureId - a.data.procedureId);
+
+    renderFileLists();
+}
+
+/**
+ * Recursively scans folders (for Archive)
+ */
+window.scanFolderRecursive = async function(dirHandle, fileList, doctorName, fromFolder) {
+    for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+            const file = await entry.getFile();
+            const data = JSON.parse(await file.text());
+            fileList.push({ data, fileHandle: entry, fromFolder: fromFolder, fromDoctor: doctorName });
+        } else if (entry.kind === 'directory') {
+            // This is a sub-folder (e.g., "2025" or "01-Jan")
+            // Recurse into it
+            await scanFolderRecursive(entry, fileList, doctorName, fromFolder);
+        }
+    }
+}
+
+
+/**
+ * Renders the file lists to the UI based on search terms
+ */
+window.renderFileLists = function() {
+    const mainSearchTerm = searchBar.value.toLowerCase();
+    const archiveSearchTerm = archiveSearch.value.toLowerCase(); // Separate search for archive
     
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#f1f5f9">
+    // Show/hide batch archive button
+    batchArchiveBtn.style.display = (currentAppMode === 'PM' && allFiles.billed.length > 0) ? 'flex' : 'none';
 
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #e2e8f0; /* bg-slate-200 */
-        }
-        /* Custom scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
-        /* Hide number input spinners */
-        input[type=number]::-webkit-inner-spin-button,
-        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        input[type=number] { -moz-appearance: textfield; }
-        .form-section { display: none; }
-        
-        /* Clock styles */
-        .clock-face { stroke: #94a3b8; stroke-width: 4; fill: white; }
-        .hour-marker { stroke: #94a3b8; stroke-width: 2; }
-        .center-dot { fill: #1e293b; }
-        .hour-text { font-size: 20px; font-weight: 500; fill: #334155; text-anchor: middle; dominant-baseline: middle; cursor: pointer; transition: fill 0.2s, font-weight 0.2s; -webkit-user-select: none; user-select: none; }
-        .hour-text.disabled { cursor: not-allowed; fill: #cbd5e1; }
-        .hour-text:not(.disabled):hover { fill: #0ea5e9; }
-        .hour-text.selected { fill: #0284c7; font-weight: 700; }
-        
-        .main-marker-btn.selected, .modal-marker-btn.selected, .direction-btn.selected, .output-style-btn.selected, .justification-btn.selected, .dermoscopy-btn.selected { background-color: #0284c7; color: white; border-color: #0284c7; }
-        .billing-btn.selected { background-color: #0284c7; color: white; border-color: #0284c7; }
-        .direction-btn:disabled { background-color: #e2e8f0; color: #94a3b8; cursor: not-allowed; }
+    const filterAndRender = (listEl, data, searchTerm, isBilledList = false) => {
+        listEl.innerHTML = '';
+        let count = 0;
+        const itemsToRender = data.filter(item => 
+            item.data.patientName.toLowerCase().includes(searchTerm) ||
+            item.data.doctorCode.toLowerCase().includes(searchTerm)
+        );
 
-        /* Style for missing required fields */
-        .missing-field {
-            border-color: #ef4444 !important; /* red-500 */
-            --tw-ring-color: #ef4444;
-            --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
-            --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
-            box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+        if (itemsToRender.length === 0) {
+             listEl.innerHTML = `<p class="text-slate-500 italic p-2">No files found.</p>`;
+        } else {
+            itemsToRender.forEach(item => {
+                // Pass true to add a checkbox if it's the Billed list in PM mode
+                listEl.appendChild(createFileListItem(item, (isBilledList && currentAppMode === 'PM')));
+                count++;
+            });
         }
-        
-        /* Tab Styles */
-        .tab-btn {
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-weight: 600;
-            color: #334155; /* text-slate-700 */
-            background-color: #f1f5f9; /* bg-slate-100 */
-            transition: all 0.2s;
-        }
-        .tab-btn:hover {
-            background-color: #e2e8f0; /* bg-slate-200 */
-        }
-        .tab-btn.active {
-            color: white;
-            background-color: #0284c7; /* bg-sky-600 */
-        }
-        .app-view {
-            display: none; /* Hidden by default */
-        }
-        .app-view.active {
-            display: block; /* Shown by JS */
-        }
+        return count;
+    };
+    
+    const uCount = filterAndRender(unprocessedList, allFiles.unprocessed, mainSearchTerm);
+    // Pass true for the isBilledList flag
+    const bCount = filterAndRender(billedList, allFiles.billed, mainSearchTerm, true);
+    // Use the separate archive search term
+    const aCount = filterAndRender(archiveList, allFiles.archive, archiveSearchTerm);
 
-        /* Mode Button Styles */
-        .mode-btn {
-            background-color: #e2e8f0; /* bg-slate-200 */
-            color: #334155; /* text-slate-700 */
-            font-weight: 500;
-            padding: 6px 12px;
-            border-radius: 6px;
-            transition: all 0.2s;
-        }
-        .mode-btn:hover {
-            background-color: #cbd5e1; /* bg-slate-300 */
-        }
-        .mode-btn.active {
-            background-color: #0284c7; /* bg-sky-600 */
-            color: white;
-        }
+    unprocessedCountDash.textContent = uCount;
+    billedCountDash.textContent = bCount;
+    archiveCountDash.textContent = aCount;
+}
 
-        /* Billing View File List Styles */
-        .file-list-item {
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .file-list-item:hover {
-            background-color: #f8fafc; /* bg-slate-50 */
-        }
+/**
+ * Creates a single file list item div
+ * @param {object} item - The file object (data, fileHandle, fromFolder, fromDoctor)
+ * @param {boolean} addCheckbox - Whether to add a batch-process checkbox
+ * @returns {HTMLElement} The created div element
+ */
+window.createFileListItem = function(item, addCheckbox = false) {
+    const { data, fileHandle, fromFolder, fromDoctor } = item;
+    const el = document.createElement('div');
+    el.className = 'file-list-item bg-white p-3 rounded-lg shadow border border-slate-200';
+    const date = new Date(data.procedureDate).toLocaleDateString();
+    
+    let codes = data.consultItem || '';
+    if (data.lesions) {
+        codes += ' ' + data.lesions.map(l => l.procedureItemNumber || '').filter(Boolean).join(', ');
+    }
+    codes = codes.trim();
 
-        /* Billing Column Colors & Layout */
-        .billing-column-header {
-            border-bottom-width: 4px;
-            padding-bottom: 8px;
-            cursor: pointer;
-        }
-        .col-header-unprocessed { border-color: #f59e0b; } /* amber-500 */
-        .col-header-billed { border-color: #3b82f6; } /* blue-500 */
-        .col-header-archive { border-color: #94a3b8; } /* slate-400 */
+    // In PM Mode, show the doctor's name on the card
+    const doctorNameHTML = currentAppMode === 'PM' 
+        ? `<p class="text-sm font-medium text-sky-700">${data.doctorCode}</p>`
+        : '';
+    
+    // Add checkbox for batch processing
+    const checkboxHTML = addCheckbox
+        ? `<div class="mr-3 pt-1">
+             <input type="checkbox" class="batch-checkbox h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" data-filename="${fileHandle.name}">
+           </div>`
+        : '';
 
-        /* Single Column & Collapsible Logic */
-        .billing-list-section {
-            max-height: 45vh; /* Set max height for scroll */
-            overflow-y: auto;
-            transition: all 0.3s ease-in-out;
-            border-width: 1px;
-            padding: 4px;
-            margin-top: 1rem;
-            border-color: #e2e8f0; /* bg-slate-200 */
-        }
-        .billing-list-section.collapsed {
-            max-height: 0;
-            overflow: hidden;
-            border-width: 0;
-            padding: 0;
-            margin-top: 0;
-        }
-        
-        /* --- Role-Specific UI --- */
-        
-        /* When in Doctor Mode... */
-        .doctor-mode-active #billing-columns {
-            /* (Defaults are set in app.js: unprocessed open, others collapsed) */
-        }
-
-        /* When in PM Mode... */
-        .pm-mode-active #unprocessed-section {
-            display: none; /* Hide the unprocessed section for PMs */
-        }
-        .pm-mode-active #print-billed-list-btn {
-             display: inline-flex; /* Show the print button for PMs */
-        }
-        .pm-mode-active #batch-archive-container {
-            display: block; /* Show batch archive button */
-        }
-
-        /* Print Styles */
-        @media print {
-            body * {
-                visibility: hidden;
-            }
-            #printable-report, #printable-report * {
-                visibility: visible;
-            }
-            #printable-report {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                font-size: 12px; /* Set a base font size for print */
-                color: #000;
-            }
-            /* These styles will apply to the new list format */
-            #printable-report h1, #printable-report h2, #printable-report div {
-                visibility: visible;
-            }
-            @page {
-                size: auto;
-                margin: 20mm;
-            }
-        }
-        #printable-report {
-            display: none; /* Hidden by default, only shown for printing */
-        }
-
-        /* Billing Assistant Suggestion Style */
-        .billing-suggestion {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background-color: #f1f5f9; /* bg-slate-100 */
-            padding: 8px 12px;
-            border-radius: 8px;
-            border: 2px solid #f1f5f9;
-            transition: all 0.2s;
-        }
-        .billing-suggestion.confirmed {
-            border-color: #0284c7; /* border-sky-600 */
-            background-color: #f0f9ff; /* bg-sky-50 */
-        }
-        .billing-suggestion.disabled {
-            background-color: #f8fafc; /* bg-slate-50 */
-            opacity: 0.7;
-        }
-        .billing-suggestion .confirm-btn {
-            background-color: #0ea5e9; /* bg-sky-500 */
-            color: white;
-            font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 0.875rem;
-            transition: all 0.2s;
-        }
-        .billing-suggestion .confirm-btn:hover {
-            background-color: #0284c7; /* bg-sky-600 */
-        }
-        /* Style for "Remove" button state */
-        .billing-suggestion.confirmed .confirm-btn {
-            background-color: #dc2626; /* bg-red-600 */
-        }
-        .billing-suggestion.confirmed .confirm-btn:hover {
-            background-color: #b91c1c; /* bg-red-700 */
-        }
-        
-        .billing-suggestion .confirm-btn:disabled {
-            background-color: #94a3b8; /* bg-slate-400 */
-            cursor: not-allowed;
-        }
-        
-        /* Billing-Only Mode Toggle (driven by class on entry-form-container) */
-        .billing-only-mode #full-clinical-fields {
-            display: none !important;
-        }
-        .billing-only-mode #final-defect-size-container {
-             display: block !important;
-        }
-
-
-    </style>
-</head>
-<body class="bg-slate-200 text-slate-800">
-
-    <nav class="bg-white shadow-md w-full p-4 sticky top-0 z-40">
-        <div class="container mx-auto flex items-center justify-between">
-            <h1 id="app-title" class="text-2xl font-bold text-slate-700">Clinical Management PWA</h1>
-            
-            <div class="flex items-center gap-4">
-                <!-- Mode Buttons -->
-                <div class="flex items-center gap-4">
-                    <span class="font-semibold text-slate-600">Mode:</span>
-                    <button id="mode-btn-doctor" class="mode-btn active">Doctor</button>
-                    <button id="mode-btn-pm" class="mode-btn">Practice Manager</button>
-                    
-                    <div id="nav-doctor-dropdown-container" class="active">
-                         <select id="nav-doctor-dropdown" class="bg-slate-100 border border-slate-300 rounded-lg p-2 font-medium text-slate-700"></select>
-                    </div>
-                </div>
-
-                <div class="w-px h-8 bg-slate-300"></div> <!-- Divider -->
-
-                <!-- Tab Buttons -->
-                <button id="tab-clinical-note" class="tab-btn active">Clinical Note Entry</button>
-                <button id="tab-manual-billing" class="tab-btn">Manual Billing</button>
-                <button id="tab-billing" class="tab-btn">Billing & Processing</button>
-                <button id="tab-settings" class="tab-btn">Settings</button>
+    el.innerHTML = `
+      <div class="flex">
+        ${checkboxHTML}
+        <div class="flex-grow">
+            <div class="flex justify-between items-start">
+                <p class="font-semibold text-slate-800">${data.patientName}</p>
+                ${doctorNameHTML}
             </div>
+            <p class="text-sm text-slate-500">${date}</p>
+            ${(data.status === 'Billed' || data.status === 'Archived') ? `<p class="text-sm font-medium text-blue-600">${codes || 'No codes'}</p>` : ''}
+            ${data.billingComment ? `<p class="text-xs italic text-amber-700 mt-1">Note: ${data.billingComment}</p>` : ''}
+            ${data.status === 'Deleted' ? `<p class="text-sm font-bold text-red-600">DELETED</p>` : ''}
         </div>
-    </nav>
-
-    <div id="entry-view" class="app-view active">
-        <div class="container mx-auto p-4 md:p-8 max-w-7xl">
-            <header class="text-center mb-8 p-6 bg-white rounded-2xl shadow-lg">
-                <h1 class="text-3xl md:text-4xl font-bold text-slate-700">Excision Note Generator</h1>
-                <p id="entry-view-subtitle" class="text-slate-500 mt-2">Part 1: Enter full clinical data and generate the operation note.</p>
-            </header>
-            
-            <!-- This container will be used to hide/show sections -->
-            <div id="entry-form-container">
-                <!-- FIX: Added id="entry-grid-container" to allow column toggling -->
-                <div id="entry-grid-container" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div class="bg-white p-6 rounded-2xl shadow-lg">
-                        <form id="lesion-form">
-                            
-                            <div class="space-y-4 border-b border-slate-200 pb-6 mb-6">
-                                <h2 class="text-2xl font-semibold">Procedure Details</h2>
-                                <div>
-                                    <label for="patientName" class="block text-sm font-medium text-slate-600 mb-2">Patient Name</label>
-                                    <input type="text" id="patientName" placeholder="e.g., John Smith" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                </div>
-                            </div>
-                            
-                            <h2 class="text-2xl font-semibold mb-4" id="form-title">Enter Lesion Details</h2>
-            
-                            <div>
-                                <label for="procedureType" class="block text-sm font-medium text-slate-600 mb-2">1. Procedure Type</label>
-                                <select id="procedureType" name="procedureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500">
-                                    <option value="" disabled selected>Select a procedure...</option>
-                                    <option value="Excision">Excision</option>
-                                    <option value="Punch">Punch</option>
-                                    <option value="Shave">Shave</option>
-                                    <option value="Wedge Excision">Wedge Excision</option>
-                                </select>
-                            </div>
-            
-                            <div id="dynamic-options-container" class="mt-6 space-y-4 border-t border-slate-200 pt-6">
-                                
-                                <!-- Common Fields (for both modes) -->
-                                <div>
-                                    <label for="lesionLocation" class="block text-sm font-medium text-slate-600 mb-2">Lesion Location Description</label>
-                                    <input type="text" id="lesionLocation" name="lesionLocation" placeholder="e.g., Left forearm, 10cm proximal to wrist" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                </div>
-                
-                                <div>
-                                    <label for="anatomicalRegion" class="block text-sm font-medium text-slate-600 mb-2">Anatomical Region (for billing)</label>
-                                    <select id="anatomicalRegion" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                        <option value="">Select billing region...</option>
-                                        <!-- Compliant Area Definitions -->
-                                        <option value="Area1">Area 1: Nose, eyelid, eyebrow, lip, ear, digit, genitalia (or contiguous)</option>
-                                        <option value="Area2">Area 2: Face, neck, scalp, nipple, distal limbs (from knee/ulnar styloid)</option>
-                                        <option value="Area3">Area 3: Trunk, proximal limbs (areas not in 1 or 2)</option>
-                                    </select>
-                                </div>
-                                
-                                <!-- FIX: Added id="pathology-container" to this div -->
-                                <div id="pathology-container">
-                                    <label class="block text-sm font-medium text-slate-600 mb-2">Provisional Diagnosis (PDx)</label>
-                                    <div class="flex items-center gap-2">
-                                        <div id="pathologyDisplay" class="flex-grow bg-slate-100 border border-slate-300 rounded-lg p-3 h-12 flex items-center text-slate-500 italic cursor-pointer">Click to select...</div>
-                                        <input type="hidden" id="provisionalDiagnoses">
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <label class="flex items-center space-x-2 font-medium text-slate-700">
-                                        <input type="checkbox" id="excludeNMSC" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <span>Exclude NMSC?</span>
-                                    </label>
-                                    <label class="flex items-center space-x-2 font-medium text-slate-700">
-                                        <input type="checkbox" id="excludeMelanoma" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <span>Exclude Melanoma?</span>
-                                    </label>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-600 mb-2">Dermoscopy Used?</label>
-                                    <div id="dermoscopy-btn-container" class="flex gap-2">
-                                        <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Y">Yes</button>
-                                        <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="N">No</button>
-                                    </div>
-                                    <input type="hidden" id="dermoscopyUsed">
-                                </div>
-
-
-                                <!-- Billing-Only Mode Field -->
-                                <div id="final-defect-size-container" class="form-section">
-                                    <label for="finalDefectSize" class="block text-sm font-medium text-slate-600 mb-2">Final Defect Size (mm)</label>
-                                    <input type="number" id="finalDefectSize" placeholder="Enter final defect diameter" class="w-full bg-slate-50 border rounded-lg p-3">
-                                </div>
-                                
-                                <!-- Procedure-Specific Fields -->
-                                <div id="excision-options" class="form-section space-y-4">
-                                    <label for="excisionClosureType" class="block text-sm font-medium text-slate-600 mb-2">Excision Closure Method</label>
-                                    <select id="excisionClosureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                        <option value="Ellipse">Ellipse</option>
-                                        <option value="Secondary Intention">Secondary Intention</option>
-                                        <option value="Flap Repair">Flap Repair</option>
-                                        <option value="Graft Repair">Graft Repair</option>
-                                        <option value="Graft + Flap">Graft + Flap</option>
-                                    </select>
-                                </div>
-                                <div id="punch-options" class="form-section">
-                                    <label for="punchType" class="block text-sm font-medium text-slate-600 mb-2">Punch Type</label>
-                                    <select id="punchType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                        <option value="Punch Biopsy">Punch Biopsy</option>
-                                        <option value="Punch Excision">Punch Excision</option>
-                                    </select>
-                                </div>
-                                <div id="graft-type-container" class="form-section">
-                                    <label for="graftType" class="block text-sm font-medium text-slate-600 mb-2">Graft Type</label>
-                                    <select id="graftType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                        <option value="Split-Skin Graft (SSG)">Split-Skin Graft (SSG)</option>
-                                        <option value="Full-Thickness Skin Graft (FTSG)">Full-Thickness Skin Graft (FTSG)</option>
-                                    </select>
-                                </div>
-
-                                <!-- Full Clinical Mode Fields -->
-                                <div id="full-clinical-fields" class="form-section space-y-4">
-                                    <div id="justification-container" class="form-section space-y-2">
-                                        <label class="block text-sm font-medium text-slate-600">Justification for Flap/Graft</label>
-                                        <div id="justification-buttons" class="flex flex-wrap gap-2">
-                                            <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="Defect size/tension prevents primary closure.">Size/Tension</button>
-                                            <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="Anatomical location with poor skin laxity.">Location</button>
-                                            <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="To avoid distortion of adjacent anatomical features.">Avoid Distortion</button>
-                                            <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="To preserve cosmetic appearance (color/texture/contour).">Cosmesis</button>
-                                            <button type="button" class="justification-btn text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full hover:bg-sky-200" data-text="To maintain mobility over a joint.">Mobility</button>
-                                        </div>
-                                        <input type="hidden" id="flapGraftJustification">
-                                    </div>
-                                    <div>
-                                        <label for="localAnesthetic" class="block text-sm font-medium text-slate-600 mb-2">Local Anesthetic</label>
-                                        <select id="localAnesthetic" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                            <option value="Lignocaine 1% with Adrenaline 1:100,000">Lignocaine 1% w/ Adrenaline</option>
-                                            <option value="Lignocaine 1% without Adrenaline">Lignocaine 1% Plain</option>
-                                            <option value="Bupivacaine 0.5%">Bupivacaine 0.5%</option>
-                                        </select>
-                                    </div>
-                                    <div id="lesion-size-container" class="form-section">
-                                        <label class="block text-sm font-medium text-slate-600 mb-2">Lesion Dimensions (mm)</label>
-                                        <div class="grid grid-cols-2 gap-4">
-                                            <input type="number" id="lesionLength" placeholder="Length" class="w-full bg-slate-50 border rounded-lg p-3">
-                                            <input type="number" id="lesionWidth" placeholder="Width" class="w-full bg-slate-50 border rounded-lg p-3">
-                                        </div>
-                                    </div>
-                                    <div id="margin-container" class="form-section">
-                                        <label for="margin" class="block text-sm font-medium text-slate-600 mb-2">Clinical Margin (mm)</label>
-                                        <input type="number" id="margin" placeholder="e.g., 4" class="w-full bg-slate-50 border rounded-lg p-3">
-                                    </div>
-                                    <div id="punch-size-container" class="form-section">
-                                        <label for="punchSize" class="block text-sm font-medium text-slate-600 mb-2">Punch Biopsy Size (mm)</label>
-                                        <input type="number" id="punchSize" name="punchSize" placeholder="e.g., 3" class="w-full bg-slate-50 border rounded-lg p-3">
-                                    </div>
-                                </div>
-
-                                <!-- Orientation Input (Full clinical mode only) -->
-                                <div id="orientation-input-container" class="form-section">
-                                    <label class="block text-sm font-medium text-slate-600 mb-2">Specimen Orientation</label>
-                                    <div id="main-marker-btn-container" class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                        <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="None">None</button>
-                                        <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Nick">Nick</button>
-                                        <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Apex">Apex</button>
-                                        <button type="button" class="main-marker-btn bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Suture">Suture</button>
-                                    </div>
-                                    <input type="hidden" id="orientationType" value="None">
-                                    <input type="hidden" id="orientationDescription">
-                                </div>
-                                
-                                <!-- Closure Details (Full clinical mode only) -->
-                                <div id="closure-details-container" class="form-section space-y-4 pt-4 border-t mt-4">
-                                        <h3 class="text-lg font-semibold text-slate-600">Closure Details</h3>
-                                        <div class="space-y-2 p-3 bg-slate-50 rounded-lg">
-                                            <label class="flex items-center space-x-2 font-medium text-slate-700">
-                                                <input type="checkbox" id="useDeepSuture" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                                <span>Use Deep Sutures (Optional)</span>
-                                             </label>
-                                             <div id="deep-suture-container" class="hidden grid grid-cols-2 gap-4 pt-2">
-                                                 <select id="deepSutureSize" class="w-full bg-white border border-slate-300 rounded-lg p-3">
-                                                    <option value="3/0">3/0</option>
-                                                    <option value="4/0" selected>4/0</option>
-                                                    <option value="5/0">5/0</option>
-                                                 </select>
-                                                 <select id="deepSutureType" class="w-full bg-white border border-slate-300 rounded-lg p-3">
-                                                    <!-- Options populated by settings-view.js -->
-                                                 </select>
-                                             </div>
-                                         </div>
-                                         <div class="space-y-2 p-3 bg-slate-50 rounded-lg">
-                                            <label class="flex items-center space-x-2 font-medium text-slate-700">
-                                                <input type="checkbox" id="useSkinSuture" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
-                                                <span>Use Skin Sutures</span>
-                                             </label>
-                                             <div id="skin-suture-details" class="grid grid-cols-2 gap-4">
-                                                 <select id="skinSutureSize" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                                    <option value="3/0">3/0</option>
-                                                    <option value="4/0">4/0</option>
-                                                    <option value="5/0" selected>5/0</option>
-                                                    <option value="6/0">6/0</option>
-                                                 </select>
-                                                 <select id="skinSutureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                                    <!-- Options populated by settings-view.js -->
-                                                 </select>
-                                                 <div id="skin-suture-removal-container" class="col-span-2 hidden">
-                                                     <input type="number" id="removalOfSkinSutures" placeholder="Suture Removal (days)" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                                 </div>
-                                             </div>
-                                         </div>
-                                </div>
-            
-                            </div>
-                        </form>
-                        
-                        <div class="mt-8 pt-6 border-t border-slate-200">
-                            <div class="flex flex-col sm:flex-row gap-3">
-                                <button id="add-lesion-btn" type="button" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300 shadow-md disabled:bg-slate-300">
-                                    Add Lesion
-                                </button>
-                                <button id="cancel-edit-btn" type="button" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-300 shadow-md hidden">
-                                    Cancel Edit
-                                </button>
-                            </div>
-                            
-                            <div class="mt-6 flex flex-col sm:flex-row gap-3">
-                                <button id="save-procedure-btn" type="button" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 transition duration-300 shadow-md">
-                                    Save Procedure to Billing
-                                </button>
-                                <button id="clear-procedure-btn" type="button" class="w-full sm:w-auto bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300">
-                                    Clear Procedure
-                                </button>
-                            </div>
-            
-                        </div>
-                    </div>
-            
-                    <!-- FIX: Added id="output-column" to this entire div -->
-                    <div id="output-column">
-                        <!-- FIX: Added id="lesions-list-container" to this div -->
-                        <div id="lesions-list-container" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
-                            <h2 class="text-2xl font-semibold mb-4 border-b pb-3">Recorded Lesions for this Patient</h2>
-                            <div id="lesions-list" class="space-y-3">
-                                <p class="text-slate-500 italic">No lesions added yet.</p>
-                            </div>
-                        </div>
-            
-                        <!-- FIX: Added id="output-style-container" to this div -->
-                        <div id="output-style-container" class="flex items-center gap-4 mb-4">
-                            <label class="text-sm font-medium text-slate-600">Output Style:</label>
-                            <div class="flex gap-2">
-                                <button id="output-btn-combined" class="output-style-btn px-3 py-1 text-sm rounded-md bg-slate-200 text-slate-700" data-value="combined">Combined</button>
-                                <button id="output-btn-separate" class="output-style-btn px-3 py-1 text-sm rounded-md bg-slate-200 text-slate-700" data-value="separate">Separate</button>
-                            </div>
-                        </div>
-            
-                        <div id="clinical-request-output-container" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
-                            <div class="flex justify-between items-center mb-4 border-b pb-3">
-                                <h2 class="text-2xl font-semibold">Clinical Request</h2>
-                                <button id="copy-request-btn" class="bg-sky-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-600 transition duration-300 flex items-center gap-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z"/></svg>
-                                    <span id="copy-request-btn-text">Copy</span>
-                                </button>
-                            </div>
-                            <textarea id="clinicalRequestOutput" rows="8" class="w-full bg-slate-50 border-none rounded-lg p-4 text-sm leading-6 focus:ring-0" readonly>Your clinical request will appear here...</textarea>
-                        </div>
-                        
-                        <div id="entry-note-output-container" class="bg-white p-6 rounded-2xl shadow-lg sticky top-8">
-                            <div class="flex justify-between items-center mb-4 border-b pb-3">
-                                <h2 class="text-2xl font-semibold">Generated Note</h2>
-                                <button id="copy-note-btn" class="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-600 transition duration-300 flex items-center gap-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z"/></svg>
-                                    <span id="copy-note-btn-text">Copy</span>
-                                </button>
-                            </div>
-                            <textarea id="entryNoteOutput" rows="18" class="w-full bg-slate-50 border-none rounded-lg p-4 text-sm leading-6 focus:ring-0" readonly>Your generated note will appear here...</textarea>
-                        </div>
-                    </div>
-                </div>
-            </div> <!-- End of entry-form-container -->
+      </div>
+    `;
     
-            <footer class="text-center mt-12">
-                <p class="text-xs text-slate-500">
-                    Disclaimer: This tool is intended for educational and informational purposes only and does not constitute medical advice. The author makes no warranties regarding the accuracy, completeness, or reliability of the information provided and is not liable for any claims or damages arising from its use. Use at your own risk.
-                </p>
-            </footer>
-        </div>
-    </div>
+    // Add click event to the main div (but not the checkbox)
+    el.addEventListener('click', (e) => {
+        // Don't open panel if the checkbox was clicked
+        if (e.target.type === 'checkbox') return;
+        openBillingPanel(item);
+    });
+    return el;
+}
 
-    <div id="billing-view" class="app-view">
-        <div id="billing-view-container" class="container mx-auto p-4 md:p-8 max-w-4xl">
-            <header class="mb-8 p-6 bg-white rounded-2xl shadow-lg">
-                <div class="flex justify-between items-center">
-                    <h1 id="billing-title" class="text-3xl md:text-4xl font-bold text-slate-700">Billing & Processing</h1>
-                </div>
-                
-                <div class="mt-6 pt-4 border-t flex items-center justify-between gap-4">
-                    <div class="flex-grow">
-                        <input type="text" id="search-bar" placeholder="Search by patient name..." class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2">
-                    </div>
-                    <div class="flex-shrink-0 flex gap-2">
-                         <button id="print-billed-list-btn" class="hidden bg-gray-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-700 transition duration-300">
-                            Print Ready List
-                        </button>
-                        <button id="load-files-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
-                            Refresh Database
-                        </button>
-                    </div>
-                </div>
-            </header>
-            
-            <!-- Single-Column Layout -->
-            <div id="billing-columns" class="space-y-6">
-                
-                <!-- UNPROCESSED SECTION -->
-                <div id="unprocessed-section">
-                    <h2 id="unprocessed-header" class="text-2xl font-semibold text-amber-700 billing-column-header col-header-unprocessed flex justify-between items-center">
-                        <span>Unprocessed</span>
-                        <span id="unprocessed-count-dash" class="text-xl font-bold ml-2"></span>
-                    </h2>
-                    <div id="unprocessed-list" class="billing-list-section space-y-3 p-1 mt-4">
-                        <!-- List items here -->
-                    </div>
-                </div>
+// --- BILLING ASSISTANT LOGIC ---
+
+/**
+ * Opens the slide-in billing panel for a specific file
+ * @param {object} item - The file object (data, fileHandle, fromFolder, fromDoctor)
+ */
+window.openBillingPanel = function(item) {
+    const { data, fileHandle, fromFolder, fromDoctor } = item;
+    currentBillingFile = { handle: fileHandle, data: data, fromFolder: fromFolder, fromDoctor: fromDoctor };
     
-                <!-- BILLED / "Ready to Bill" SECTION -->
-                <div id="billed-section">
-                    <h2 id="billed-header" class="text-2xl font-semibold text-blue-700 billing-column-header col-header-billed flex justify-between items-center">
-                        <span>Ready to Bill</span>
-                        <span id="billed-count-dash" class="text-xl font-bold ml-2"></span>
-                    </h2>
-                    <div id="batch-archive-container" class="hidden my-4 p-4 bg-slate-100 rounded-lg">
-                        <button id="batch-archive-btn" class="w-full bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 transition duration-300 disabled:bg-slate-400">
-                            Batch Archive Selected Items
-                        </button>
-                    </div>
-                    <div id="billed-list" class="billing-list-section space-y-3 p-1 mt-0">
-                         <!-- List items here -->
-                    </div>
-                </div>
+    billingPanelTitle.textContent = `Patient: ${data.patientName} (Dr. ${data.doctorCode})`;
     
-                <!-- ARCHIVE SECTION -->
-                <div id="archive-section">
-                    <h2 id="archive-header" class="text-2xl font-semibold text-slate-700 billing-column-header col-header-archive flex justify-between items-center">
-                        <span>Archive</span>
-                        <span id="archive-count-dash" class="text-xl font-bold ml-2"></span>
-                    </h2>
-                    <div class="my-4">
-                        <input type="text" id="archive-search" placeholder="Search archive by patient..." class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2">
-                    </div>
-                    <div id="archive-list" class="billing-list-section space-y-3 p-1 mt-0">
-                         <!-- List items here -->
-                    </div>
-                </div>
-            </div>
-
-            <div id="billing-panel" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50">
-                <div class="w-full max-w-2xl bg-white p-6 rounded-2xl shadow-lg max-h-[90vh] flex flex-col">
-                    <div class="flex justify-between items-center mb-4 border-b pb-3">
-                        <h2 class="text-2xl font-bold text-slate-700" id="billing-panel-title">Billing Panel</h2>
-                        <button id="close-billing-panel-btn" class="text-slate-500 hover:text-slate-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z"/></svg>
-                        </button>
-                    </div>
-                    
-                    <!-- Content area -->
-                    <div class="overflow-y-auto space-y-4 pr-2">
-                         <div id="billing-assistant-lesions" class="space-y-4">
-                            <!-- Lesion cards injected here -->
-                         </div>
-                        <hr/>
-                        <div>
-                            <label for="billing-consult-item" class="block text-sm font-medium text-slate-600 mb-2">Consult Item</label>
-                            <input type="text" id="billing-consult-item" placeholder="e.g., 23" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                        </div>
-                         <div>
-                            <label for="billing-comment" class="block text-sm font-medium text-slate-600 mb-2">Billing Comment (Optional)</label>
-                            <textarea id="billing-comment" rows="2" placeholder="e.g., Patient has concession card." class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3"></textarea>
-                        </div>
-                    </div>
-
-                    <!-- Panel Action Buttons -->
-                    <div id="billing-panel-doctor-actions" class="mt-6 flex gap-3">
-                        <button id="edit-procedure-btn" class="w-auto bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Edit</button>
-                        <button id="save-as-billed-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300">Save as Billed</button>
-                        <button id="delete-procedure-btn" class="w-auto bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition duration-300">Delete</button>
-                    </div>
-                    <div id="billing-panel-pm-actions" class="mt-6 flex gap-3 hidden">
-                        <button id="move-to-archive-btn" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-300">Archive this one item</button>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-    </div>
-
-    <div id="settings-view" class="app-view">
-        <div class="container mx-auto p-4 md:p-8 max-w-4xl">
-            <header class="text-center mb-8 p-6 bg-white rounded-2xl shadow-lg">
-                <h1 class="text-3xl md:text-4xl font-bold text-slate-700">Settings</h1>
-                <p class="text-slate-500 mt-2">Manage app data, including billing codes and doctor folders.</p>
-            </header>
-            
-             <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
-                <h2 class="text-2xl font-semibold mb-4">Step 1: Set Database Folder</h2>
-                <button id="set-save-folder-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
-                    Set Database Folder
-                </button>
-                <p id="folder-status-msg" class="text-sm text-slate-500 mt-2">Status: No database folder set.</p>
-            </div>
-
-             <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
-                <h2 class="text-2xl font-semibold mb-4">Step 2: Manage Doctors</h2>
-                <p class="text-sm text-slate-600 mb-4">
-                    Add a new doctor by entering their name. This will create a new set of folders in your Database Folder.
-                </p>
-                <div class="flex items-center gap-2">
-                    <span class="font-semibold text-slate-700">Dr.</span>
-                    <input type="text" id="new-doctor-name" placeholder="Firstname Lastname" class="flex-grow bg-slate-50 border border-slate-300 rounded-lg p-3">
-                    <button id="add-doctor-btn" class="bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 transition duration-300">
-                        Add Doctor
-                    </button>
-                </div>
-                 <p id="add-doctor-status" class="text-sm mt-2"></p>
-            </div>
-            
-            <div class="bg-white p-6 rounded-2xl shadow-lg">
-                <h2 class="text-2xl font-semibold mb-4">App Settings Editor (Billing Codes)</h2>
-                <p class="text-sm text-slate-600 mb-4">
-                    Edit the JSON data below to update, add, or remove billing codes and suture types.
-                    <br><strong>Warning:</strong> Invalid JSON will break the application. Use a JSON validator if unsure.
-                </p>
-                <textarea id="app-settings-editor" rows="30" class="w-full bg-slate-100 border border-slate-300 rounded-lg p-4 text-sm font-mono focus:ring-2 focus:ring-blue-500"></textarea>
-                <div class="mt-4 flex justify-end gap-3">
-                    <button id="reset-app-settings-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300">Reset to Defaults</button>
-                    <button id="save-app-settings-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Save Changes</button>
-                </div>
-                <p id="app-settings-status" class="text-sm mt-2"></p>
-            </div>
-        </div>
-    </div>
+    // 1. Fill Billing Inputs
+    billingConsultItem.value = data.consultItem || '';
+    billingComment.value = data.billingComment || '';
     
-    <div id="pathologyModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
-        <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-lg">
-            <h2 class="text-xl font-bold text-slate-700 mb-4">Select Provisional Diagnoses</h2>
-            <div id="pathology-checkboxes" class="grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pr-2">
-                </div>
+    // 2. Build Billing Assistant Cards
+    billingAssistantLesions.innerHTML = data.lesions.map(l => {
+        let regionText = "N/A";
+        if (l.anatomicalRegion) {
+            const option = Array.from(anatomicalRegionEl.options).find(opt => opt.value === l.anatomicalRegion);
+            if (option) regionText = option.text;
+        }
+
+        const isComplex = l.excisionClosureType === 'Flap Repair' || l.excisionClosureType === 'Graft Repair' || l.excisionClosureType === 'Graft + Flap';
+
+        return `
+        <div class="p-4 bg-slate-50 rounded-lg border border-slate-200" data-lesion-id="${l.id}">
+            <p class="font-bold text-lg text-slate-700">Lesion ${l.id}: ${l.location}</p>
+            
+            <div class="mt-2 space-y-1 text-sm text-slate-600">
+                <p><strong>Procedure:</strong> ${l.procedure} ${l.procedure === 'Excision' ? `(${l.excisionClosureType})` : ''} ${l.procedure === 'Punch' ? `(${l.punchType})` : ''}</p>
+                <p><strong>PDx:</strong> ${l.pathology.replace(/;/g, ', ')}</p>
+                <p><strong>Region:</strong> ${regionText}</p>
+                <p><strong>Defect Size:</strong> <span class="font-bold text-base">${l.defectSize.toFixed(1)}mm</span></p>
+                ${isComplex ? `
+                    <p><strong>Closure:</strong> 
+                    ${l.excisionClosureType} 
+                    ${(l.excisionClosureType === 'Graft Repair' || l.excisionClosureType === 'Graft + Flap') && l.graftType ? `(${l.graftType})` : ''}
+                    </p>
+                ` : ''}
+            </div>
+
             <div class="mt-4">
-                <input type="text" id="otherPathologyInput" class="w-full bg-slate-50 border rounded-lg p-2" placeholder="Other diagnosis...">
-            </div>
-            <div class="flex justify-end gap-3 mt-6">
-                <button type="button" id="confirmPathologyBtn" class="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-600">Confirm</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="orientationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
-        <div class="w-full max-w-lg bg-white p-6 md:p-8 rounded-2xl shadow-lg transform transition-all" id="modal-content">
-            <h1 class="text-2xl font-bold text-slate-700 text-center mb-6">Select Orientation Location</h1>
-            
-            <div id="modal-location-selector">
-                <div class="mb-6">
-                    <svg id="clock" viewBox="0 0 200 200" class="w-full max-w-xs mx-auto"></svg>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3 mb-6">
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Proximal">Proximal</button>
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Distal">Distal</button>
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Medial">Medial</button>
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Lateral">Lateral</button>
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Left">Left</button>
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Right">Right</button>
+                <label class="block text-sm font-medium text-slate-600 mb-2">Step 1: Select Final Histology or Action</label>
+                <div class="flex flex-wrap gap-2" id="histo-btn-group-${l.id}">
+                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="BCC/SCC">BCC / SCC</button>
+                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Suspected Melanoma">Suspected Melanoma</button>
+                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Definitive Melanoma">Definitive Melanoma</button>
+                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Benign / Other">Benign / Other</button>
+                    <button type="button" class="billing-btn text-sm bg-slate-200 text-slate-700 py-1 px-3 rounded-full" data-histo="Simple Biopsy">Simple Biopsy</button>
+                    <button type="button" class="billing-btn text-sm bg-amber-100 text-amber-800 py-1 px-3 rounded-full" data-histo="Time Based Only">Time Based Only</button>
                 </div>
             </div>
-            
-            <div class="flex justify-end gap-3">
-                 <button type="button" id="cancelOrientationBtn" class="bg-slate-200 text-slate-700 font-bold py-2 px-4 rounded-lg hover:bg-slate-300">Cancel</button>
+
+            <div id="excision-code-container-${l.id}" class="mt-4 hidden space-y-2">
+                <label class="block text-sm font-medium text-slate-600">Step 2: Suggested Excision Code</label>
+                <div id="excision-btn-group-${l.id}"></div>
+            </div>
+
+            <div id="repair-code-container-${l.id}" class="mt-4 hidden space-y-2">
+                <label class="block text-sm font-medium text-slate-600">Step 3: Suggested Repair Code (if applicable)</label>
+                <div id="repair-btn-group-${l.id}"></div>
+            </div>
+
+            <div class="mt-6">
+                <label for="lesion-item-${l.id}" class="block text-sm font-medium text-slate-600">Final Procedure Item(s)</label>
+                <input type="text" id="lesion-item-${l.id}" data-lesion-id="${l.id}" value="${data.lesions.find(les => les.id === l.id).procedureItemNumber || ''}"
+                       class="lesion-item-input w-full bg-white border border-slate-300 rounded-lg p-2 mt-1">
             </div>
         </div>
-    </div>
+        `;
+    }).join('');
 
-    <!-- 
-      Printable Report
-      This is now a generic container. JS will inject the list content.
-    -->
-    <div id="printable-report" class="p-4">
-        <!-- Content injected by JS -->
-    </div>
+    // 3. Add event listeners to the new buttons
+    data.lesions.forEach(l => {
+        getEl(`histo-btn-group-${l.id}`).addEventListener('click', (e) => handleHistoClick(e, l));
+        getEl(`excision-btn-group-${l.id}`).addEventListener('click', (e) => handleConfirmClick(e, l.id, 'excision'));
+        getEl(`repair-btn-group-${l.id}`).addEventListener('click', (e) => handleConfirmClick(e, l.id, 'repair'));
+    });
 
-    <!-- 
-      NEW SCRIPT LOAD ORDER
-      All logic is now modularized and loaded in order.
-      - app.js: Global state, variables, and core logic
-      - db.js: IndexedDB helpers (runs early)
-      - file-system.js: File system logic (depends on db.js)
-      - settings-view.js: App settings, billing codes
-      - entry-view.js: Logic for the entry tab
-      - billing-view.js: Logic for the billing tab
-      - modals.js: Logic for popup modals
-      - events.js: Attaches all event listeners (runs last)
-    -->
-    <script src="app.js"></script>
-    <script src="db.js"></script>
-    <script src="file-system.js"></script>
-    <script src="settings-view.js"></script>
-    <script src="entry-view.js"></script>
-    <script src="billing-view.js"></script>
-    <script src="modals.js"></script>
-    <script src="events.js"></script>
+
+    // 4. Show correct action buttons
+    if (fromFolder === 'Unprocessed' && currentAppMode === 'Doctor') {
+        doctorActions.classList.remove('hidden');
+        pmActions.classList.add('hidden');
+    } else if (fromFolder === 'Billed' && currentAppMode === 'PM') {
+        doctorActions.classList.add('hidden');
+        pmActions.classList.remove('hidden');
+    } else { // Archive, or wrong mode
+        doctorActions.classList.add('hidden');
+        pmActions.classList.add('hidden');
+    }
+
+    billingPanel.classList.remove('hidden');
+}
+
+/**
+ * Handles clicks on the Step 1 (Histology) buttons
+ */
+window.handleHistoClick = function(event, lesion) {
+    const target = event.target.closest('.billing-btn');
+    if (!target) return;
+
+    const histoType = target.dataset.histo;
     
-</body>
-</html>
+    // Toggle selected state
+    getEl(`histo-btn-group-${lesion.id}`).querySelectorAll('.billing-btn').forEach(btn => btn.classList.remove('selected'));
+    target.classList.add('selected');
+
+    // Clear lower selections
+    const excisionContainer = getEl(`excision-btn-group-${lesion.id}`);
+    const repairContainer = getEl(`repair-btn-group-${lesion.id}`);
+    excisionContainer.innerHTML = '';
+    repairContainer.innerHTML = '';
+    getEl(`excision-code-container-${lesion.id}`).classList.add('hidden');
+    getEl(`repair-code-container-${lesion.id}`).classList.add('hidden');
+    getEl(`lesion-item-${lesion.id}`).value = '';
+
+    // --- NEW BILLING LOGIC ---
+    const region = lesion.anatomicalRegion;
+    const defectSize = lesion.defectSize;
+    // Map the clinical procedure type to the one in settings-view.js
+    const clinicalClosure = lesion.procedure === 'Wedge Excision' ? 'Wedge Excision' : lesion.excisionClosureType;
+
+    // 1. Get Excision Codes
+    let excisionCodes = [];
+    if (histoType === 'Simple Biopsy') {
+        // Find the '30071' code
+        const biopsyCode = appSettings.biopsy["30071"];
+        if (biopsyCode) excisionCodes = [biopsyCode];
+    } else if (histoType === 'Time Based Only') {
+         getEl(`lesion-item-${lesion.id}`).value = 'Time Based';
+         return;
+    } else {
+        excisionCodes = findExcisionCode(histoType, region, defectSize);
+    }
+    
+    if (excisionCodes.length > 0) {
+        excisionCodes.forEach(code => {
+            // Create suggestion, auto-confirm if it's the only one
+            // *** FIX: Removed 'true' - no longer auto-confirmed ***
+            const btn = createBillingSuggestion(code.item, code.desc, 'excision');
+            excisionContainer.appendChild(btn);
+        });
+        getEl(`excision-code-container-${lesion.id}`).classList.remove('hidden');
+    }
+
+    // 2. Get Repair Codes (if not a simple biopsy or time-based)
+    let suggestedExcisionItem = excisionCodes.length > 0 ? excisionCodes[0].item : null;
+
+    if (histoType !== 'Simple Biopsy' && histoType !== 'Time Based Only') {
+        // Find repair codes that match the clinical closure type
+        const matchingRepairCodes = appSettings.repairs.filter(code => code.clinicalType === clinicalClosure);
+
+        if (matchingRepairCodes.length > 0) {
+            matchingRepairCodes.forEach(code => {
+                let isRecommended = true;
+                let isDisabled = false;
+                let reason = '';
+
+                // Check co-claiming rules
+                if (code.canClaimWith && suggestedExcisionItem) {
+                    if (!code.canClaimWith.includes(suggestedExcisionItem)) {
+                        isRecommended = false;
+                        isDisabled = true;
+                        reason = `(Not co-claimable with ${suggestedExcisionItem})`;
+                    }
+                }
+                // Check min size rules
+                if (code.minSize && defectSize < code.minSize) {
+                    isRecommended = false;
+                    isDisabled = true;
+                    reason = `(Defect ${defectSize.toFixed(1)}mm < min size ${code.minSize}mm)`;
+                }
+
+                // *** FIX: Removed isRecommended & isDisabled - no longer auto-confirmed ***
+                const btn = createBillingSuggestion(code.item, code.desc, 'repair', false, isDisabled, reason);
+                repairContainer.appendChild(btn);
+            });
+            getEl(`repair-code-container-${lesion.id}`).classList.remove('hidden');
+        }
+    }
+    
+    // 3. Update final text box
+    updateFinalCode(lesion.id);
+}
+
+/**
+ * Finds the correct excision code from appSettings
+ */
+window.findExcisionCode = function(histoType, region, size) {
+    const codes = appSettings.excisions[histoType]?.[region];
+    if (!codes) return [];
+
+    // Use .filter to find all matches (though usually it's one)
+    const matchingCodes = codes.filter(code => {
+        const minOk = code.minSize ? size >= code.minSize : true;
+        const maxOk = code.maxSize ? size <= code.maxSize : true;
+        return minOk && maxOk;
+    });
+    
+    return matchingCodes;
+}
+
+/**
+ * Creates the HTML for a billing suggestion
+ */
+window.createBillingSuggestion = function(item, desc, type, isRecommended = false, isDisabled = false, reason = '') {
+    const suggestionEl = document.createElement('div');
+    // *** FIX: Removed isRecommended from class list logic ***
+    suggestionEl.className = `billing-suggestion ${isDisabled ? 'disabled' : ''}`;
+    suggestionEl.dataset.item = item;
+    suggestionEl.dataset.type = type;
+
+    // *** FIX: Button text defaults to "Add" ***
+    const btnText = 'Add';
+    const reasonHTML = reason ? `<span class="text-xs text-red-600 ml-2">${reason}</span>` : '';
+    // *** FIX: Removed "Recommended" text block ***
+    const recommendedHTML = '';
+
+    suggestionEl.innerHTML = `
+        <div class="flex-grow">
+            <div>
+                <span class="font-bold text-slate-800">${item}</span>
+                <span class="text-sm text-slate-600 ml-2">${desc}</span>
+                ${reasonHTML}
+            </div>
+        </div>
+        <div class="flex-shrink-0 flex items-center gap-2">
+            ${recommendedHTML}
+            <button type="button" class="confirm-btn" ${isDisabled ? 'disabled' : ''}>${btnText}</button>
+        </div>
+    `;
+    return suggestionEl;
+}
+
+/**
+ * Handles clicks on the "Confirm" / "Added" buttons
+ */
+window.handleConfirmClick = function(event, lesionId, groupType) {
+    const target = event.target.closest('.confirm-btn');
+    if (!target) return;
+
+    const suggestionEl = target.closest('.billing-suggestion');
+    if (!suggestionEl) return;
+    
+    // Toggle confirmed state
+    suggestionEl.classList.toggle('confirmed');
+    // *** FIX: Toggle text between "Add" and "Remove" ***
+    target.textContent = suggestionEl.classList.contains('confirmed') ? 'Remove' : 'Add';
+    
+    // If it's an excision, re-check repair code rules
+    if (groupType === 'excision') {
+        // TODO: Re-validate repair codes based on this new selection
+    }
+
+    updateFinalCode(lesionId);
+}
+
+/**
+ * Updates the final item code text box
+ */
+window.updateFinalCode = function(lesionId) {
+    const confirmedItems = [];
+    // Get all confirmed buttons, respecting the order (excision then repair)
+    const excisionBtn = getEl(`excision-btn-group-${lesionId}`).querySelector('.confirmed');
+    if (excisionBtn) confirmedItems.push(excisionBtn.dataset.item);
+
+    const repairBtns = getEl(`repair-btn-group-${lesionId}`).querySelectorAll('.confirmed');
+    repairBtns.forEach(btn => confirmedItems.push(btn.dataset.item));
+    
+    const finalCode = confirmedItems.filter(Boolean).join(', ');
+    getEl(`lesion-item-${lesionId}`).value = finalCode;
+}
+
+// --- FILE ACTIONS (SAVE, DELETE, ARCHIVE) ---
+
+window.saveBilledFile = async function() {
+    // 1. Get new data from panel
+    const updatedData = { ...currentBillingFile.data };
+    updatedData.consultItem = billingConsultItem.value;
+    updatedData.billingComment = billingComment.value;
+    updatedData.status = 'Billed';
+
+    document.querySelectorAll('.lesion-item-input').forEach(input => {
+        const lesionId = parseInt(input.dataset.lesionId, 10);
+        const lesion = updatedData.lesions.find(l => l.id === lesionId);
+        if (lesion) {
+            lesion.procedureItemNumber = input.value;
+        }
+    });
+
+    // 2. Move file
+    await moveFile('Unprocessed', 'Billed', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
+
+    // 3. Refresh UI
+    billingPanel.classList.add('hidden');
+    loadBillingFiles();
+}
+
+window.deleteBillingFile = async function() {
+    if (!confirm('Are you sure you want to delete this unprocessed procedure? This cannot be undone.')) {
+        return;
+    }
+    // 1. Update status to 'Deleted'
+    const updatedData = { ...currentBillingFile.data, status: 'Deleted', billingComment: `DELETED by doctor on ${new Date().toLocaleDateString()}` };
+
+    // 2. Move file from 'Unprocessed' to 'Archive'
+    await moveFile('Unprocessed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
+
+    // 3. Refresh UI
+    billingPanel.classList.add('hidden');
+    loadBillingFiles();
+}
+
+/**
+ * Archives a single file from the billing panel
+ */
+window.archiveBilledFile = async function() {
+    if (!confirm('Are you sure you want to archive this item?')) {
+        return;
+    }
+    
+    // 1. Update status to 'Archived'
+    const updatedData = { ...currentBillingFile.data, status: 'Archived' };
+    
+    // 2. Move file from 'Billed' to 'Archive'
+    await moveFile('Billed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
+
+    // 3. Refresh UI
+    billingPanel.classList.add('hidden');
+    loadBillingFiles();
+}
+
+/**
+ * Archives all selected files in a batch
+ */
+window.archiveBatchFiles = async function() {
+    const checkboxes = billedList.querySelectorAll('.batch-checkbox:checked');
+    if (checkboxes.length === 0) {
+        alert("Please select items to archive using the checkboxes.");
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to archive ${checkboxes.length} item(s)?`)) {
+        return;
+    }
+
+    // Disable UI
+    batchArchiveBtn.disabled = true;
+    batchArchiveBtn.textContent = 'Archiving...';
+
+    let successCount = 0;
+    for (const cb of checkboxes) {
+        const filename = cb.dataset.filename;
+        // Find the corresponding file object from the global state
+        const fileItem = allFiles.billed.find(f => f.fileHandle.name === filename);
+
+        if (fileItem) {
+            try {
+                const updatedData = { ...fileItem.data, status: 'Archived' };
+                await moveFile('Billed', 'Archive', fileItem.fileHandle, updatedData, fileItem.fromDoctor);
+                successCount++;
+            } catch (e) {
+                console.error(`Failed to archive ${filename}:`, e);
+                alert(`Failed to archive ${filename}. Please try again.`);
+            }
+        }
+    }
+
+    // Re-enable UI
+    batchArchiveBtn.disabled = false;
+    batchArchiveBtn.textContent = 'Batch Archive Selected';
+
+    alert(`Successfully archived ${successCount} of ${checkboxes.length} items.`);
+    
+    // Refresh the lists
+    loadBillingFiles();
+}
+
+
+/**
+ * Generates and triggers the print dialog
+ */
+window.printBilledList = function() {
+    const mainSearchTerm = searchBar.value.toLowerCase();
+    const itemsToPrint = allFiles.billed.filter(item => 
+        item.data.patientName.toLowerCase().includes(mainSearchTerm) ||
+        item.data.doctorCode.toLowerCase().includes(mainSearchTerm)
+    );
+    
+    if (itemsToPrint.length === 0) {
+        alert("No items in 'Ready to Bill' to print.");
+        return;
+    }
+
+    // Get the main report element
+    const reportElement = getEl('printable-report');
+    
+    // We will build a new HTML string, NOT a table.
+    let reportHTML = ``;
+    
+    // Add the main title
+    reportHTML += `<h1 style="font-size: 24px; font-weight: bold; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px;">Billing Run Sheet - ${new Date().toLocaleDateString()}</h1>`;
+    
+    let currentDoctorHeader = ""; // Track the last printed doctor header
+    
+    itemsToPrint.forEach(item => {
+        const data = item.data;
+        const doctor = data.doctorCode;
+
+        // 1. Heading 1 - Doctor
+        // (This works because itemsToPrint is already sorted by doctor in PM mode)
+        if (doctor !== currentDoctorHeader) {
+            reportHTML += `
+                <div class="doctor-group" style="margin-top: 25px; padding-top: 15px; border-top: 2px solid #94a3b8; page-break-before: auto;">
+                    <h2 style="font-size: 20px; font-weight: bold; color: #0284c7;">Dr. ${doctor}</h2>
+                </div>
+            `;
+            currentDoctorHeader = doctor; // Update the tracker
+        }
+        
+        // 2. Subheading - Patient
+        const date = new Date(data.procedureDate).toLocaleDateString();
+        reportHTML += `
+            <div class="patient-record" style="margin-left: 20px; margin-top: 15px; padding-bottom: 15px; border-bottom: 1px dashed #ccc;">
+                <div style="font-size: 16px; font-weight: bold;">Patient: ${data.patientName}</div>
+        `;
+        
+        // 3. Subheading - Date
+        reportHTML += `
+                <div style="font-size: 14px; margin-left: 10px;">Date: ${date}</div>
+        `;
+        
+        // 4. Lesion Details
+        reportHTML += data.lesions.map(lesion => {
+            const location = lesion.location || 'N/A';
+            const histo = lesion.pathology ? lesion.pathology.replace(/;/g, ', ') : 'N/A';
+            
+            // Get dimensions string
+            let dimensions = 'N/A';
+            if (lesion.billingOnly) {
+                dimensions = 'Billing-Only (No clinical dimensions)';
+            } else if (lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy') {
+                dimensions = `${lesion.punchSize}mm Punch`;
+            } else if (lesion.length && lesion.width) {
+                dimensions = `${lesion.length}mm x ${lesion.width}mm (Margin: ${lesion.margin || 0}mm)`;
+            }
+            
+            // *** FIX: More specific logic for repair type ***
+            let repairType = '';
+            if (lesion.procedure === 'Excision' || lesion.procedure === 'Wedge Excision') {
+                repairType = ` - ${lesion.excisionClosureType || 'N/A'}`;
+                // Only add graft type if it's a graft repair
+                if (lesion.excisionClosureType === 'Graft Repair' || lesion.excisionClosureType === 'Graft + Flap') {
+                    repairType += ` (${lesion.graftType || 'N/A'})`;
+                }
+            }
+            
+            const defectSize = lesion.defectSize ? `${lesion.defectSize.toFixed(1)}mm` : 'N/A';
+            const procedureItems = lesion.procedureItemNumber || 'N/A';
+
+            return `
+                <div class="lesion-details" style="margin-left: 10px; margin-top: 10px; padding-left: 10px; border-left: 2px solid #e2e8f0;">
+                    <div style="font-weight: bold;">Lesion ${lesion.id}: ${location}</div>
+                    <div style="margin-left: 15px;">Dimensions: ${dimensions}</div>
+                    <div style="margin-left: 15px;">Defect Size: ${defectSize}</div>
+                    <div style="margin-left: 15px;">Histology Type (PDx): ${histo}</div>
+                    <div style="margin-left: 15px;">Procedure Items: ${procedureItems}</div>
+                </div>
+            `;
+        }).join('');
+        
+        // 5. Overall Billing Info (Consult and Comment)
+        const consultItems = data.consultItem || 'N/A';
+        const billingComment = data.billingComment || 'N/A';
+
+        reportHTML += `
+                <div class="billing-summary" style="margin-left: 10px; margin-top: 10px;">
+                    <div>Consult Items: ${consultItems}</div>
+                    <div>Billing Comment: ${billingComment}</div>
+                </div>
+            </div> <!-- End patient-record -->
+        `;
+    });
+    
+    // --- Update the DOM ---
+    // We will now write directly to printable-report's innerHTML,
+    // replacing the title and table that were there before.
+    reportElement.innerHTML = reportHTML;
+    
+    // --- FIX: Force the printable report to be visible ---
+    reportElement.style.display = 'block'; // 1. Force it to be visible
+    elementToHideAfterPrint = reportElement; // 2. Store it so 'onafterprint' can hide it
+    
+    // 3. Call print. The 'onafterprint' event will handle hiding it.
+    window.print();
+}
