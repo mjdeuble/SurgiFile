@@ -46,6 +46,7 @@ var fullClinicalFieldsContainer = getEl('full-clinical-fields');
 var lesionForm = getEl('lesion-form');
 var procedureTypeEl = getEl('procedureType');
 var dynamicOptionsContainer = getEl('dynamic-options-container');
+var entryGridContainer = getEl('entry-grid-container'); // <-- FIX: Added this ID
 var addLesionBtn = getEl('add-lesion-btn');
 var cancelEditBtn = getEl('cancel-edit-btn');
 
@@ -53,16 +54,19 @@ var patientNameEl = getEl('patientName');
 // doctorCodeEl is now navDoctorDropdown
 var saveProcedureBtn = getEl('save-procedure-btn');
 var clearProcedureBtn = getEl('clear-procedure-btn');
-
+ 
 var lesionsListEl = getEl('lesions-list');
+var lesionsListContainer = getEl('lesions-list-container'); // <-- FIX: Added this ID
 var entryNoteOutputEl = getEl('entryNoteOutput');
 var clinicalRequestOutputEl = getEl('clinicalRequestOutput');
 var formTitle = getEl('form-title');
 var clinicalRequestContainer = getEl('clinical-request-output-container');
 var entryNoteContainer = getEl('entry-note-output-container');
+var outputColumn = getEl('output-column'); // <-- FIX: Added this ID
 var outputBtnCombined = getEl('output-btn-combined');
 var outputBtnSeparate = getEl('output-btn-separate');
-
+var outputStyleContainer = getEl('output-style-container'); // <-- FIX: Added this ID
+ 
 // --- Billing View Elements ---
 var billingViewContainer = getEl('billing-view-container');
 var loadFilesBtn = getEl('load-files-btn');
@@ -145,6 +149,7 @@ var modalLocationSelector = getEl('modal-location-selector');
 var cancelOrientationBtn = getEl('cancelOrientationBtn');
 var pathologyModal = getEl('pathologyModal');
 var pathologyDisplayEl = getEl('pathologyDisplay');
+var pathologyContainer = getEl('pathology-container'); // <-- FIX: Added this ID
 var pathologyCheckboxesEl = getEl('pathology-checkboxes');
 var otherPathologyInput = getEl('otherPathologyInput');
 var confirmPathologyBtn = getEl('confirmPathologyBtn');
@@ -228,8 +233,29 @@ window.updateEntryModeUI = function() {
     entryFormContainer.classList.toggle('billing-only-mode', isBillingOnlyMode);
     if (isBillingOnlyMode) {
         entryViewSubtitle.textContent = 'Part 1: Enter minimal billing data for a procedure performed previously.';
+        // --- FIX: Hide output column and set grid to 1 column ---
+        outputColumn.style.display = 'block'; // <-- FIX: Keep column visible
+        entryGridContainer.classList.remove('lg:grid-cols-1');
+        entryGridContainer.classList.add('lg:grid-cols-2'); // <-- FIX: Keep 2 columns
+        
+        // --- FIX: Selectively hide elements ---
+        lesionsListContainer.style.display = 'block';
+        clinicalRequestContainer.style.display = 'block';
+        entryNoteContainer.style.display = 'none';
+        outputStyleContainer.style.display = 'none';
+
     } else {
         entryViewSubtitle.textContent = 'Part 1: Enter full clinical data and generate the operation note.';
+        // --- FIX: Show output column and set grid to 2 columns ---
+        outputColumn.style.display = 'block';
+        entryGridContainer.classList.remove('lg:grid-cols-1');
+        entryGridContainer.classList.add('lg:grid-cols-2');
+
+        // --- FIX: Selectively show elements ---
+        lesionsListContainer.style.display = 'block';
+        outputStyleContainer.style.display = 'flex';
+        // Let updateOutputVisibility() handle note/request boxes
+        updateOutputVisibility(); 
     }
     // Re-run form logic to show/hide correct fields
     updateFormUI();
