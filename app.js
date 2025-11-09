@@ -13,13 +13,10 @@ if ('serviceWorker' in navigator) {
 
 // --- DOM Element References ---
 // This section defines all querySelector constants for the app
-//
-// *** FIX ***
-// Changed all top-level 'const' and 'let' to 'var' to make them
-// globally accessible to other scripts (like events.js).
-// 'const' is script-scoped, 'var' is globally-scoped.
-//
-var getEl = (id) => document.getElementById(id);
+// We use 'var' and attach to 'window' to ensure they are globally accessible
+// across all script files.
+
+window.getEl = (id) => document.getElementById(id);
 
 // --- Tab View Elements ---
 var tabClinicalNoteBtn = getEl('tab-clinical-note');
@@ -31,16 +28,16 @@ var billingView = getEl('billing-view');
 var settingsView = getEl('settings-view');
 
 // --- Nav Bar Mode Elements ---
-// FIX: Removed old mode buttons
 var navDoctorDropdownContainer = getEl('nav-doctor-dropdown-container');
 var navDoctorDropdown = getEl('nav-doctor-dropdown');
 var appTitle = getEl('app-title');
-var pmModeToggle = getEl('pm-mode-toggle'); // <-- FIX: Added toggle switch
-var pmModeToggleLabel = getEl('pm-mode-toggle-label'); // <-- FIX: Added toggle label
+var pmModeToggle = getEl('pm-mode-toggle');
+var pmModeToggleLabel = getEl('pm-mode-toggle-label');
 
 // --- Entry View Elements ---
-var entryFormContainer = getEl('entry-form-container'); // Container for billing-only mode
-var entryViewHeaderTitle = getEl('entry-view-header-title'); // <-- FIX: Added header title
+var entryFormContainer = getEl('entry-form-container');
+var entryGridContainer = getEl('entry-grid-container');
+var entryViewHeaderTitle = getEl('entry-view-header-title');
 var entryViewSubtitle = getEl('entry-view-subtitle');
 var finalDefectSizeContainer = getEl('final-defect-size-container');
 var fullClinicalFieldsContainer = getEl('full-clinical-fields');
@@ -48,36 +45,32 @@ var fullClinicalFieldsContainer = getEl('full-clinical-fields');
 var lesionForm = getEl('lesion-form');
 var procedureTypeEl = getEl('procedureType');
 var dynamicOptionsContainer = getEl('dynamic-options-container');
-var entryGridContainer = getEl('entry-grid-container'); // <-- FIX: Added this ID
 var addLesionBtn = getEl('add-lesion-btn');
 var cancelEditBtn = getEl('cancel-edit-btn');
 
 var patientNameEl = getEl('patientName');
-// doctorCodeEl is now navDoctorDropdown
 var saveProcedureBtn = getEl('save-procedure-btn');
 var clearProcedureBtn = getEl('clear-procedure-btn');
- 
+
 var lesionsListEl = getEl('lesions-list');
-var lesionsListContainer = getEl('lesions-list-container'); // <-- FIX: Added this ID
+var lesionsListContainer = getEl('lesions-list-container');
 var entryNoteOutputEl = getEl('entryNoteOutput');
 var clinicalRequestOutputEl = getEl('clinicalRequestOutput');
 var formTitle = getEl('form-title');
 var clinicalRequestContainer = getEl('clinical-request-output-container');
 var entryNoteContainer = getEl('entry-note-output-container');
-var outputColumn = getEl('output-column'); // <-- FIX: Added this ID
+var outputColumn = getEl('output-column');
 var outputBtnCombined = getEl('output-btn-combined');
 var outputBtnSeparate = getEl('output-btn-separate');
-var outputStyleContainer = getEl('output-style-container'); // <-- FIX: Added this ID
- 
+var outputStyleContainer = getEl('output-style-container');
+
 // --- Billing View Elements ---
 var billingViewContainer = getEl('billing-view-container');
 var loadFilesBtn = getEl('load-files-btn');
 var searchBar = getEl('search-bar');
-var archiveSearch = getEl('archive-search'); // <-- FIX: This was missing
 var printBilledListBtn = getEl('print-billed-list-btn');
-var batchArchiveBtn = getEl('batch-archive-btn'); // <-- FIX: This was missing
 var unprocessedSection = getEl('unprocessed-section');
-var unprocessedHeader = getEl('unprocessed-header'); // <-- FIX: This was missing
+var unprocessedHeader = getEl('unprocessed-header'); // Added back
 var unprocessedList = getEl('unprocessed-list');
 var unprocessedCountDash = getEl('unprocessed-count-dash');
 var billedSection = getEl('billed-section');
@@ -88,6 +81,8 @@ var archiveSection = getEl('archive-section');
 var archiveHeader = getEl('archive-header');
 var archiveList = getEl('archive-list');
 var archiveCountDash = getEl('archive-count-dash');
+var archiveSearch = getEl('archive-search'); // Added back
+var batchArchiveBtn = getEl('batch-archive-btn'); // Added back
 
 var billingPanel = getEl('billing-panel');
 var billingPanelTitle = getEl('billing-panel-title');
@@ -127,19 +122,23 @@ var marginContainer = getEl('margin-container');
 var punchSizeContainer = getEl('punch-size-container');
 var orientationInputContainer = getEl('orientation-input-container');
 var closureDetailsContainer = getEl('closure-details-container');
-var useDeepSutureEl = getEl('useDeepSuture');
 var deepSutureContainer = getEl('deep-suture-container');
-var useSkinSutureEl = getEl('useSkinSuture'); // <-- FIX: Added this new element
 var skinSutureDetails = getEl('skin-suture-details');
+var skinSutureDetailsDissolvable = getEl('skin-suture-details-dissolvable');
+var pathologyContainer = getEl('pathology-container');
+var skinSutureRemovalContainer = getEl('skin-suture-removal-container');
 
 // --- Entry Form Inputs ---
 var anatomicalRegionEl = getEl('anatomicalRegion');
 var excisionClosureTypeEl = getEl('excisionClosureType');
 var punchTypeEl = getEl('punchType');
-var skinSutureTypeEl = getEl('skinSutureType');
+var useDeepSutureEl = getEl('useDeepSuture');
 var deepSutureTypeEl = getEl('deepSutureType');
-var skinSutureSizeEl = getEl('skinSutureSize');
 var deepSutureSizeEl = getEl('deepSutureSize');
+var useSkinSutureEl = getEl('useSkinSuture');
+var skinSutureTypeEl = getEl('skinSutureType');
+var skinSutureSizeEl = getEl('skinSutureSize');
+var removalOfSkinSuturesEl = getEl('removalOfSkinSutures');
 var justificationButtons = getEl('justification-buttons');
 var flapGraftJustificationInput = getEl('flapGraftJustification');
 
@@ -151,29 +150,28 @@ var modalLocationSelector = getEl('modal-location-selector');
 var cancelOrientationBtn = getEl('cancelOrientationBtn');
 var pathologyModal = getEl('pathologyModal');
 var pathologyDisplayEl = getEl('pathologyDisplay');
-var pathologyContainer = getEl('pathology-container'); // <-- FIX: Added this ID
 var pathologyCheckboxesEl = getEl('pathology-checkboxes');
 var otherPathologyInput = getEl('otherPathologyInput');
 var confirmPathologyBtn = getEl('confirmPathologyBtn');
 var dermoscopyBtnContainer = getEl('dermoscopy-btn-container');
 
 // --- PWA File System Elements ---
-var saveFolderHandle = null; // This will store our main billing folder permission
-var currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' }; // State for the open billing file
+window.saveFolderHandle = null;
+window.currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' };
 
 // --- State Management ---
-var lesions = []; // This is now a temporary list for the current procedure
-var lesionCounter = 0;
-var editingLesionId = null;
-var editingProcedureFile = null; // Store the original file data when editing
-var modalSelectedLocationElement = null;
-var allFiles = { unprocessed: [], billed: [], archive: [] }; // Global state for billing files
-var appSettings = {}; // Holds ALL app settings
-var isBillingOnlyMode = false;
-var currentAppMode = 'Doctor'; // 'Doctor' or 'PM'
-var currentDoctor = null; // The display name of the selected doctor
+window.lesions = [];
+window.lesionCounter = 0;
+window.editingLesionId = null;
+window.editingProcedureFile = null;
+window.modalSelectedLocationElement = null;
+window.allFiles = { unprocessed: [], billed: [], archive: [] };
+window.appSettings = {};
+window.isBillingOnlyMode = false;
+window.currentAppMode = 'Doctor';
+window.currentDoctor = null;
 
-var pathologyOptions = {
+window.pathologyOptions = {
     'BCC': 'Basal cell carcinoma', 'SCC': 'Squamous cell carcinoma', 'IEC': 'IEC/Bowen\'s disease',
     'MMis': 'Melanoma in situ', 'MMinv': 'Melanoma invasive', 'DN': 'Naevus: dysplastic', 'BN': 'Naevus: banal',
     'SebK': 'Seborrhoeic keratosis', 'SK': 'Solar keratosis', 'KA': 'Keratoacanthoma', 'B Cyst': 'Benign cyst',
@@ -182,20 +180,12 @@ var pathologyOptions = {
     'HMF': 'Hutchinson\'s melanotic freckle', 'MMmet': 'Melanoma, metastasis', 'SN': 'Naevus: Spitz'
 };
 
+// --- GLOBAL FUNCTIONS ---
 
-// --- CORE APP LOGIC ---
-
-/**
- * Switches the main view between Entry, Billing, and Settings
- * @param {string} tabName - The name of the tab to switch to
- */
-// *** FIX: Make function global by attaching to window ***
 window.switchTab = function(tabName) {
-    // Deselect all tabs and hide all views
     [tabClinicalNoteBtn, tabManualBillingBtn, tabBillingBtn, tabSettingsBtn].forEach(btn => btn.classList.remove('active'));
     [entryView, billingView, settingsView].forEach(view => view.classList.remove('active'));
 
-    // Handle "Billing-Only Mode" based on which entry tab is clicked
     if (tabName === 'clinical-note') {
         isBillingOnlyMode = false;
         entryView.classList.add('active');
@@ -207,13 +197,12 @@ window.switchTab = function(tabName) {
     } else if (tabName === 'billing') {
         billingView.classList.add('active');
         tabBillingBtn.classList.add('active');
-        // When switching to billing, trigger a refresh
         (async () => {
             if (saveFolderHandle) {
                 const doctors = await getDoctorListFromFolders();
                 populateDoctorDropdown(doctors);
             }
-            handleDoctorChange(); // This will trigger loadBillingFiles
+            handleDoctorChange();
         })();
     } else if (tabName === 'settings') {
         settingsView.classList.add('active');
@@ -221,115 +210,83 @@ window.switchTab = function(tabName) {
         loadAppSettingsToEditor();
     }
 
-    // Update the UI elements on the entry page
     if (tabName === 'clinical-note' || tabName === 'manual-billing') {
         updateEntryModeUI();
     }
 }
 
-/**
- * Updates the Entry tab UI based on isBillingOnlyMode
- */
-// *** FIX: Make function global by attaching to window ***
 window.updateEntryModeUI = function() {
     entryFormContainer.classList.toggle('billing-only-mode', isBillingOnlyMode);
     if (isBillingOnlyMode) {
-        entryViewHeaderTitle.textContent = 'Add Manual Billing'; // <-- FIX: Change title
+        entryViewHeaderTitle.textContent = 'Add Manual Billing';
         entryViewSubtitle.textContent = 'Part 1: Enter minimal billing data for a procedure performed previously.';
-        // --- FIX: Hide output column and set grid to 1 column ---
-        outputColumn.style.display = 'block'; // <-- FIX: Keep column visible
+        outputColumn.style.display = 'block';
         entryGridContainer.classList.remove('lg:grid-cols-1');
-        entryGridContainer.classList.add('lg:grid-cols-2'); // <-- FIX: Keep 2 columns
+        entryGridContainer.classList.add('lg:grid-cols-2');
         
-        // --- FIX: Selectively hide elements ---
         lesionsListContainer.style.display = 'block';
-        clinicalRequestContainer.style.display = 'none'; // <-- FIX: Hide Clinical Request
+        clinicalRequestContainer.style.display = 'none';
         entryNoteContainer.style.display = 'none';
         outputStyleContainer.style.display = 'none';
-
     } else {
-        entryViewHeaderTitle.textContent = 'Clinical Note Generator'; // <-- FIX: Change title
+        entryViewHeaderTitle.textContent = 'Clinical Note Generator';
         entryViewSubtitle.textContent = 'Part 1: Enter full clinical data and generate the operation note.';
-        // --- FIX: Show output column and set grid to 2 columns ---
         outputColumn.style.display = 'block';
         entryGridContainer.classList.remove('lg:grid-cols-1');
         entryGridContainer.classList.add('lg:grid-cols-2');
 
-        // --- FIX: Selectively show elements ---
         lesionsListContainer.style.display = 'block';
         outputStyleContainer.style.display = 'flex';
-        // Let updateOutputVisibility() handle note/request boxes
         updateOutputVisibility(); 
     }
-    // Re-run form logic to show/hide correct fields
     updateFormUI();
 }
 
-/**
- * Sets the app mode to 'Doctor' or 'PM'
- * @param {string} mode - The mode to switch to ('Doctor' or 'PM')
- */
-// *** FIX: Make function global by attaching to window ***
 window.setAppMode = function(mode) {
     currentAppMode = mode;
     localStorage.setItem('appMode', mode);
 
-    // Show/hide entry tabs based on mode
     const isPM = (mode === 'PM');
     tabClinicalNoteBtn.style.display = isPM ? 'none' : 'inline-block';
     tabManualBillingBtn.style.display = isPM ? 'none' : 'inline-block';
 
-    // --- FIX: Update UI based on new toggle switch ---
     if (isPM) {
-        pmModeToggle.checked = true; // Sync toggle
-        navDoctorDropdownContainer.classList.add('hidden'); // Hide dropdown in PM mode
+        pmModeToggle.checked = true;
+        navDoctorDropdownContainer.classList.add('hidden');
         appTitle.textContent = "Billing & Processing (PM View)";
-        currentDoctor = null; // PM is not a doctor
+        currentDoctor = null;
 
-        // If PM mode is set while on an entry tab, force switch to billing
         if (entryView.classList.contains('active')) {
             switchTab('billing');
         }
-
-    } else { // Doctor mode
-        pmModeToggle.checked = false; // Sync toggle
-        navDoctorDropdownContainer.classList.remove('hidden'); // Show dropdown
+    } else {
+        pmModeToggle.checked = false;
+        navDoctorDropdownContainer.classList.remove('hidden');
         appTitle.textContent = "Clinical Management PWA";
-        // Set currentDoctor to the selected dropdown value
         currentDoctor = navDoctorDropdown.value || null;
     }
 
-    // Update the billing view to reflect the new mode
     billingViewContainer.classList.toggle('pm-mode-active', isPM);
     billingViewContainer.classList.toggle('doctor-mode-active', !isPM);
 
-    // Set default collapse states based on mode
     if (isPM) {
-        // PM: Billed is always expanded, Archive is collapsed
-        unprocessedList.classList.add('collapsed'); // (is hidden by CSS anyway)
+        unprocessedList.classList.add('collapsed');
         billedList.classList.remove('collapsed');
         archiveList.classList.add('collapsed');
     } else {
-        // Doctor: Unprocessed is expanded, Billed & Archive are collapsed
         unprocessedList.classList.remove('collapsed');
         billedList.classList.add('collapsed');
         archiveList.classList.add('collapsed');
     }
 
-    // Refresh the file list for the new mode
     if (billingView.classList.contains('active')) {
         loadBillingFiles();
     }
 }
 
-/**
- * Populates the doctor dropdown list from the scanned folder names
- * @param {string[]} doctors - An array of doctor display names
- */
-// *** FIX: Make function global by attaching to window ***
 window.populateDoctorDropdown = function(doctors) {
     const savedDoctor = localStorage.getItem('currentDoctor');
-    navDoctorDropdown.innerHTML = ''; // Clear old options
+    navDoctorDropdown.innerHTML = '';
 
     if (!doctors || doctors.length === 0) {
         const option = document.createElement('option');
@@ -338,9 +295,6 @@ window.populateDoctorDropdown = function(doctors) {
         navDoctorDropdown.appendChild(option);
         currentDoctor = null;
 
-        // *** REQUEST #7 ***
-        // If no doctors are found AND no save folder is set,
-        // redirect to the settings page.
         if (!saveFolderHandle) {
             switchTab('settings');
         }
@@ -354,24 +308,17 @@ window.populateDoctorDropdown = function(doctors) {
         navDoctorDropdown.appendChild(option);
     });
 
-    // Restore saved doctor
     if (savedDoctor && doctors.includes(savedDoctor)) {
         navDoctorDropdown.value = savedDoctor;
     }
     
-    // Update the global state
     currentDoctor = navDoctorDropdown.value;
 }
 
-/**
- * Handles the logic when the doctor dropdown selection changes
- */
-// *** FIX: Make function global by attaching to window ***
 window.handleDoctorChange = function() {
     currentDoctor = navDoctorDropdown.value;
     localStorage.setItem('currentDoctor', currentDoctor);
 
-    // If we are on the billing tab, reload the files for the new doctor
     if (billingView.classList.contains('active')) {
         loadBillingFiles();
     }
