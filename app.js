@@ -31,14 +31,16 @@ var billingView = getEl('billing-view');
 var settingsView = getEl('settings-view');
 
 // --- Nav Bar Mode Elements ---
-var modeBtnDoctor = getEl('mode-btn-doctor');
-var modeBtnPM = getEl('mode-btn-pm');
+// FIX: Removed old mode buttons
 var navDoctorDropdownContainer = getEl('nav-doctor-dropdown-container');
 var navDoctorDropdown = getEl('nav-doctor-dropdown');
 var appTitle = getEl('app-title');
+var pmModeToggle = getEl('pm-mode-toggle'); // <-- FIX: Added toggle switch
+var pmModeToggleLabel = getEl('pm-mode-toggle-label'); // <-- FIX: Added toggle label
 
 // --- Entry View Elements ---
 var entryFormContainer = getEl('entry-form-container'); // Container for billing-only mode
+var entryViewHeaderTitle = getEl('entry-view-header-title'); // <-- FIX: Added header title
 var entryViewSubtitle = getEl('entry-view-subtitle');
 var finalDefectSizeContainer = getEl('final-defect-size-container');
 var fullClinicalFieldsContainer = getEl('full-clinical-fields');
@@ -232,6 +234,7 @@ window.switchTab = function(tabName) {
 window.updateEntryModeUI = function() {
     entryFormContainer.classList.toggle('billing-only-mode', isBillingOnlyMode);
     if (isBillingOnlyMode) {
+        entryViewHeaderTitle.textContent = 'Add Manual Billing'; // <-- FIX: Change title
         entryViewSubtitle.textContent = 'Part 1: Enter minimal billing data for a procedure performed previously.';
         // --- FIX: Hide output column and set grid to 1 column ---
         outputColumn.style.display = 'block'; // <-- FIX: Keep column visible
@@ -240,11 +243,12 @@ window.updateEntryModeUI = function() {
         
         // --- FIX: Selectively hide elements ---
         lesionsListContainer.style.display = 'block';
-        clinicalRequestContainer.style.display = 'block';
+        clinicalRequestContainer.style.display = 'none'; // <-- FIX: Hide Clinical Request
         entryNoteContainer.style.display = 'none';
         outputStyleContainer.style.display = 'none';
 
     } else {
+        entryViewHeaderTitle.textContent = 'Clinical Note Generator'; // <-- FIX: Change title
         entryViewSubtitle.textContent = 'Part 1: Enter full clinical data and generate the operation note.';
         // --- FIX: Show output column and set grid to 2 columns ---
         outputColumn.style.display = 'block';
@@ -275,9 +279,9 @@ window.setAppMode = function(mode) {
     tabClinicalNoteBtn.style.display = isPM ? 'none' : 'inline-block';
     tabManualBillingBtn.style.display = isPM ? 'none' : 'inline-block';
 
+    // --- FIX: Update UI based on new toggle switch ---
     if (isPM) {
-        modeBtnPM.classList.add('active');
-        modeBtnDoctor.classList.remove('active');
+        pmModeToggle.checked = true; // Sync toggle
         navDoctorDropdownContainer.classList.add('hidden'); // Hide dropdown in PM mode
         appTitle.textContent = "Billing & Processing (PM View)";
         currentDoctor = null; // PM is not a doctor
@@ -288,8 +292,7 @@ window.setAppMode = function(mode) {
         }
 
     } else { // Doctor mode
-        modeBtnDoctor.classList.add('active');
-        modeBtnPM.classList.remove('active');
+        pmModeToggle.checked = false; // Sync toggle
         navDoctorDropdownContainer.classList.remove('hidden'); // Show dropdown
         appTitle.textContent = "Clinical Management PWA";
         // Set currentDoctor to the selected dropdown value
