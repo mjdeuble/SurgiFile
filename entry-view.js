@@ -326,6 +326,13 @@ window.addOrUpdateLesion = function() {
  * Saves the entire procedure (patient info + all lesions) to a .json file.
  */
 window.saveProcedure = async function() {
+    // --- NEW: Check for unsaved lesion in progress ---
+    if (procedureTypeEl.value !== '') {
+        if (!confirm("You have an unsaved lesion currently being entered. Do you want to save the procedure without adding this last lesion?")) {
+            return; // User wants to finish the lesion first
+        }
+    }
+
     const patientName = patientNameEl.value.trim();
     
     // currentAppMode and currentDoctor are global vars from app.js
@@ -401,7 +408,8 @@ window.saveProcedure = async function() {
             alert(`Procedure for ${patientName} saved to "Unprocessed" billing for Dr. ${doctorDisplayName}.`);
         }
         
-        resetAll(); // Clear the form
+        // --- NEW: Pass true to NOT ask for confirmation since we just saved ---
+        resetAll(false); 
         // Switch to billing tab to see the new file
         switchTab('billing');
 
@@ -739,6 +747,13 @@ window.startEditLesion = function(id) {
  * Cancels the edit and resets the form.
  */
 window.cancelEdit = function() {
+    // --- NEW: Check for unsaved data when cancelling an edit ---
+    if (editingProcedureFile && hasUnsavedChanges()) {
+        if (!confirm("You have made changes to this lesion. Cancelling will discard them. Are you sure?")) {
+            return;
+        }
+    }
+
     resetLesionForm();
     
     // *** FIX: Re-enable the toggle and dropdown ***
@@ -797,8 +812,16 @@ window.resetLesionForm = function(resetProcType = true) {
 
 /**
  * Resets the entire form, including patient info and all lesions.
+ * @param {boolean} [askConfirmation=true] - Whether to ask for user confirmation if data exists.
  */
-window.resetAll = function() {
+window.resetAll = function(askConfirmation = true) {
+    // --- NEW: Check for unsaved data before clearing ---
+    if (askConfirmation && hasUnsavedChanges()) {
+        if (!confirm("Are you sure you want to clear all procedure details? This cannot be undone.")) {
+            return;
+        }
+    }
+
     lesions = [];
     lesionCounter = 0;
     patientNameEl.value = '';
