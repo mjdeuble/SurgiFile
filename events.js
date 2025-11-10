@@ -31,7 +31,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelEditBtn.addEventListener('click', cancelEdit);
 
     saveProcedureBtn.addEventListener('click', saveProcedure);
-    clearProcedureBtn.addEventListener('click', resetAll);
+    // --- NEW: Pass true to ask for confirmation when clearing ---
+    clearProcedureBtn.addEventListener('click', () => resetAll(true));
 
     // Copy Buttons
     getEl('copy-request-btn').addEventListener('click', () => copyToClipboard('clinicalRequestOutput', getEl('copy-request-btn-text')));
