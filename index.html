@@ -295,14 +295,12 @@
     <div id="entry-view" class="app-view active">
         <div class="container mx-auto p-4 md:p-8 max-w-7xl">
             <header class="text-center mb-8 p-6 bg-white rounded-2xl shadow-lg">
-                <!-- FIX: Added id="entry-view-header-title" -->
                 <h1 id="entry-view-header-title" class="text-3xl md:text-4xl font-bold text-slate-700">Clinical Note Generator</h1>
                 <p id="entry-view-subtitle" class="text-slate-500 mt-2">Part 1: Enter full clinical data and generate the operation note.</p>
             </header>
             
             <!-- This container will be used to hide/show sections -->
             <div id="entry-form-container">
-                <!-- FIX: Added id="entry-grid-container" to allow column toggling -->
                 <div id="entry-grid-container" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div class="bg-white p-6 rounded-2xl shadow-lg">
                         <form id="lesion-form">
@@ -347,7 +345,6 @@
                                     </select>
                                 </div>
                                 
-                                <!-- FIX: Added id="pathology-container" to this div -->
                                 <div id="pathology-container">
                                     <label class="block text-sm font-medium text-slate-600 mb-2">Provisional Diagnosis (PDx)</label>
                                     <div class="flex items-center gap-2">
@@ -524,9 +521,7 @@
                         </div>
                     </div>
             
-                    <!-- FIX: Added id="output-column" to this entire div -->
                     <div id="output-column">
-                        <!-- FIX: Added id="lesions-list-container" to this div -->
                         <div id="lesions-list-container" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
                             <h2 class="text-2xl font-semibold mb-4 border-b pb-3">Recorded Lesions for this Patient</h2>
                             <div id="lesions-list" class="space-y-3">
@@ -534,7 +529,6 @@
                             </div>
                         </div>
             
-                        <!-- FIX: Added id="output-style-container" to this div -->
                         <div id="output-style-container" class="flex items-center gap-4 mb-4">
                             <label class="text-sm font-medium text-slate-600">Output Style:</label>
                             <div class="flex gap-2">
@@ -768,12 +762,12 @@
         </div>
     </div>
 
-    <!-- 
-      Printable Report
-      This is now a generic container. JS will inject the list content.
-    -->
+    <!-- Printable Report (Hidden by default) -->
     <div id="printable-report" class="p-4">
-        <!-- Content injected by JS -->
+        <h1 id="print-title" class="text-2xl font-bold mb-4"></h1>
+        <table id="print-table" class="w-full">
+            <!-- Content injected by JS -->
+        </table>
     </div>
 
     <!-- 
