@@ -124,7 +124,7 @@ var orientationInputContainer = getEl('orientation-input-container');
 var closureDetailsContainer = getEl('closure-details-container');
 var deepSutureContainer = getEl('deep-suture-container');
 var skinSutureDetails = getEl('skin-suture-details');
-var skinSutureDetailsDissolvable = getEl('skin-suture-details-dissolvable');
+// REMOVED: var skinSutureDetailsDissolvable = getEl('skin-suture-details-dissolvable');
 var pathologyContainer = getEl('pathology-container');
 var skinSutureRemovalContainer = getEl('skin-suture-removal-container');
 
@@ -225,7 +225,7 @@ window.updateEntryModeUI = function() {
         entryGridContainer.classList.add('lg:grid-cols-2');
         
         lesionsListContainer.style.display = 'block';
-        clinicalRequestContainer.style.display = 'none';
+        clinicalRequestContainer.style.display = 'block';
         entryNoteContainer.style.display = 'none';
         outputStyleContainer.style.display = 'none';
     } else {
