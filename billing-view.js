@@ -284,7 +284,7 @@ window.openBillingPanel = function(item) {
             </div>
 
             <div id="excision-code-container-${l.id}" class="mt-4 hidden space-y-2">
-                <label class="block text-sm font-medium text-slate-600">Step 2: Suggested Excision Code</label>
+                <label class="block text-sm font-medium text-slate-600">Step 2: Suggested Code(s)</label>
                 <div id="excision-btn-group-${l.id}"></div>
             </div>
 
@@ -350,61 +350,61 @@ window.handleHistoClick = function(event, lesion) {
     // --- NEW BILLING LOGIC ---
     const region = lesion.anatomicalRegion;
     const defectSize = lesion.defectSize;
-    // Map the clinical procedure type to the one in settings-view.js
     const clinicalClosure = lesion.procedure === 'Wedge Excision' ? 'Wedge Excision' : lesion.excisionClosureType;
 
-    // 1. Get Excision Codes
-    let excisionCodes = [];
-    if (histoType === 'Simple Biopsy') {
-        // Find the '30071' code
-        const biopsyCode = appSettings.biopsy["30071"];
-        if (biopsyCode) excisionCodes = [biopsyCode];
-    } else if (histoType === 'Time Based Only') {
+    // DETECT IF IT IS A DIAGNOSTIC BIOPSY
+    // If the procedure was recorded specifically as a "Punch Biopsy", it should 
+    // map to 30071 regardless of the final histology.
+    const isDiagnosticBiopsy = (lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy');
+
+    // 1. Get Primary Codes (Excision or Biopsy)
+    let primaryCodes = [];
+
+    if (histoType === 'Time Based Only') {
          getEl(`lesion-item-${lesion.id}`).value = 'Time Based';
          return;
+    } else if (histoType === 'Simple Biopsy' || isDiagnosticBiopsy) {
+        // Force 30071 if button is clicked OR if it was recorded clinically as a biopsy
+        const biopsyCode = appSettings.biopsy["30071"];
+        if (biopsyCode) primaryCodes = [biopsyCode];
     } else {
-        excisionCodes = findExcisionCode(histoType, region, defectSize);
+        // Otherwise, look up excision codes based on histology and size
+        primaryCodes = findExcisionCode(histoType, region, defectSize);
     }
     
-    if (excisionCodes.length > 0) {
-        excisionCodes.forEach(code => {
-            // Create suggestion, auto-confirm if it's the only one
-            // *** FIX: Removed 'true' - no longer auto-confirmed ***
+    if (primaryCodes.length > 0) {
+        primaryCodes.forEach(code => {
             const btn = createBillingSuggestion(code.item, code.desc, 'excision');
             excisionContainer.appendChild(btn);
         });
         getEl(`excision-code-container-${lesion.id}`).classList.remove('hidden');
     }
 
-    // 2. Get Repair Codes (if not a simple biopsy or time-based)
-    let suggestedExcisionItem = excisionCodes.length > 0 ? excisionCodes[0].item : null;
-
-    if (histoType !== 'Simple Biopsy' && histoType !== 'Time Based Only') {
+    // 2. Get Repair Codes
+    // Repairs are generally NOT applicable to 30071 (diagnostic biopsy).
+    if (!isDiagnosticBiopsy && histoType !== 'Simple Biopsy' && histoType !== 'Time Based Only') {
+        let suggestedExcisionItem = primaryCodes.length > 0 ? primaryCodes[0].item : null;
         // Find repair codes that match the clinical closure type
         const matchingRepairCodes = appSettings.repairs.filter(code => code.clinicalType === clinicalClosure);
 
         if (matchingRepairCodes.length > 0) {
             matchingRepairCodes.forEach(code => {
-                let isRecommended = true;
                 let isDisabled = false;
                 let reason = '';
 
                 // Check co-claiming rules
                 if (code.canClaimWith && suggestedExcisionItem) {
                     if (!code.canClaimWith.includes(suggestedExcisionItem)) {
-                        isRecommended = false;
                         isDisabled = true;
                         reason = `(Not co-claimable with ${suggestedExcisionItem})`;
                     }
                 }
                 // Check min size rules
                 if (code.minSize && defectSize < code.minSize) {
-                    isRecommended = false;
                     isDisabled = true;
                     reason = `(Defect ${defectSize.toFixed(1)}mm < min size ${code.minSize}mm)`;
                 }
 
-                // *** FIX: Removed isRecommended & isDisabled - no longer auto-confirmed ***
                 const btn = createBillingSuggestion(code.item, code.desc, 'repair', false, isDisabled, reason);
                 repairContainer.appendChild(btn);
             });
@@ -412,7 +412,6 @@ window.handleHistoClick = function(event, lesion) {
         }
     }
     
-    // 3. Update final text box
     updateFinalCode(lesion.id);
 }
 
@@ -438,16 +437,12 @@ window.findExcisionCode = function(histoType, region, size) {
  */
 window.createBillingSuggestion = function(item, desc, type, isRecommended = false, isDisabled = false, reason = '') {
     const suggestionEl = document.createElement('div');
-    // *** FIX: Removed isRecommended from class list logic ***
     suggestionEl.className = `billing-suggestion ${isDisabled ? 'disabled' : ''}`;
     suggestionEl.dataset.item = item;
     suggestionEl.dataset.type = type;
 
-    // *** FIX: Button text defaults to "Add" ***
     const btnText = 'Add';
     const reasonHTML = reason ? `<span class="text-xs text-red-600 ml-2">${reason}</span>` : '';
-    // *** FIX: Removed "Recommended" text block ***
-    const recommendedHTML = '';
 
     suggestionEl.innerHTML = `
         <div class="flex-grow">
@@ -458,7 +453,6 @@ window.createBillingSuggestion = function(item, desc, type, isRecommended = fals
             </div>
         </div>
         <div class="flex-shrink-0 flex items-center gap-2">
-            ${recommendedHTML}
             <button type="button" class="confirm-btn" ${isDisabled ? 'disabled' : ''}>${btnText}</button>
         </div>
     `;
@@ -477,7 +471,6 @@ window.handleConfirmClick = function(event, lesionId, groupType) {
     
     // Toggle confirmed state
     suggestionEl.classList.toggle('confirmed');
-    // *** FIX: Toggle text between "Add" and "Remove" ***
     target.textContent = suggestionEl.classList.contains('confirmed') ? 'Remove' : 'Add';
     
     // If it's an excision, re-check repair code rules
@@ -694,7 +687,7 @@ window.printBilledList = function() {
             return `
                 <div class="lesion-details" style="margin-left: 10px; margin-top: 10px; padding-left: 10px; border-left: 2px solid #e2e8f0;">
                     <div style="font-weight: bold;">Lesion ${lesion.id}: ${location}</div>
-                    <div style="margin-left: 15px;">Dimensions: ${dimensions}</div>
+                    <div style="margin-left: 15px;">Dimensions: ${dimensions}${repairType}</div>
                     <div style="margin-left: 15px;">Defect Size: ${defectSize}</div>
                     <div style="margin-left: 15px;">Histology Type (PDx): ${histo}</div>
                     <div style="margin-left: 15px;">Procedure Items: ${procedureItems}</div>
