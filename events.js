@@ -12,8 +12,14 @@ document.addEventListener('DOMContentLoaded', () => {
     tabSettingsBtn.addEventListener('click', () => switchTab('settings'));
 
     // --- Connect Nav Bar Listeners ---
-    modeBtnDoctor.addEventListener('click', () => setAppMode('Doctor'));
-    modeBtnPM.addEventListener('click', () => setAppMode('PM'));
+    // New Toggle Switch Listener
+    pmModeToggle.addEventListener('change', () => {
+        if (pmModeToggle.checked) {
+            setAppMode('PM');
+        } else {
+            setAppMode('Doctor');
+        }
+    });
     navDoctorDropdown.addEventListener('change', handleDoctorChange);
 
 
@@ -31,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     getEl('copy-request-btn').addEventListener('click', () => copyToClipboard('clinicalRequestOutput', getEl('copy-request-btn-text')));
     getEl('copy-note-btn').addEventListener('click', () => copyToClipboard('entryNoteOutput', getEl('copy-note-btn-text')));
     
-    // *** FIX: Updated Suture Logic Listeners ***
+    // Suture Logic Listeners
     useDeepSutureEl.addEventListener('change', () => {
         deepSutureContainer.classList.toggle('hidden', !useDeepSutureEl.checked);
         checkLesionFormCompleteness();
@@ -45,10 +51,19 @@ document.addEventListener('DOMContentLoaded', () => {
     skinSutureTypeEl.addEventListener('change', () => {
         const removalBox = getEl('skin-suture-removal-container');
         // Check if the selected suture is in the 'skin_dissolvable' list from settings
-        const isDissolvable = appSettings.sutures.skin_dissolvable.includes(skinSutureTypeEl.value);
+        const isDissolvable = appSettings.sutures && appSettings.sutures.skin_dissolvable 
+            ? appSettings.sutures.skin_dissolvable.includes(skinSutureTypeEl.value)
+            : false;
+            
         // Show removal box only if a non-dissolvable suture is selected
-        removalBox.style.display = (skinSutureTypeEl.value && !isDissolvable) ? 'block' : 'none';
-        checkLesionFormCompleteness(); // Re-validate
+        if (skinSutureTypeEl.value && !isDissolvable) {
+             removalBox.style.display = 'block';
+             removalBox.classList.remove('hidden');
+        } else {
+             removalBox.style.display = 'none';
+             removalBox.classList.add('hidden');
+        }
+        checkLesionFormCompleteness(); 
     });
 
     // Output Style Buttons
@@ -201,8 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setAppMode(savedMode);
     
     // 4. Load saved folder handle from IndexedDB
-    // This is now called from db.js's onsuccess event, so it's already running.
-    // It will, in turn, call populateDoctorDropdown().
+    // This call is already happening in db.js onsuccess
     
     // 5. Final UI setup
     updateOutputVisibility();
