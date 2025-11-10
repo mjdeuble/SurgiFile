@@ -70,7 +70,7 @@ var loadFilesBtn = getEl('load-files-btn');
 var searchBar = getEl('search-bar');
 var printBilledListBtn = getEl('print-billed-list-btn');
 var unprocessedSection = getEl('unprocessed-section');
-var unprocessedHeader = getEl('unprocessed-header'); // Added back
+var unprocessedHeader = getEl('unprocessed-header');
 var unprocessedList = getEl('unprocessed-list');
 var unprocessedCountDash = getEl('unprocessed-count-dash');
 var billedSection = getEl('billed-section');
@@ -81,8 +81,8 @@ var archiveSection = getEl('archive-section');
 var archiveHeader = getEl('archive-header');
 var archiveList = getEl('archive-list');
 var archiveCountDash = getEl('archive-count-dash');
-var archiveSearch = getEl('archive-search'); // Added back
-var batchArchiveBtn = getEl('batch-archive-btn'); // Added back
+var archiveSearch = getEl('archive-search');
+var batchArchiveBtn = getEl('batch-archive-btn');
 
 var billingPanel = getEl('billing-panel');
 var billingPanelTitle = getEl('billing-panel-title');
@@ -124,7 +124,6 @@ var orientationInputContainer = getEl('orientation-input-container');
 var closureDetailsContainer = getEl('closure-details-container');
 var deepSutureContainer = getEl('deep-suture-container');
 var skinSutureDetails = getEl('skin-suture-details');
-// REMOVED: var skinSutureDetailsDissolvable = getEl('skin-suture-details-dissolvable');
 var pathologyContainer = getEl('pathology-container');
 var skinSutureRemovalContainer = getEl('skin-suture-removal-container');
 
@@ -183,14 +182,31 @@ window.pathologyOptions = {
 // --- GLOBAL FUNCTIONS ---
 
 window.switchTab = function(tabName) {
+    // --- NEW: Check for unsaved data before switching ---
+    if (hasUnsavedChanges() && !confirm("You have unsaved procedure details. Switching tabs will clear this data. Are you sure you want to continue?")) {
+        // If user cancels, stay on current tab.
+        // We need to re-activate the correct button visually if it was deselected by the browser's default action,
+        // but since we control the 'active' class manually, just doing nothing here is usually enough 
+        // to keep them on the current view.
+        return; 
+    }
+
+    // Proceed with switching
     [tabClinicalNoteBtn, tabManualBillingBtn, tabBillingBtn, tabSettingsBtn].forEach(btn => btn.classList.remove('active'));
     [entryView, billingView, settingsView].forEach(view => view.classList.remove('active'));
 
     if (tabName === 'clinical-note') {
+        // If we were on a different tab, clear the form for a fresh start
+        if (!entryView.classList.contains('active')) {
+             resetAll(false); // Don't ask for confirmation again, we just did.
+        }
         isBillingOnlyMode = false;
         entryView.classList.add('active');
         tabClinicalNoteBtn.classList.add('active');
     } else if (tabName === 'manual-billing') {
+        if (!entryView.classList.contains('active')) {
+             resetAll(false);
+        }
         isBillingOnlyMode = true;
         entryView.classList.add('active');
         tabManualBillingBtn.classList.add('active');
@@ -243,6 +259,18 @@ window.updateEntryModeUI = function() {
 }
 
 window.setAppMode = function(mode) {
+    // --- NEW: Check for unsaved data before switching mode ---
+    // Only check if switching TO PM mode from Doctor mode and we are on an entry tab
+    if (mode === 'PM' && currentAppMode === 'Doctor' && entryView.classList.contains('active')) {
+        if (hasUnsavedChanges() && !confirm("You have unsaved procedure details. Switching to Practice Manager mode will clear this data. Continue?")) {
+            // User cancelled, revert toggle visually
+            pmModeToggle.checked = false;
+            return;
+        }
+         // If verified, clear data before switching
+         resetAll(false);
+    }
+
     currentAppMode = mode;
     localStorage.setItem('appMode', mode);
 
@@ -257,7 +285,7 @@ window.setAppMode = function(mode) {
         currentDoctor = null;
 
         if (entryView.classList.contains('active')) {
-            switchTab('billing');
+            switchTab('billing'); // This will now naturally skip the confirm check since we handled it above, or it was empty.
         }
     } else {
         pmModeToggle.checked = false;
@@ -316,10 +344,32 @@ window.populateDoctorDropdown = function(doctors) {
 }
 
 window.handleDoctorChange = function() {
+    // --- NEW: Check for unsaved data before changing doctor ---
+    if (entryView.classList.contains('active') && hasUnsavedChanges()) {
+         if (!confirm("Changing doctors will clear the current unsaved procedure details. Are you sure you want to continue?")) {
+             // Revert dropdown to previous value
+             navDoctorDropdown.value = currentDoctor;
+             return;
+         }
+         // If they agreed, clear the form for the new doctor
+         resetAll(false);
+    }
+
     currentDoctor = navDoctorDropdown.value;
     localStorage.setItem('currentDoctor', currentDoctor);
 
     if (billingView.classList.contains('active')) {
         loadBillingFiles();
     }
+    // Re-validate if on entry view
+    if (entryView.classList.contains('active')) {
+        checkLesionFormCompleteness();
+    }
+}
+
+// --- Helper to check for unsaved data ---
+window.hasUnsavedChanges = function() {
+    // Check if patient name is entered OR if there are lesions in the list
+    // AND we are not currently editing a saved file (because 'cancel' handles that differently)
+    return !editingProcedureFile && (patientNameEl.value.trim() !== '' || lesions.length > 0 || procedureTypeEl.value !== '');
 }
