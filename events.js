@@ -6,20 +6,23 @@
 document.addEventListener('DOMContentLoaded', () => {
     
     // --- Connect Tab Navigation ---
-    tabClinicalNoteBtn.addEventListener('click', () => switchTab('clinical-note'));
-    tabManualBillingBtn.addEventListener('click', () => switchTab('manual-billing'));
-    tabBillingBtn.addEventListener('click', () => switchTab('billing'));
-    tabSettingsBtn.addEventListener('click', () => switchTab('settings'));
+    tabClinicalNoteBtn.addEventListener('click', () => performSafeAction(() => switchTab('clinical-note')));
+    tabManualBillingBtn.addEventListener('click', () => performSafeAction(() => switchTab('manual-billing')));
+    tabBillingBtn.addEventListener('click', () => performSafeAction(() => switchTab('billing')));
+    tabSettingsBtn.addEventListener('click', () => performSafeAction(() => switchTab('settings'))); // Cogwheel
 
     // --- Connect Nav Bar Listeners ---
-    // New Toggle Switch Listener
-    pmModeToggle.addEventListener('change', () => {
-        if (pmModeToggle.checked) {
-            setAppMode('PM');
-        } else {
-            setAppMode('Doctor');
-        }
+    // New Toggle Switch Listener (on settings page)
+    pmModeToggleSettings.addEventListener('change', () => {
+        performSafeAction(() => {
+            if (pmModeToggleSettings.checked) {
+                setAppMode('PM');
+            } else {
+                setAppMode('Doctor');
+            }
+        });
     });
+    
     navDoctorDropdown.addEventListener('change', handleDoctorChange);
 
 
@@ -31,7 +34,6 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelEditBtn.addEventListener('click', cancelEdit);
 
     saveProcedureBtn.addEventListener('click', saveProcedure);
-    // --- NEW: Pass true to ask for confirmation when clearing ---
     clearProcedureBtn.addEventListener('click', () => resetAll(true));
 
     // Copy Buttons
@@ -113,6 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
     archiveHeader.addEventListener('click', () => archiveList.classList.toggle('collapsed'));
 
     // PM Batch Archive
+    selectAllBtn.addEventListener('click', toggleSelectAll); // <-- ADDED
     batchArchiveBtn.addEventListener('click', archiveBatchFiles);
     
     // Print Button
@@ -123,6 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
     saveAsBilledBtn.addEventListener('click', saveBilledFile);
     deleteProcedureBtn.addEventListener('click', deleteBillingFile);
     moveToArchiveBtn.addEventListener('click', archiveBilledFile);
+    sendBackBtn.addEventListener('click', sendBackToDoctor); // <-- ADDED
+    
     editProcedureBtn.addEventListener('click', () => {
         // Get the first lesion from the file and switch to the entry tab to edit
         if (currentBillingFile.data && currentBillingFile.data.lesions.length > 0) {
