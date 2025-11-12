@@ -5,19 +5,8 @@
 // - Rendering the Unprocessed, Ready to Bill, and Archive lists
 // - Handling search/filtering
 // - Opening and managing the Billing Panel (assistant)
-// - Moving files between folders (save as billed, archive)
+// - Moving files between folders (save as billed, archive, send back)
 // - Batch processing and printing
-
-// This variable will hold the report element so we can hide it after printing
-let elementToHideAfterPrint = null;
-
-// This event fires after the print dialog is closed
-window.onafterprint = () => {
-    if (elementToHideAfterPrint) {
-        elementToHideAfterPrint.style.display = 'none';
-        elementToHideAfterPrint = null;
-    }
-};
 
 /**
  * Loads all billing files based on the current app mode (Doctor or PM)
@@ -117,7 +106,7 @@ window.loadBillingFiles = async function() {
 /**
  * Recursively scans folders (for Archive)
  */
-window.scanFolderRecursive = async function(dirHandle, fileList, doctorName, fromFolder) {
+async function scanFolderRecursive(dirHandle, fileList, doctorName, fromFolder) {
     for await (const entry of dirHandle.values()) {
         if (entry.kind === 'file' && entry.name.endsWith('.json')) {
             const file = await entry.getFile();
@@ -141,6 +130,8 @@ window.renderFileLists = function() {
     
     // Show/hide batch archive button
     batchArchiveBtn.style.display = (currentAppMode === 'PM' && allFiles.billed.length > 0) ? 'flex' : 'none';
+    selectAllBtn.style.display = (currentAppMode === 'PM' && allFiles.billed.length > 0) ? 'flex' : 'none';
+    selectAllBtn.textContent = 'Select All'; // Reset button text
 
     const filterAndRender = (listEl, data, searchTerm, isBilledList = false) => {
         listEl.innerHTML = '';
@@ -179,10 +170,12 @@ window.renderFileLists = function() {
  * @param {boolean} addCheckbox - Whether to add a batch-process checkbox
  * @returns {HTMLElement} The created div element
  */
-window.createFileListItem = function(item, addCheckbox = false) {
+function createFileListItem(item, addCheckbox = false) {
     const { data, fileHandle, fromFolder, fromDoctor } = item;
     const el = document.createElement('div');
     el.className = 'file-list-item bg-white p-3 rounded-lg shadow border border-slate-200';
+    
+    // Use the stored procedureDate
     const date = new Date(data.procedureDate).toLocaleDateString();
     
     let codes = data.consultItem || '';
@@ -253,6 +246,13 @@ window.openBillingPanel = function(item) {
         }
 
         const isComplex = l.excisionClosureType === 'Flap Repair' || l.excisionClosureType === 'Graft Repair' || l.excisionClosureType === 'Graft + Flap';
+        
+        // --- FIX: Only show graftType if it's a graft procedure ---
+        let closureText = l.excisionClosureType;
+        if (l.excisionClosureType === 'Graft Repair' || l.excisionClosureType === 'Graft + Flap') {
+            closureText += ` (${l.graftType || 'N/A'})`;
+        }
+        // --- End Fix ---
 
         return `
         <div class="p-4 bg-slate-50 rounded-lg border border-slate-200" data-lesion-id="${l.id}">
@@ -263,12 +263,7 @@ window.openBillingPanel = function(item) {
                 <p><strong>PDx:</strong> ${l.pathology.replace(/;/g, ', ')}</p>
                 <p><strong>Region:</strong> ${regionText}</p>
                 <p><strong>Defect Size:</strong> <span class="font-bold text-base">${l.defectSize.toFixed(1)}mm</span></p>
-                ${isComplex ? `
-                    <p><strong>Closure:</strong> 
-                    ${l.excisionClosureType} 
-                    ${(l.excisionClosureType === 'Graft Repair' || l.excisionClosureType === 'Graft + Flap') && l.graftType ? `(${l.graftType})` : ''}
-                    </p>
-                ` : ''}
+                ${isComplex ? `<p><strong>Closure:</strong> ${closureText}</p>` : ''}
             </div>
 
             <div class="mt-4">
@@ -284,7 +279,7 @@ window.openBillingPanel = function(item) {
             </div>
 
             <div id="excision-code-container-${l.id}" class="mt-4 hidden space-y-2">
-                <label class="block text-sm font-medium text-slate-600">Step 2: Suggested Code(s)</label>
+                <label class="block text-sm font-medium text-slate-600">Step 2: Suggested Excision Code</label>
                 <div id="excision-btn-group-${l.id}"></div>
             </div>
 
@@ -296,7 +291,10 @@ window.openBillingPanel = function(item) {
             <div class="mt-6">
                 <label for="lesion-item-${l.id}" class="block text-sm font-medium text-slate-600">Final Procedure Item(s)</label>
                 <input type="text" id="lesion-item-${l.id}" data-lesion-id="${l.id}" value="${data.lesions.find(les => les.id === l.id).procedureItemNumber || ''}"
-                       class="lesion-item-input w-full bg-white border border-slate-300 rounded-lg p-2 mt-1">
+                       class="lesion-item-input w-full bg-white border border-slate-300 rounded-lg p-2 mt-1"
+                       placeholder="Select from suggestions above...">
+                <!-- NEW: Validation message for time-based codes -->
+                <p id="time-code-msg-${l.id}" class="text-sm text-red-600 mt-1 hidden">Please enter a time-based code.</p>
             </div>
         </div>
         `;
@@ -307,6 +305,13 @@ window.openBillingPanel = function(item) {
         getEl(`histo-btn-group-${l.id}`).addEventListener('click', (e) => handleHistoClick(e, l));
         getEl(`excision-btn-group-${l.id}`).addEventListener('click', (e) => handleConfirmClick(e, l.id, 'excision'));
         getEl(`repair-btn-group-${l.id}`).addEventListener('click', (e) => handleConfirmClick(e, l.id, 'repair'));
+        
+        // Add listener to input box to clear validation
+        const inputEl = getEl(`lesion-item-${l.id}`);
+        inputEl.addEventListener('input', () => {
+            getEl(`time-code-msg-${l.id}`).classList.add('hidden');
+            saveAsBilledBtn.disabled = false;
+        });
     });
 
 
@@ -328,97 +333,115 @@ window.openBillingPanel = function(item) {
 /**
  * Handles clicks on the Step 1 (Histology) buttons
  */
-window.handleHistoClick = function(event, lesion) {
+function handleHistoClick(event, lesion) {
     const target = event.target.closest('.billing-btn');
     if (!target) return;
 
     const histoType = target.dataset.histo;
+    const lesionId = lesion.id;
     
     // Toggle selected state
-    getEl(`histo-btn-group-${lesion.id}`).querySelectorAll('.billing-btn').forEach(btn => btn.classList.remove('selected'));
+    getEl(`histo-btn-group-${lesionId}`).querySelectorAll('.billing-btn').forEach(btn => btn.classList.remove('selected'));
     target.classList.add('selected');
 
     // Clear lower selections
-    const excisionContainer = getEl(`excision-btn-group-${lesion.id}`);
-    const repairContainer = getEl(`repair-btn-group-${lesion.id}`);
+    const excisionContainer = getEl(`excision-btn-group-${lesionId}`);
+    const repairContainer = getEl(`repair-btn-group-${lesionId}`);
     excisionContainer.innerHTML = '';
     repairContainer.innerHTML = '';
-    getEl(`excision-code-container-${lesion.id}`).classList.add('hidden');
-    getEl(`repair-code-container-${lesion.id}`).classList.add('hidden');
-    getEl(`lesion-item-${lesion.id}`).value = '';
+    getEl(`excision-code-container-${lesionId}`).classList.add('hidden');
+    getEl(`repair-code-container-${lesionId}`).classList.add('hidden');
+    
+    // --- NEW: Time-based logic ---
+    const inputEl = getEl(`lesion-item-${lesionId}`);
+    const timeCodeMsg = getEl(`time-code-msg-${lesionId}`);
+    
+    inputEl.value = ''; // Clear input on any histo click
+    timeCodeMsg.classList.add('hidden'); // Hide validation
+    saveAsBilledBtn.disabled = false; // Re-enable save btn
+    inputEl.placeholder = 'Select from suggestions above...'; // Reset placeholder
 
     // --- NEW BILLING LOGIC ---
     const region = lesion.anatomicalRegion;
     const defectSize = lesion.defectSize;
     const clinicalClosure = lesion.procedure === 'Wedge Excision' ? 'Wedge Excision' : lesion.excisionClosureType;
+    const isPunchBiopsy = lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy';
 
-    // DETECT IF IT IS A DIAGNOSTIC BIOPSY
-    // If the procedure was recorded specifically as a "Punch Biopsy", it should 
-    // map to 30071 regardless of the final histology.
-    const isDiagnosticBiopsy = (lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy');
-
-    // 1. Get Primary Codes (Excision or Biopsy)
-    let primaryCodes = [];
-
-    if (histoType === 'Time Based Only') {
-         getEl(`lesion-item-${lesion.id}`).value = 'Time Based';
-         return;
-    } else if (histoType === 'Simple Biopsy' || isDiagnosticBiopsy) {
-        // Force 30071 if button is clicked OR if it was recorded clinically as a biopsy
+    // 1. Get Excision Codes
+    let excisionCodes = [];
+    if (isPunchBiopsy) {
+        // --- FIX: Punch Biopsy always suggests 30071 ---
         const biopsyCode = appSettings.biopsy["30071"];
-        if (biopsyCode) primaryCodes = [biopsyCode];
+        if (biopsyCode) excisionCodes = [biopsyCode];
+        
+    } else if (histoType === 'Simple Biopsy') {
+        // This is for Shave/Ellipse biopsies
+        const biopsyCode = appSettings.biopsy["30071"];
+        if (biopsyCode) excisionCodes = [biopsyCode];
+        
+    } else if (histoType === 'Time Based Only') {
+         // --- NEW: Don't auto-fill, just set placeholder and validate ---
+         inputEl.placeholder = 'Enter time-based code...';
+         // Check if it's valid *now* (it's not)
+         validateTimeBasedCode(lesionId);
+         return;
+         
     } else {
-        // Otherwise, look up excision codes based on histology and size
-        primaryCodes = findExcisionCode(histoType, region, defectSize);
+        excisionCodes = findExcisionCode(histoType, region, defectSize);
     }
     
-    if (primaryCodes.length > 0) {
-        primaryCodes.forEach(code => {
-            const btn = createBillingSuggestion(code.item, code.desc, 'excision');
+    if (excisionCodes.length > 0) {
+        excisionCodes.forEach(code => {
+            // --- FIX: No auto-confirm ---
+            const btn = createBillingSuggestion(code.item, code.desc, 'excision', false);
             excisionContainer.appendChild(btn);
         });
-        getEl(`excision-code-container-${lesion.id}`).classList.remove('hidden');
+        getEl(`excision-code-container-${lesionId}`).classList.remove('hidden');
     }
 
-    // 2. Get Repair Codes
-    // Repairs are generally NOT applicable to 30071 (diagnostic biopsy).
-    if (!isDiagnosticBiopsy && histoType !== 'Simple Biopsy' && histoType !== 'Time Based Only') {
-        let suggestedExcisionItem = primaryCodes.length > 0 ? primaryCodes[0].item : null;
+    // 2. Get Repair Codes (if not a biopsy or time-based)
+    let suggestedExcisionItem = excisionCodes.length > 0 ? excisionCodes[0].item : null;
+
+    if (histoType !== 'Simple Biopsy' && histoType !== 'Time Based Only' && !isPunchBiopsy) {
         // Find repair codes that match the clinical closure type
         const matchingRepairCodes = appSettings.repairs.filter(code => code.clinicalType === clinicalClosure);
 
         if (matchingRepairCodes.length > 0) {
             matchingRepairCodes.forEach(code => {
+                let isRecommended = false; // --- FIX: No auto-confirm ---
                 let isDisabled = false;
                 let reason = '';
 
                 // Check co-claiming rules
                 if (code.canClaimWith && suggestedExcisionItem) {
                     if (!code.canClaimWith.includes(suggestedExcisionItem)) {
+                        isRecommended = false;
                         isDisabled = true;
                         reason = `(Not co-claimable with ${suggestedExcisionItem})`;
                     }
                 }
                 // Check min size rules
                 if (code.minSize && defectSize < code.minSize) {
+                    isRecommended = false;
                     isDisabled = true;
                     reason = `(Defect ${defectSize.toFixed(1)}mm < min size ${code.minSize}mm)`;
                 }
 
-                const btn = createBillingSuggestion(code.item, code.desc, 'repair', false, isDisabled, reason);
+                const btn = createBillingSuggestion(code.item, code.desc, 'repair', isRecommended, isDisabled, reason);
                 repairContainer.appendChild(btn);
             });
-            getEl(`repair-code-container-${lesion.id}`).classList.remove('hidden');
+            getEl(`repair-code-container-${lesionId}`).classList.remove('hidden');
         }
     }
     
-    updateFinalCode(lesion.id);
+    // 3. Update final text box
+    updateFinalCode(lesionId);
 }
 
 /**
  * Finds the correct excision code from appSettings
  */
-window.findExcisionCode = function(histoType, region, size) {
+function findExcisionCode(histoType, region, size) {
     const codes = appSettings.excisions[histoType]?.[region];
     if (!codes) return [];
 
@@ -435,14 +458,18 @@ window.findExcisionCode = function(histoType, region, size) {
 /**
  * Creates the HTML for a billing suggestion
  */
-window.createBillingSuggestion = function(item, desc, type, isRecommended = false, isDisabled = false, reason = '') {
+function createBillingSuggestion(item, desc, type, isRecommended = false, isDisabled = false, reason = '') {
     const suggestionEl = document.createElement('div');
+    // --- FIX: isRecommended no longer adds 'confirmed' class ---
     suggestionEl.className = `billing-suggestion ${isDisabled ? 'disabled' : ''}`;
     suggestionEl.dataset.item = item;
     suggestionEl.dataset.type = type;
 
+    // --- FIX: Button text is always 'Add' ---
     const btnText = 'Add';
     const reasonHTML = reason ? `<span class="text-xs text-red-600 ml-2">${reason}</span>` : '';
+    // --- FIX: Remove "Recommended" badge ---
+    const recommendedHTML = ''; 
 
     suggestionEl.innerHTML = `
         <div class="flex-grow">
@@ -453,6 +480,7 @@ window.createBillingSuggestion = function(item, desc, type, isRecommended = fals
             </div>
         </div>
         <div class="flex-shrink-0 flex items-center gap-2">
+            ${recommendedHTML}
             <button type="button" class="confirm-btn" ${isDisabled ? 'disabled' : ''}>${btnText}</button>
         </div>
     `;
@@ -460,9 +488,9 @@ window.createBillingSuggestion = function(item, desc, type, isRecommended = fals
 }
 
 /**
- * Handles clicks on the "Confirm" / "Added" buttons
+ * Handles clicks on the "Add" / "Remove" buttons
  */
-window.handleConfirmClick = function(event, lesionId, groupType) {
+function handleConfirmClick(event, lesionId, groupType) {
     const target = event.target.closest('.confirm-btn');
     if (!target) return;
 
@@ -471,9 +499,9 @@ window.handleConfirmClick = function(event, lesionId, groupType) {
     
     // Toggle confirmed state
     suggestionEl.classList.toggle('confirmed');
+    // --- FIX: Toggle button text ---
     target.textContent = suggestionEl.classList.contains('confirmed') ? 'Remove' : 'Add';
     
-    // If it's an excision, re-check repair code rules
     if (groupType === 'excision') {
         // TODO: Re-validate repair codes based on this new selection
     }
@@ -484,7 +512,7 @@ window.handleConfirmClick = function(event, lesionId, groupType) {
 /**
  * Updates the final item code text box
  */
-window.updateFinalCode = function(lesionId) {
+function updateFinalCode(lesionId) {
     const confirmedItems = [];
     // Get all confirmed buttons, respecting the order (excision then repair)
     const excisionBtn = getEl(`excision-btn-group-${lesionId}`).querySelector('.confirmed');
@@ -495,11 +523,69 @@ window.updateFinalCode = function(lesionId) {
     
     const finalCode = confirmedItems.filter(Boolean).join(', ');
     getEl(`lesion-item-${lesionId}`).value = finalCode;
+    
+    // --- NEW: Validate time-based code ---
+    validateTimeBasedCode(lesionId);
+}
+
+/**
+ * Checks if a time-based code is required but missing
+ * @param {string|number} lesionId 
+ * @returns {boolean} True if the code is invalid
+ */
+function validateTimeBasedCode(lesionId) {
+    const histoGroup = getEl(`histo-btn-group-${lesionId}`);
+    const selectedBtn = histoGroup.querySelector('.billing-btn.selected');
+    const inputEl = getEl(`lesion-item-${lesionId}`);
+    const timeCodeMsg = getEl(`time-code-msg-${lesionId}`);
+    
+    if (selectedBtn && selectedBtn.dataset.histo === 'Time Based Only' && !inputEl.value) {
+        // Time-based is selected, but input is empty
+        timeCodeMsg.classList.remove('hidden');
+        inputEl.classList.add('missing-field');
+        saveAsBilledBtn.disabled = true; // Disable save
+        return true; // Is invalid
+    } else {
+        // All other cases
+        timeCodeMsg.classList.add('hidden');
+        inputEl.classList.remove('missing-field');
+        saveAsBilledBtn.disabled = false; // Enable save
+        return false; // Is valid
+    }
 }
 
 // --- FILE ACTIONS (SAVE, DELETE, ARCHIVE) ---
 
-window.saveBilledFile = async function() {
+async function saveBilledFile() {
+    // --- NEW: Validation ---
+    let isInvalid = false;
+    for (const lesion of currentBillingFile.data.lesions) {
+        const lesionId = lesion.id;
+        const histoGroup = getEl(`histo-btn-group-${lesionId}`);
+        const selectedBtn = histoGroup.querySelector('.billing-btn.selected');
+        
+        // 1. Check if a histo type is selected at all
+        if (!selectedBtn) {
+            isInvalid = true;
+            alert(`Error: Please select a 'Final Histology' (Step 1) for Lesion ${lesionId}.`);
+            // Highlight the group
+            histoGroup.closest('.p-4').classList.add('missing-field');
+            break; 
+        } else {
+             histoGroup.closest('.p-4').classList.remove('missing-field');
+        }
+        
+        // 2. Check if 'Time Based' is selected and code is missing
+        if (validateTimeBasedCode(lesionId)) {
+            isInvalid = true;
+            alert(`Error: Please enter a time-based code for Lesion ${lesionId}.`);
+            getEl(`lesion-item-${lesionId}`).focus(); // Focus the empty box
+            break;
+        }
+    }
+    if (isInvalid) return; // Stop save
+    // --- End Validation ---
+
     // 1. Get new data from panel
     const updatedData = { ...currentBillingFile.data };
     updatedData.consultItem = billingConsultItem.value;
@@ -522,7 +608,7 @@ window.saveBilledFile = async function() {
     loadBillingFiles();
 }
 
-window.deleteBillingFile = async function() {
+async function deleteBillingFile() {
     if (!confirm('Are you sure you want to delete this unprocessed procedure? This cannot be undone.')) {
         return;
     }
@@ -540,7 +626,7 @@ window.deleteBillingFile = async function() {
 /**
  * Archives a single file from the billing panel
  */
-window.archiveBilledFile = async function() {
+async function archiveBilledFile() {
     if (!confirm('Are you sure you want to archive this item?')) {
         return;
     }
@@ -557,9 +643,40 @@ window.archiveBilledFile = async function() {
 }
 
 /**
+ * --- NEW: Sends a file from 'Billed' back to 'Unprocessed' ---
+ */
+async function sendBackToDoctor() {
+    const reason = billingComment.value.trim();
+    if (!reason) {
+        alert("Please add a comment in the 'Billing Comment' box explaining why this is being sent back.");
+        billingComment.classList.add('missing-field');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to send this item back to the doctor for review?')) {
+        return;
+    }
+    
+    // 1. Update status and add PM comment
+    const updatedData = { ...currentBillingFile.data };
+    updatedData.status = 'Unprocessed'; // Set status back
+    // Prepend the PM's reason to any existing comment
+    const oldComment = updatedData.billingComment ? ` (Original: ${updatedData.billingComment})` : '';
+    updatedData.billingComment = `PM REVIEW: ${reason}${oldComment}`;
+    
+    // 2. Move file from 'Billed' to 'Unprocessed'
+    await moveFile('Billed', 'Unprocessed', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
+
+    // 3. Refresh UI
+    billingPanel.classList.add('hidden');
+    loadBillingFiles();
+}
+
+
+/**
  * Archives all selected files in a batch
  */
-window.archiveBatchFiles = async function() {
+async function archiveBatchFiles() {
     const checkboxes = billedList.querySelectorAll('.batch-checkbox:checked');
     if (checkboxes.length === 0) {
         alert("Please select items to archive using the checkboxes.");
@@ -604,6 +721,23 @@ window.archiveBatchFiles = async function() {
 
 
 /**
+ * --- NEW: Selects or deselects all checkboxes in the "Ready to Bill" list
+ */
+window.toggleSelectAll = function() {
+    const checkboxes = billedList.querySelectorAll('.batch-checkbox');
+    // Check if the button currently says "Select All"
+    const isSelectAll = (selectAllBtn.textContent === 'Select All');
+    
+    checkboxes.forEach(cb => {
+        cb.checked = isSelectAll;
+    });
+    
+    // Toggle button text
+    selectAllBtn.textContent = isSelectAll ? 'Deselect All' : 'Select All';
+}
+
+
+/**
  * Generates and triggers the print dialog
  */
 window.printBilledList = function() {
@@ -618,105 +752,84 @@ window.printBilledList = function() {
         return;
     }
 
-    // Get the main report element
-    const reportElement = getEl('printable-report');
+    let doctorHeader = (currentAppMode === 'PM') ? 'All Doctors' : currentDoctor;
     
-    // We will build a new HTML string, NOT a table.
-    let reportHTML = ``;
+    let reportHTML = `<h1 class="text-2xl font-bold mb-4">Billing Run Sheet - ${doctorHeader}</h1>`;
+    reportHTML += `<h2 class="text-lg font-medium mb-6">Generated: ${new Date().toLocaleString()}</h2>`;
     
-    // Add the main title
-    reportHTML += `<h1 style="font-size: 24px; font-weight: bold; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px;">Billing Run Sheet - ${new Date().toLocaleDateString()}</h1>`;
-    
-    let currentDoctorHeader = ""; // Track the last printed doctor header
+    let currentDoctorGroup = "";
     
     itemsToPrint.forEach(item => {
         const data = item.data;
-        const doctor = data.doctorCode;
-
-        // 1. Heading 1 - Doctor
-        // (This works because itemsToPrint is already sorted by doctor in PM mode)
-        if (doctor !== currentDoctorHeader) {
-            reportHTML += `
-                <div class="doctor-group" style="margin-top: 25px; padding-top: 15px; border-top: 2px solid #94a3b8; page-break-before: auto;">
-                    <h2 style="font-size: 20px; font-weight: bold; color: #0284c7;">Dr. ${doctor}</h2>
-                </div>
-            `;
-            currentDoctorHeader = doctor; // Update the tracker
+        
+        // --- NEW HIERARCHICAL LAYOUT ---
+        
+        // 1. Print Doctor Header (if PM mode and doctor is different)
+        if (currentAppMode === 'PM' && data.doctorCode !== currentDoctorGroup) {
+            currentDoctorGroup = data.doctorCode;
+            reportHTML += `<h1 class="text-xl font-bold p-2 bg-slate-200 mt-6 mb-3">Doctor: ${currentDoctorGroup}</h1>`;
         }
         
-        // 2. Subheading - Patient
+        // 2. Print Patient Subheading
         const date = new Date(data.procedureDate).toLocaleDateString();
-        reportHTML += `
-            <div class="patient-record" style="margin-left: 20px; margin-top: 15px; padding-bottom: 15px; border-bottom: 1px dashed #ccc;">
-                <div style="font-size: 16px; font-weight: bold;">Patient: ${data.patientName}</div>
-        `;
+        reportHTML += `<div style="border-top: 1px solid #ccc; padding: 10px 0;">`; // Container for one patient
+        reportHTML += `<h2 class="text-lg font-semibold">${data.patientName}</h2>`;
+        reportHTML += `<div class="ml-4 mb-2 text-sm text-slate-700"><strong>Date:</strong> ${date}</div>`;
         
-        // 3. Subheading - Date
-        reportHTML += `
-                <div style="font-size: 14px; margin-left: 10px;">Date: ${date}</div>
-        `;
-        
-        // 4. Lesion Details
-        reportHTML += data.lesions.map(lesion => {
-            const location = lesion.location || 'N/A';
-            const histo = lesion.pathology ? lesion.pathology.replace(/;/g, ', ') : 'N/A';
-            
-            // Get dimensions string
-            let dimensions = 'N/A';
-            if (lesion.billingOnly) {
-                dimensions = 'Billing-Only (No clinical dimensions)';
-            } else if (lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy') {
-                dimensions = `${lesion.punchSize}mm Punch`;
-            } else if (lesion.length && lesion.width) {
-                dimensions = `${lesion.length}mm x ${lesion.width}mm (Margin: ${lesion.margin || 0}mm)`;
-            }
-            
-            // *** FIX: More specific logic for repair type ***
-            let repairType = '';
-            if (lesion.procedure === 'Excision' || lesion.procedure === 'Wedge Excision') {
-                repairType = ` - ${lesion.excisionClosureType || 'N/A'}`;
-                // Only add graft type if it's a graft repair
-                if (lesion.excisionClosureType === 'Graft Repair' || lesion.excisionClosureType === 'Graft + Flap') {
-                    repairType += ` (${lesion.graftType || 'N/A'})`;
+        // 3. Print Lesion Details
+        data.lesions.forEach(l => {
+            let procText = l.procedure;
+            if (l.procedure === 'Excision') {
+                procText += ` (${l.excisionClosureType})`;
+                // --- FIX: Only add graft type if it's a graft ---
+                if (l.excisionClosureType === 'Graft Repair' || l.excisionClosureType === 'Graft + Flap') {
+                     procText += ` (${l.graftType})`;
                 }
             }
+            if (l.procedure === 'Punch') procText += ` (${l.punchType})`;
             
-            const defectSize = lesion.defectSize ? `${lesion.defectSize.toFixed(1)}mm` : 'N/A';
-            const procedureItems = lesion.procedureItemNumber || 'N/A';
-
-            return `
-                <div class="lesion-details" style="margin-left: 10px; margin-top: 10px; padding-left: 10px; border-left: 2px solid #e2e8f0;">
-                    <div style="font-weight: bold;">Lesion ${lesion.id}: ${location}</div>
-                    <div style="margin-left: 15px;">Dimensions: ${dimensions}${repairType}</div>
-                    <div style="margin-left: 15px;">Defect Size: ${defectSize}</div>
-                    <div style="margin-left: 15px;">Histology Type (PDx): ${histo}</div>
-                    <div style="margin-left: 15px;">Procedure Items: ${procedureItems}</div>
+            reportHTML += `
+                <div class="ml-8 mb-3 p-2 bg-slate-50" style="border-left: 3px solid #64748b;">
+                    <strong class="text-slate-800">Lesion ${l.id}: ${l.location}</strong>
+                    <div class="ml-4">
+                        <div><strong>Procedure:</strong> ${procText}</div>
+                        <div><strong>Defect Size:</strong> ${l.defectSize.toFixed(1)}mm</div>
+                        <div><strong>Histology:</strong> ${l.pathology.replace(/;/g, ', ')}</div>
+                        <div class="font-medium text-blue-700"><strong>Procedure Items:</strong> ${l.procedureItemNumber || 'N/A'}</div>
+                    </div>
                 </div>
             `;
-        }).join('');
+        });
         
-        // 5. Overall Billing Info (Consult and Comment)
-        const consultItems = data.consultItem || 'N/A';
-        const billingComment = data.billingComment || 'N/A';
-
-        reportHTML += `
-                <div class="billing-summary" style="margin-left: 10px; margin-top: 10px;">
-                    <div>Consult Items: ${consultItems}</div>
-                    <div>Billing Comment: ${billingComment}</div>
-                </div>
-            </div> <!-- End patient-record -->
-        `;
+        // 4. Print Consult & Comment
+        reportHTML += `<div class="ml-8">`;
+        if (data.consultItem) {
+             reportHTML += `<div class="font-medium text-blue-700"><strong>Consult Item:</strong> ${data.consultItem}</div>`;
+        }
+        if (data.billingComment) {
+            reportHTML += `<div class="text-sm italic text-amber-700"><strong>Comment:</strong> ${data.billingComment}</div>`;
+        }
+        reportHTML += `</div></div>`; // Close patient container
     });
     
-    // --- Update the DOM ---
-    // We will now write directly to printable-report's innerHTML,
-    // replacing the title and table that were there before.
-    reportElement.innerHTML = reportHTML;
+    // --- END NEW LAYOUT ---
     
-    // --- FIX: Force the printable report to be visible ---
-    reportElement.style.display = 'block'; // 1. Force it to be visible
-    elementToHideAfterPrint = reportElement; // 2. Store it so 'onafterprint' can hide it
     
-    // 3. Call print. The 'onafterprint' event will handle hiding it.
+    // Get the hidden printable report element
+    const printReportEl = getEl('printable-report');
+    printReportEl.innerHTML = reportHTML;
+    
+    // --- NEW PRINT LOGIC ---
+    // Force it to be visible *before* calling window.print()
+    printReportEl.style.display = 'block';
     window.print();
+    // The 'onafterprint' event will hide it again.
 }
+
+// --- NEW: Add event listener to hide report after printing ---
+window.onafterprint = () => {
+    const printReportEl = getEl('printable-report');
+    if (printReportEl) {
+        printReportEl.style.display = 'none';
+    }
+};
