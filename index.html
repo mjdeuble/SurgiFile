@@ -7,7 +7,7 @@
     
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clinical Management PWA</title>
+    <title>SurgiFile</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
@@ -68,6 +68,22 @@
             color: white;
             background-color: #0284c7; /* bg-sky-600 */
         }
+        /* Icon Button (Cog) */
+        .icon-btn {
+             color: #475569; /* text-slate-600 */
+             padding: 8px;
+             border-radius: 8px;
+             background-color: #f1f5f9; /* bg-slate-100 */
+             transition: all 0.2s;
+        }
+        .icon-btn:hover {
+            background-color: #e2e8f0; /* bg-slate-200 */
+        }
+        .icon-btn.active {
+            color: white;
+            background-color: #0284c7; /* bg-sky-600 */
+        }
+        
         .app-view {
             display: none; /* Hidden by default */
         }
@@ -75,7 +91,12 @@
             display: block; /* Shown by JS */
         }
 
-        /* --- NEW: Toggle Switch Styles --- */
+        /* --- Toggle Switch Styles (for Settings page) --- */
+        .toggle-switch-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem; /* gap-3 */
+        }
         .toggle-switch {
             position: relative;
             display: inline-block;
@@ -175,6 +196,12 @@
         .pm-mode-active #batch-archive-container {
             display: block; /* Show batch archive button */
         }
+        .pm-mode-active #select-all-btn {
+            display: inline-flex; /* Show select all button */
+        }
+        .pm-mode-active #send-back-btn {
+            display: inline-flex; /* Show send back button */
+        }
 
         /* Print Styles */
         @media print {
@@ -256,6 +283,18 @@
         .billing-only-mode #final-defect-size-container {
              display: block !important;
         }
+        /* NEW: Hide clinical audit fields in manual billing mode */
+        .billing-only-mode #clinical-audit-fields {
+            display: none !important;
+        }
+         /* NEW: Hide pathology in manual billing mode */
+        .billing-only-mode #pathology-container {
+            display: none !important;
+        }
+        /* NEW: Show procedure date in manual billing mode */
+        .billing-only-mode #procedure-date-container {
+             display: block !important;
+        }
 
 
     </style>
@@ -264,14 +303,18 @@
 
     <nav class="bg-white shadow-md w-full p-4 sticky top-0 z-40">
         <div class="container mx-auto flex items-center justify-between">
-            <h1 id="app-title" class="text-2xl font-bold text-slate-700">Clinical Management PWA</h1>
+            
+            <div class="flex items-center gap-4">
+                <!-- App Icon -->
+                <img src="icon-192.png" alt="SurgiFile Logo" class="h-10 w-10 rounded-lg">
+                <h1 id="app-title" class="text-2xl font-bold text-slate-700">SurgiFile</h1>
+            </div>
             
             <div class="flex items-center gap-4">
                 <!-- Tab Buttons -->
                 <button id="tab-clinical-note" class="tab-btn active">Clinical Note Entry</button>
                 <button id="tab-manual-billing" class="tab-btn">Add Manual Billing</button>
                 <button id="tab-billing" class="tab-btn">Billing & Processing</button>
-                <button id="tab-settings" class="tab-btn">Settings</button>
                 
                 <div class="w-px h-8 bg-slate-300"></div> <!-- Divider -->
 
@@ -280,14 +323,12 @@
                      <select id="nav-doctor-dropdown" class="bg-slate-100 border border-slate-300 rounded-lg p-2 font-medium text-slate-700"></select>
                 </div>
                 
-                <!-- NEW: PM Mode Toggle Switch -->
-                <div class="flex items-center gap-2 pl-2">
-                    <label id="pm-mode-toggle-label" for="pm-mode-toggle" class="font-semibold text-slate-600 cursor-pointer">Practice Manager Mode</label>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="pm-mode-toggle">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
+                <!-- NEW: Settings Cogwheel Button -->
+                <button id="tab-settings" class="icon-btn" aria-label="Settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 0 1-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.858 2.929 2.929 0 0 1 0 5.858z"/>
+                    </svg>
+                </button>
             </div>
         </div>
     </nav>
@@ -307,9 +348,20 @@
                             
                             <div class="space-y-4 border-b border-slate-200 pb-6 mb-6">
                                 <h2 class="text-2xl font-semibold">Procedure Details</h2>
-                                <div>
-                                    <label for="patientName" class="block text-sm font-medium text-slate-600 mb-2">Patient Name</label>
-                                    <input type="text" id="patientName" placeholder="e.g., John Smith" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div class="md:col-span-2">
+                                        <label for="patientName" class="block text-sm font-medium text-slate-600 mb-2">Patient Name</label>
+                                        <input type="text" id="patientName" placeholder="e.g., John Smith" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                    </div>
+                                    <div>
+                                        <label for="patientDOB" class="block text-sm font-medium text-slate-600 mb-2">Patient Date of Birth</label>
+                                        <input type="date" id="patientDOB" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                    </div>
+                                    <!-- NEW: Procedure Date Input (for manual billing) -->
+                                    <div id="procedure-date-container" class="hidden">
+                                        <label for="procedureDate" class="block text-sm font-medium text-slate-600 mb-2">Procedure Date</label>
+                                        <input type="date" id="procedureDate" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                    </div>
                                 </div>
                             </div>
                             
@@ -345,6 +397,7 @@
                                     </select>
                                 </div>
                                 
+                                <!-- Container for clinical-only fields -->
                                 <div id="pathology-container">
                                     <label class="block text-sm font-medium text-slate-600 mb-2">Provisional Diagnosis (PDx)</label>
                                     <div class="flex items-center gap-2">
@@ -352,23 +405,27 @@
                                         <input type="hidden" id="provisionalDiagnoses">
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <label class="flex items-center space-x-2 font-medium text-slate-700">
-                                        <input type="checkbox" id="excludeNMSC" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <span>Exclude NMSC?</span>
-                                    </label>
-                                    <label class="flex items-center space-x-2 font-medium text-slate-700">
-                                        <input type="checkbox" id="excludeMelanoma" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <span>Exclude Melanoma?</span>
-                                    </label>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-600 mb-2">Dermoscopy Used?</label>
-                                    <div id="dermoscopy-btn-container" class="flex gap-2">
-                                        <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Y">Yes</button>
-                                        <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="N">No</button>
+                                
+                                <!-- Container for clinical-only audit fields -->
+                                <div id="clinical-audit-fields" class="space-y-4">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                            <input type="checkbox" id="excludeNMSC" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Exclude NMSC?</span>
+                                        </label>
+                                        <label class="flex items-center space-x-2 font-medium text-slate-700">
+                                            <input type="checkbox" id="excludeMelanoma" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Exclude Melanoma?</span>
+                                        </label>
                                     </div>
-                                    <input type="hidden" id="dermoscopyUsed">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-600 mb-2">Dermoscopy Used?</label>
+                                        <div id="dermoscopy-btn-container" class="flex gap-2">
+                                            <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="Y">Yes</button>
+                                            <button type="button" class="dermoscopy-btn w-full bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg hover:bg-slate-300 text-sm" data-value="N">No</button>
+                                        </div>
+                                        <input type="hidden" id="dermoscopyUsed">
+                                    </div>
                                 </div>
 
 
@@ -479,18 +536,18 @@
                                                 <input type="checkbox" id="useSkinSuture" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
                                                 <span>Use Skin Sutures</span>
                                              </label>
-                                             <div id="skin-suture-details" class="grid grid-cols-2 gap-4">
-                                                 <select id="skinSutureSize" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                                    <option value="3/0">3/0</option>
-                                                    <option value="4/0">4/0</option>
-                                                    <option value="5/0" selected>5/0</option>
-                                                    <option value="6/0">6/0</option>
+                                             <div id="skin-suture-details" class="grid grid-cols-2 gap-4 pt-2">
+                                                 <select id="skinSutureSize" class="w-full bg-white border border-slate-300 rounded-lg p-3">
+                                                     <option value="3/0">3/0</option>
+                                                     <option value="4/0">4/0</option>
+                                                     <option value="5/0" selected>5/0</option>
+                                                     <option value="6/0">6/0</option>
                                                  </select>
-                                                 <select id="skinSutureType" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
-                                                    <!-- Options populated by settings-view.js -->
+                                                 <select id="skinSutureType" class="w-full bg-white border border-slate-300 rounded-lg p-3">
+                                                     <!-- Options populated by settings-view.js -->
                                                  </select>
                                                  <div id="skin-suture-removal-container" class="col-span-2 hidden">
-                                                     <input type="number" id="removalOfSkinSutures" placeholder="Suture Removal (days)" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-3">
+                                                     <input type="number" id="removalOfSkinSutures" placeholder="Suture Removal (days)" class="w-full bg-white border border-slate-300 rounded-lg p-3">
                                                  </div>
                                              </div>
                                          </div>
@@ -521,15 +578,16 @@
                         </div>
                     </div>
             
-                    <div id="output-column">
-                        <div id="lesions-list-container" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+                    <!-- Right Column (Lesions List, Request, Note) -->
+                    <div id="entry-right-column">
+                        <div id="recorded-lesions-wrapper" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
                             <h2 class="text-2xl font-semibold mb-4 border-b pb-3">Recorded Lesions for this Patient</h2>
                             <div id="lesions-list" class="space-y-3">
                                 <p class="text-slate-500 italic">No lesions added yet.</p>
                             </div>
                         </div>
             
-                        <div id="output-style-container" class="flex items-center gap-4 mb-4">
+                        <div id="output-style-btn-container" class="flex items-center gap-4 mb-4">
                             <label class="text-sm font-medium text-slate-600">Output Style:</label>
                             <div class="flex gap-2">
                                 <button id="output-btn-combined" class="output-style-btn px-3 py-1 text-sm rounded-md bg-slate-200 text-slate-700" data-value="combined">Combined</button>
@@ -537,7 +595,7 @@
                             </div>
                         </div>
             
-                        <div id="clinical-request-output-container" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+                        <div id="clinical-request-wrapper" class="bg-white p-6 rounded-2xl shadow-lg mb-8">
                             <div class="flex justify-between items-center mb-4 border-b pb-3">
                                 <h2 class="text-2xl font-semibold">Clinical Request</h2>
                                 <button id="copy-request-btn" class="bg-sky-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-600 transition duration-300 flex items-center gap-2">
@@ -548,7 +606,7 @@
                             <textarea id="clinicalRequestOutput" rows="8" class="w-full bg-slate-50 border-none rounded-lg p-4 text-sm leading-6 focus:ring-0" readonly>Your clinical request will appear here...</textarea>
                         </div>
                         
-                        <div id="entry-note-output-container" class="bg-white p-6 rounded-2xl shadow-lg sticky top-8">
+                        <div id="generated-note-wrapper" class="bg-white p-6 rounded-2xl shadow-lg sticky top-8">
                             <div class="flex justify-between items-center mb-4 border-b pb-3">
                                 <h2 class="text-2xl font-semibold">Generated Note</h2>
                                 <button id="copy-note-btn" class="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-600 transition duration-300 flex items-center gap-2">
@@ -612,8 +670,11 @@
                         <span>Ready to Bill</span>
                         <span id="billed-count-dash" class="text-xl font-bold ml-2"></span>
                     </h2>
-                    <div id="batch-archive-container" class="hidden my-4 p-4 bg-slate-100 rounded-lg">
-                        <button id="batch-archive-btn" class="w-full bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 transition duration-300 disabled:bg-slate-400">
+                    <div id="batch-archive-container" class="hidden my-4 p-4 bg-slate-100 rounded-lg flex justify-between items-center">
+                        <button id="select-all-btn" class="hidden bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600 transition duration-300">
+                            Select All
+                        </button>
+                        <button id="batch-archive-btn" class="bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 transition duration-300 disabled:bg-slate-400">
                             Batch Archive Selected Items
                         </button>
                     </div>
@@ -669,6 +730,7 @@
                         <button id="delete-procedure-btn" class="w-auto bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition duration-300">Delete</button>
                     </div>
                     <div id="billing-panel-pm-actions" class="mt-6 flex gap-3 hidden">
+                        <button id="send-back-btn" class="hidden w-full bg-amber-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-amber-700 transition duration-300">Send Back to Doctor</button>
                         <button id="move-to-archive-btn" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition duration-300">Archive this one item</button>
                     </div>
                 </div>
@@ -683,6 +745,18 @@
                 <h1 class="text-3xl md:text-4xl font-bold text-slate-700">Settings</h1>
                 <p class="text-slate-500 mt-2">Manage app data, including billing codes and doctor folders.</p>
             </header>
+            
+            <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+                <h2 class="text-2xl font-semibold mb-4">Mode</h2>
+                <div class="toggle-switch-container">
+                    <label for="pm-mode-toggle-settings" class="font-semibold text-slate-700 text-lg">Practice Manager Mode</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="pm-mode-toggle-settings">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                 <p class="text-sm text-slate-500 mt-2">Activates Practice Manager view, hiding clinical entry tabs and enabling multi-doctor billing.</p>
+            </div>
             
              <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
                 <h2 class="text-2xl font-semibold mb-4">Step 1: Set Database Folder</h2>
@@ -747,12 +821,14 @@
                 </div>
 
                 <div class="grid grid-cols-2 gap-3 mb-6">
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Proximal">Proximal</button>
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Distal">Distal</button>
+                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Superior">Superior</button>
+                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Inferior">Inferior</button>
                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Medial">Medial</button>
                     <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Lateral">Lateral</button>
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Left">Left</button>
-                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Right">Right</button>
+                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Anterior">Anterior</button>
+                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Posterior">Posterior</button>
+                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Proximal">Proximal</button>
+                    <button class="direction-btn w-full bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 transition duration-300" data-value="Distal">Distal</button>
                 </div>
             </div>
             
@@ -765,9 +841,7 @@
     <!-- Printable Report (Hidden by default) -->
     <div id="printable-report" class="p-4">
         <h1 id="print-title" class="text-2xl font-bold mb-4"></h1>
-        <table id="print-table" class="w-full">
-            <!-- Content injected by JS -->
-        </table>
+        <!-- Content injected by JS -->
     </div>
 
     <!-- 
