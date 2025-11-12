@@ -944,7 +944,8 @@ window.updateOutputVisibility = function() {
         const request = generateClinicalRequest();
 
         const noteText = note.startsWith('Your') ? '' : note;
-        const requestText = request.startsWith('Your')F ? '' : `\n\n---\nCLINICAL REQUEST:\n${request}`;
+        // --- FIX: Typo 'F' was here ---
+        const requestText = request.startsWith('Your') ? '' : `\n\n---\nCLINICAL REQUEST:\n${request}`;
         
         if (noteText || requestText) {
             entryNoteOutputEl.value = noteText + requestText;
