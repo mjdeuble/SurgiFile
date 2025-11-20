@@ -236,6 +236,17 @@ window.openBillingPanel = function(item) {
     // 1. Fill Billing Inputs
     billingConsultItem.value = data.consultItem || '';
     billingComment.value = data.billingComment || '';
+
+    // NEW: Set 'No Consult Item' button state
+    if (billingConsultItem.value === '') {
+        noConsultBtn.classList.add('selected');
+        noConsultBtn.textContent = 'No Consult Item';
+        billingConsultItem.disabled = true;
+    } else {
+        noConsultBtn.classList.remove('selected');
+        noConsultBtn.textContent = 'Clear Consult Item';
+        billingConsultItem.disabled = false;
+    }
     
     // 2. Build Billing Assistant Cards
     billingAssistantLesions.innerHTML = data.lesions.map(l => {
@@ -309,8 +320,8 @@ window.openBillingPanel = function(item) {
         // Add listener to input box to clear validation
         const inputEl = getEl(`lesion-item-${l.id}`);
         inputEl.addEventListener('input', () => {
-            getEl(`time-code-msg-${l.id}`).classList.add('hidden');
-            saveAsBilledBtn.disabled = false;
+            // --- EDIT: Call the new master validation function ---
+            validateBillingPanel();
         });
     });
 
@@ -328,6 +339,7 @@ window.openBillingPanel = function(item) {
     }
 
     billingPanel.classList.remove('hidden');
+    validateBillingPanel(); // <-- ADDED: Set initial button state on open
 }
 
 /**
@@ -366,16 +378,21 @@ function handleHistoClick(event, lesion) {
     const defectSize = lesion.defectSize;
     const clinicalClosure = lesion.procedure === 'Wedge Excision' ? 'Wedge Excision' : lesion.excisionClosureType;
     const isPunchBiopsy = lesion.procedure === 'Punch' && lesion.punchType === 'Punch Biopsy';
+    const isShave = lesion.procedure === 'Shave'; // <-- EDIT: Check for Shave
 
     // 1. Get Excision Codes
     let excisionCodes = [];
     if (isPunchBiopsy) {
-        // --- FIX: Punch Biopsy always suggests 30071 ---
+        // Punch Biopsy always suggests 30071
+        const biopsyCode = appSettings.biopsy["30071"];
+        if (biopsyCode) excisionCodes = [biopsyCode];
+    
+    } else if (isShave) { // <-- EDIT: Shave always suggests 30071
         const biopsyCode = appSettings.biopsy["30071"];
         if (biopsyCode) excisionCodes = [biopsyCode];
         
     } else if (histoType === 'Simple Biopsy') {
-        // This is for Shave/Ellipse biopsies
+        // This is for other Ellipse biopsies
         const biopsyCode = appSettings.biopsy["30071"];
         if (biopsyCode) excisionCodes = [biopsyCode];
         
@@ -383,7 +400,7 @@ function handleHistoClick(event, lesion) {
          // --- NEW: Don't auto-fill, just set placeholder and validate ---
          inputEl.placeholder = 'Enter time-based code...';
          // Check if it's valid *now* (it's not)
-         validateTimeBasedCode(lesionId);
+         validateBillingPanel();
          return;
          
     } else {
@@ -392,8 +409,9 @@ function handleHistoClick(event, lesion) {
     
     if (excisionCodes.length > 0) {
         excisionCodes.forEach(code => {
-            // --- FIX: No auto-confirm ---
-            const btn = createBillingSuggestion(code.item, code.desc, 'excision', false);
+            // --- EDIT: Auto-confirm for Shave and Punch ---
+            let isRecommended = (isPunchBiopsy || isShave);
+            const btn = createBillingSuggestion(code.item, code.desc, 'excision', isRecommended);
             excisionContainer.appendChild(btn);
         });
         getEl(`excision-code-container-${lesionId}`).classList.remove('hidden');
@@ -402,13 +420,14 @@ function handleHistoClick(event, lesion) {
     // 2. Get Repair Codes (if not a biopsy or time-based)
     let suggestedExcisionItem = excisionCodes.length > 0 ? excisionCodes[0].item : null;
 
-    if (histoType !== 'Simple Biopsy' && histoType !== 'Time Based Only' && !isPunchBiopsy) {
+    // --- EDIT: Also exclude Shave from repair codes ---
+    if (histoType !== 'Simple Biopsy' && histoType !== 'Time Based Only' && !isPunchBiopsy && !isShave) {
         // Find repair codes that match the clinical closure type
         const matchingRepairCodes = appSettings.repairs.filter(code => code.clinicalType === clinicalClosure);
 
         if (matchingRepairCodes.length > 0) {
             matchingRepairCodes.forEach(code => {
-                let isRecommended = false; // --- FIX: No auto-confirm ---
+                let isRecommended = false;
                 let isDisabled = false;
                 let reason = '';
 
@@ -460,16 +479,17 @@ function findExcisionCode(histoType, region, size) {
  */
 function createBillingSuggestion(item, desc, type, isRecommended = false, isDisabled = false, reason = '') {
     const suggestionEl = document.createElement('div');
-    // --- FIX: isRecommended no longer adds 'confirmed' class ---
-    suggestionEl.className = `billing-suggestion ${isDisabled ? 'disabled' : ''}`;
+    // --- EDIT: Add 'confirmed' class if isRecommended ---
+    const confirmedClass = isRecommended ? 'confirmed' : '';
+    suggestionEl.className = `billing-suggestion ${confirmedClass} ${isDisabled ? 'disabled' : ''}`;
     suggestionEl.dataset.item = item;
     suggestionEl.dataset.type = type;
 
-    // --- FIX: Button text is always 'Add' ---
-    const btnText = 'Add';
+    // --- EDIT: Toggle button text ---
+    const btnText = isRecommended ? 'Remove' : 'Add';
     const reasonHTML = reason ? `<span class="text-xs text-red-600 ml-2">${reason}</span>` : '';
-    // --- FIX: Remove "Recommended" badge ---
-    const recommendedHTML = ''; 
+    // --- EDIT: Add "Suggested" badge if isRecommended ---
+    const recommendedHTML = isRecommended ? '<span class="text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">Suggested</span>' : ''; 
 
     suggestionEl.innerHTML = `
         <div class="flex-grow">
@@ -524,66 +544,114 @@ function updateFinalCode(lesionId) {
     const finalCode = confirmedItems.filter(Boolean).join(', ');
     getEl(`lesion-item-${lesionId}`).value = finalCode;
     
-    // --- NEW: Validate time-based code ---
-    validateTimeBasedCode(lesionId);
+    // --- NEW: Validate the whole panel ---
+    validateBillingPanel();
 }
 
 /**
- * Checks if a time-based code is required but missing
- * @param {string|number} lesionId 
- * @returns {boolean} True if the code is invalid
+ * --- REPLACED FUNCTION ---
+ * Validates the entire billing panel to enable/disable the Save button
+ * @returns {boolean} True if the panel is valid
  */
-function validateTimeBasedCode(lesionId) {
-    const histoGroup = getEl(`histo-btn-group-${lesionId}`);
-    const selectedBtn = histoGroup.querySelector('.billing-btn.selected');
-    const inputEl = getEl(`lesion-item-${lesionId}`);
-    const timeCodeMsg = getEl(`time-code-msg-${lesionId}`);
-    
-    if (selectedBtn && selectedBtn.dataset.histo === 'Time Based Only' && !inputEl.value) {
-        // Time-based is selected, but input is empty
-        timeCodeMsg.classList.remove('hidden');
-        inputEl.classList.add('missing-field');
-        saveAsBilledBtn.disabled = true; // Disable save
-        return true; // Is invalid
-    } else {
-        // All other cases
-        timeCodeMsg.classList.add('hidden');
-        inputEl.classList.remove('missing-field');
-        saveAsBilledBtn.disabled = false; // Enable save
-        return false; // Is valid
+function validateBillingPanel() {
+    let isPanelValid = true;
+    let isConsultValid = false;
+
+    // 1. Check Consult Item
+    if (billingConsultItem.value.trim() !== '' || noConsultBtn.classList.contains('selected')) {
+        isConsultValid = true;
     }
+    if (!isConsultValid) {
+        isPanelValid = false;
+    }
+
+    // 2. Check each lesion
+    if (currentBillingFile && currentBillingFile.data && currentBillingFile.data.lesions) {
+        for (const lesion of currentBillingFile.data.lesions) {
+            const lesionId = lesion.id;
+            const histoGroup = getEl(`histo-btn-group-${lesionId}`);
+            const selectedHistoBtn = histoGroup.querySelector('.billing-btn.selected');
+            const itemInput = getEl(`lesion-item-${lesionId}`);
+            const timeCodeMsg = getEl(`time-code-msg-${lesionId}`);
+            
+            let isHistoValid = true;
+            let isItemValid = true;
+
+            // a. Check if a histo button is selected
+            if (!selectedHistoBtn) {
+                isHistoValid = false;
+            }
+
+            // b. Check if the final item box has a value
+            if (!itemInput.value.trim()) {
+                isItemValid = false;
+            }
+            
+            // c. Special check for "Time Based Only"
+            if (selectedHistoBtn && selectedHistoBtn.dataset.histo === 'Time Based Only' && !isItemValid) {
+                // Time-based is selected, but input is empty
+                timeCodeMsg.classList.remove('hidden');
+                itemInput.classList.add('missing-field');
+            } else {
+                // All other cases
+                timeCodeMsg.classList.add('hidden');
+                itemInput.classList.remove('missing-field');
+            }
+            
+            if (!isHistoValid || !isItemValid) {
+                isPanelValid = false;
+                // We don't break here, so we can update all time-code messages
+            }
+        }
+    } else {
+        isPanelValid = false; // No lesions, something is wrong
+    }
+
+    // 3. Enable/Disable the button
+    saveAsBilledBtn.disabled = !isPanelValid;
+    return isPanelValid; // Return status for the save function
 }
 
 // --- FILE ACTIONS (SAVE, DELETE, ARCHIVE) ---
 
 async function saveBilledFile() {
-    // --- NEW: Validation ---
-    let isInvalid = false;
-    for (const lesion of currentBillingFile.data.lesions) {
-        const lesionId = lesion.id;
-        const histoGroup = getEl(`histo-btn-group-${lesionId}`);
-        const selectedBtn = histoGroup.querySelector('.billing-btn.selected');
-        
-        // 1. Check if a histo type is selected at all
-        if (!selectedBtn) {
-            isInvalid = true;
-            alert(`Error: Please select a 'Final Histology' (Step 1) for Lesion ${lesionId}.`);
-            // Highlight the group
-            histoGroup.closest('.p-4').classList.add('missing-field');
-            break; 
-        } else {
-             histoGroup.closest('.p-4').classList.remove('missing-field');
+    // --- NEW: Re-run validation and show specific errors ---
+    if (!validateBillingPanel()) {
+        // Find the *first* error and show a specific alert
+        // 1. Check consult
+        if (!billingConsultItem.value.trim() && !noConsultBtn.classList.contains('selected')) {
+            showAppAlert("Error: Please enter a 'Consult Item' or select 'No Consult Item'.", "error");
+            billingConsultItem.classList.add('missing-field');
+            return;
         }
         
-        // 2. Check if 'Time Based' is selected and code is missing
-        if (validateTimeBasedCode(lesionId)) {
-            isInvalid = true;
-            alert(`Error: Please enter a time-based code for Lesion ${lesionId}.`);
-            getEl(`lesion-item-${lesionId}`).focus(); // Focus the empty box
-            break;
+        // 2. Check lesions
+        for (const lesion of currentBillingFile.data.lesions) {
+            const lesionId = lesion.id;
+            const histoGroup = getEl(`histo-btn-group-${lesionId}`);
+            const selectedBtn = histoGroup.querySelector('.billing-btn.selected');
+            
+            if (!selectedBtn) {
+                showAppAlert(`Error: Please select a 'Final Histology' (Step 1) for Lesion ${lesionId}.`, "error");
+                histoGroup.closest('.p-4').classList.add('missing-field');
+                return; 
+            } else {
+                 histoGroup.closest('.p-4').classList.remove('missing-field');
+            }
+            
+            const itemInput = getEl(`lesion-item-${lesionId}`);
+            if (!itemInput.value.trim()) {
+                if (selectedBtn.dataset.histo === 'Time Based Only') {
+                    showAppAlert(`Error: Please enter a time-based code for Lesion ${lesionId}.`, "error");
+                } else {
+                    showAppAlert(`Error: Please add a 'Final Procedure Item' for Lesion ${lesionId}.`, "error");
+                }
+                itemInput.focus();
+                return;
+            }
         }
+        return; // Fallback, button should have been disabled
     }
-    if (isInvalid) return; // Stop save
     // --- End Validation ---
 
     // 1. Get new data from panel
@@ -609,7 +677,7 @@ async function saveBilledFile() {
 }
 
 async function deleteBillingFile() {
-    if (!confirm('Are you sure you want to delete this unprocessed procedure? This cannot be undone.')) {
+    if (!await showAppConfirm('Are you sure you want to delete this unprocessed procedure? This cannot be undone.', "warning")) {
         return;
     }
     // 1. Update status to 'Deleted'
@@ -627,7 +695,7 @@ async function deleteBillingFile() {
  * Archives a single file from the billing panel
  */
 async function archiveBilledFile() {
-    if (!confirm('Are you sure you want to archive this item?')) {
+    if (!await showAppConfirm('Are you sure you want to archive this item?', "info")) {
         return;
     }
     
@@ -648,12 +716,12 @@ async function archiveBilledFile() {
 async function sendBackToDoctor() {
     const reason = billingComment.value.trim();
     if (!reason) {
-        alert("Please add a comment in the 'Billing Comment' box explaining why this is being sent back.");
+        showAppAlert("Please add a comment in the 'Billing Comment' box explaining why this is being sent back.", "error");
         billingComment.classList.add('missing-field');
         return;
     }
     
-    if (!confirm('Are you sure you want to send this item back to the doctor for review?')) {
+    if (!await showAppConfirm('Are you sure you want to send this item back to the doctor for review?', "warning")) {
         return;
     }
     
@@ -679,11 +747,11 @@ async function sendBackToDoctor() {
 async function archiveBatchFiles() {
     const checkboxes = billedList.querySelectorAll('.batch-checkbox:checked');
     if (checkboxes.length === 0) {
-        alert("Please select items to archive using the checkboxes.");
+        showAppAlert("Please select items to archive using the checkboxes.", "info");
         return;
     }
 
-    if (!confirm(`Are you sure you want to archive ${checkboxes.length} item(s)?`)) {
+    if (!await showAppConfirm(`Are you sure you want to archive ${checkboxes.length} item(s)?`, "info")) {
         return;
     }
 
@@ -704,7 +772,7 @@ async function archiveBatchFiles() {
                 successCount++;
             } catch (e) {
                 console.error(`Failed to archive ${filename}:`, e);
-                alert(`Failed to archive ${filename}. Please try again.`);
+                showAppAlert(`Failed to archive ${filename}. Please try again.`, "error");
             }
         }
     }
@@ -713,7 +781,7 @@ async function archiveBatchFiles() {
     batchArchiveBtn.disabled = false;
     batchArchiveBtn.textContent = 'Batch Archive Selected';
 
-    alert(`Successfully archived ${successCount} of ${checkboxes.length} items.`);
+    showAppAlert(`Successfully archived ${successCount} of ${checkboxes.length} items.`, "success");
     
     // Refresh the lists
     loadBillingFiles();
@@ -748,7 +816,7 @@ window.printBilledList = function() {
     );
     
     if (itemsToPrint.length === 0) {
-        alert("No items in 'Ready to Bill' to print.");
+        showAppAlert("No items in 'Ready to Bill' to print.", "info");
         return;
     }
 
