@@ -15,10 +15,19 @@ dbOpenRequest.onupgradeneeded = (event) => {
 
 dbOpenRequest.onsuccess = (event) => {
     db = event.target.result;
-    // Once the DB is ready, AND settings are loaded (from main.js),
-    // we can safely load the folder.
     console.log("Database connection ready.");
-    loadSavedFolder(); // <-- This call is now global
+    
+    // Check if loadSavedFolder is available, otherwise wait for window load
+    if (typeof window.loadSavedFolder === 'function') {
+        window.loadSavedFolder();
+    } else {
+        // If file-system.js hasn't loaded yet, wait for it
+        window.addEventListener('load', () => {
+             if (typeof window.loadSavedFolder === 'function') {
+                window.loadSavedFolder();
+             }
+        });
+    }
 };
 
 dbOpenRequest.onerror = (event) => {
