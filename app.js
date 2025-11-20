@@ -51,6 +51,21 @@ var patientDOBEl = getEl('patientDOB'); // <-- ADDED
 var saveProcedureBtn = getEl('save-procedure-btn');
 var clearProcedureBtn = getEl('clear-procedure-btn');
 
+// --- NEW: Custom Alert/Confirm Modal Elements ---
+var appAlertModal = getEl('appAlertModal');
+var appAlertTitle = getEl('appAlertTitle');
+var appAlertMessage = getEl('appAlertMessage');
+var appAlertIconContainer = getEl('appAlertIconContainer');
+var appAlertOkBtn = getEl('appAlertOkBtn');
+
+var appConfirmModal = getEl('appConfirmModal');
+var appConfirmTitle = getEl('appConfirmTitle');
+var appConfirmMessage = getEl('appConfirmMessage');
+var appConfirmIconContainer = getEl('appConfirmIconContainer');
+var appConfirmCancelBtn = getEl('appConfirmCancelBtn');
+var appConfirmOkBtn = getEl('appConfirmOkBtn');
+// --- End New Modal Elements ---
+
 // --- Entry View Right Column Elements ---
 var recordedLesionsWrapper = getEl('recorded-lesions-wrapper'); 
 var lesionsListEl = getEl('lesions-list');
@@ -82,12 +97,13 @@ var archiveHeader = getEl('archive-header');
 var archiveList = getEl('archive-list');
 var archiveCountDash = getEl('archive-count-dash');
 var batchArchiveBtn = getEl('batch-archive-btn'); 
-var selectAllBtn = getEl('select-all-btn'); // <-- ADDED
+var selectAllBtn = getEl('select-all-btn'); 
  
 var billingPanel = getEl('billing-panel');
 var billingPanelTitle = getEl('billing-panel-title');
 var billingAssistantLesions = getEl('billing-assistant-lesions');
 var billingConsultItem = getEl('billing-consult-item');
+var noConsultBtn = getEl('no-consult-btn'); // <-- ENSURED THIS IS HERE
 var billingComment = getEl('billing-comment');
 var closeBillingPanelBtn = getEl('close-billing-panel-btn');
 var doctorActions = getEl('billing-panel-doctor-actions');
@@ -96,7 +112,7 @@ var saveAsBilledBtn = getEl('save-as-billed-btn');
 var deleteProcedureBtn = getEl('delete-procedure-btn');
 var moveToArchiveBtn = getEl('move-to-archive-btn');
 var editProcedureBtn = getEl('edit-procedure-btn');
-var sendBackBtn = getEl('send-back-btn'); // <-- ADDED
+var sendBackBtn = getEl('send-back-btn');
 
 // --- Settings View Elements ---
 var setSaveFolderBtn = getEl('set-save-folder-btn');
@@ -181,6 +197,113 @@ var pathologyOptions = {
 
 // --- CORE APP LOGIC ---
 
+// --- NEW: Custom Alert/Confirm Logic ---
+let confirmPromise = {
+    resolve: null,
+};
+
+const ICONS = {
+    info: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="text-blue-500" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l.208-.188c.196-.17.307-.397.477-.632l.5-1.027l.131-.273c.09-.176.152-.335.195-.44l.01-.025c.03-.06.05-.113.065-.166.015-.05.025-.101.03-.15.005-.05.007-.1.007-.15l-.001-.07a.996.996 0 0 0-.01-.07L10.02 7.02c-.01-.06-.02-.12-.03-.18c-.01-.06-.025-.12-.045-.18s-.04-.12-.06-.18c-.02-.06-.045-.12-.07-.18c-.025-.06-.055-.12-.09-.18c-.035-.06-.075-.12-.12-.18c-.045-.06-.1-.12-.15-.18c-.05-.06-.11-.12-.17-.18s-.125-.11-.19-.16c-.065-.05-.13-.09-.2-.13c-.07-.04-.14-.07-.21-.1s-.15-.05-.22-.06c-.07-.01-.15-.01-.22-.01s-.15 0-.22.01c-.07.01-.14.02-.21.04s-.13.05-.2.07c-.06.02-.12.05-.19.08s-.12.07-.17.11c-.05.04-.1.08-.15.13s-.09.11-.13.17c-.04.06-.08.12-.11.19c-.03.06-.06.12-.08.19c-.02.06-.04.12-.05.19s-.02.13-.03.19c-.01.06-.01.12-.01.19s0 .13.01.19c.01.06.01.12.02.18l.02.13c.01.06.03.12.05.18l.04.14c.02.06.04.12.07.18l.06.14c.02.06.05.12.08.18l.09.15c.03.06.07.12.11.18l.13.15c.04.06.09.11.15.17l.17.15c.05.04.11.08.17.12l.2.13c.07.04.14.07.22.1c.07.03.15.05.22.06c.07.01.15.01.22.01s.15 0 .22-.01c.07-.01.15-.02.22-.04c.07-.02.14-.04.2-.07c.06-.02.12-.05.18-.08c.06-.03.12-.07.17-.11l.15-.12c.05-.04.1-.09.14-.14l.l3-.15c.04-.05.07-.11.1-.17l.08-.14c.02-.06.04-.12.06-.19l.05-.15c.01-.06.02-.12.03-.18l.02-.15c.01-.06.01-.12.01-.18V8.98l-.007-.07a.5.5 0 0 0-.03-.19z"/></svg>',
+    warning: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="text-amber-500" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zM8 4a.905.905 0 0 1 .9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995A.905.905 0 0 1 8 4zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>',
+    error: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="text-red-600" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/></svg>',
+    success: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="text-green-500" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>'
+};
+
+/**
+ * Shows a custom alert modal.
+ * @param {string} message - The message to display.
+ * @param {string} [type='info'] - 'info', 'success', 'warning', or 'error'.
+ * e.g., showAppAlert("File saved successfully.", "success");
+ * e.g., showAppAlert("Please fill all required fields.", "error");
+ */
+window.showAppAlert = function(message, type = 'info') {
+    let title;
+    let icon = ICONS[type] || ICONS.info;
+    let buttonClass;
+
+    switch(type) {
+        case 'error':
+            title = 'Error';
+            buttonClass = 'bg-red-600 hover:bg-red-700';
+            break;
+        case 'success':
+            title = 'Success';
+            buttonClass = 'bg-green-600 hover:bg-green-700';
+            break;
+        case 'warning':
+            title = 'Warning';
+            buttonClass = 'bg-amber-500 hover:bg-amber-600';
+            break;
+        case 'info':
+        default:
+            title = 'Information';
+            buttonClass = 'bg-blue-600 hover:bg-blue-700';
+            break;
+    }
+
+    appAlertTitle.textContent = title;
+    appAlertMessage.textContent = message;
+    appAlertIconContainer.innerHTML = icon;
+    
+    appAlertOkBtn.className = `font-bold py-2 px-5 rounded-lg text-white ${buttonClass}`;
+    
+    appAlertModal.classList.remove('hidden');
+    appAlertOkBtn.focus();
+}
+
+/**
+ * Shows a custom confirmation modal and returns a promise.
+ * @param {string} message - The question to ask.
+ * @param {string} [type='warning'] - 'warning' (red btn) or 'info' (blue btn).
+ * @returns {Promise<boolean>} True if confirmed, false if cancelled.
+ * e.g., if (await showAppConfirm("Are you sure you want to delete this?", "warning")) { ... }
+ */
+window.showAppConfirm = function(message, type = 'warning') {
+    let title = 'Please Confirm';
+    let icon = ICONS.warning;
+    let confirmButtonClass = 'bg-red-600 hover:bg-red-700';
+
+    if (type === 'info') {
+        title = 'Confirmation';
+        icon = ICONS.info;
+        confirmButtonClass = 'bg-blue-600 hover:bg-blue-700';
+    }
+    
+    appConfirmTitle.textContent = title;
+    appConfirmMessage.textContent = message;
+    appConfirmIconContainer.innerHTML = icon;
+    
+    appConfirmOkBtn.className = `font-bold py-2 px-4 rounded-lg text-white ${confirmButtonClass}`;
+
+    appConfirmModal.classList.remove('hidden');
+    appConfirmCancelBtn.focus();
+
+    return new Promise((resolve, reject) => {
+        // Store the resolver function so the button click handlers can call it
+        confirmPromise.resolve = resolve;
+    });
+}
+
+function handleAlertOk() {
+    appAlertModal.classList.add('hidden');
+}
+
+function handleConfirm(result) {
+    appConfirmModal.classList.add('hidden');
+    if (confirmPromise.resolve) {
+        confirmPromise.resolve(result);
+    }
+    confirmPromise.resolve = null; // Clear promise
+}
+
+// Attach listeners to new modal buttons
+if(appAlertOkBtn) appAlertOkBtn.addEventListener('click', handleAlertOk);
+if(appConfirmCancelBtn) appConfirmCancelBtn.addEventListener('click', () => handleConfirm(false));
+if(appConfirmOkBtn) appConfirmOkBtn.addEventListener('click', () => handleConfirm(true));
+
+// --- End Custom Alert/Confirm Logic ---
+
+
 /**
  * Checks if there is unsaved data in the entry form.
  * @returns {boolean} True if there is unsaved data.
@@ -195,9 +318,9 @@ window.hasUnsavedChanges = function() {
  * It will check for unsaved changes and ask for confirmation if needed.
  * @param {function} actionToPerform - The function to call if it's safe (e.g., () => switchTab('billing'))
  */
-window.performSafeAction = function(actionToPerform) {
+window.performSafeAction = async function(actionToPerform) {
     if (hasUnsavedChanges()) {
-        if (confirm("You have unsaved changes. Are you sure you want to proceed? Your current form data will be lost.")) {
+        if (await showAppConfirm("You have unsaved changes. Are you sure you want to proceed? Your current form data will be lost.", "warning")) {
             resetAll(false); // Pass false to skip confirmation
             actionToPerform();
         } else {
@@ -245,7 +368,10 @@ window.switchTab = function(tabName) {
     } else if (tabName === 'settings') {
         settingsView.classList.add('active');
         tabSettingsBtn.classList.add('active'); // Activate the cogwheel
-        loadAppSettingsToEditor();
+        // FIX: Check if function exists before calling, as it loads in a later script
+        if (typeof loadAppSettingsToEditor === 'function') {
+            loadAppSettingsToEditor();
+        }
     }
 
     // Update the UI elements on the entry page
@@ -391,16 +517,16 @@ window.populateDoctorDropdown = function(doctors) {
 /**
  * Handles the logic when the doctor dropdown selection changes
  */
-window.handleDoctorChange = function() {
+window.handleDoctorChange = async function() {
     const newDoctor = navDoctorDropdown.value;
     
     // --- NEW: Safety Check ---
     if (hasUnsavedChanges()) {
-        if (!confirm("You have unsaved changes. Changing the doctor will clear the form. Are you sure?")) {
+        if (await showAppConfirm("You have unsaved changes. Changing the doctor will clear the form. Are you sure?", "warning")) {
+            resetAll(false); // Clear the form
+        } else {
             navDoctorDropdown.value = currentDoctor; // Revert dropdown
             return;
-        } else {
-            resetAll(false); // Clear the form
         }
     }
     
