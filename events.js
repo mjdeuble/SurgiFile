@@ -1,231 +1,47 @@
-// --- APPLICATION EVENT LISTENERS ---
-
-// This file attaches all event listeners to the DOM elements
-// once the page has fully loaded.
-
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // --- Connect Tab Navigation ---
-    tabClinicalNoteBtn.addEventListener('click', () => performSafeAction(() => switchTab('clinical-note')));
-    tabManualBillingBtn.addEventListener('click', () => performSafeAction(() => switchTab('manual-billing')));
-    tabBillingBtn.addEventListener('click', () => performSafeAction(() => switchTab('billing')));
-    tabSettingsBtn.addEventListener('click', () => performSafeAction(() => switchTab('settings'))); // Cogwheel
-
-    // --- Connect Nav Bar Listeners ---
-    // New Toggle Switch Listener (on settings page)
-    pmModeToggleSettings.addEventListener('change', () => {
-        performSafeAction(() => {
-            if (pmModeToggleSettings.checked) {
-                setAppMode('PM');
-            } else {
-                setAppMode('Doctor');
-            }
-        });
-    });
-    
-    navDoctorDropdown.addEventListener('change', handleDoctorChange);
-
-
-    // --- Connect Entry View Listeners ---
-    lesionForm.addEventListener('change', updateFormUI);
-    lesionForm.addEventListener('input', checkLesionFormCompleteness);
-    
-    addLesionBtn.addEventListener('click', addOrUpdateLesion);
-    cancelEditBtn.addEventListener('click', cancelEdit);
-
-    saveProcedureBtn.addEventListener('click', saveProcedure);
-    clearProcedureBtn.addEventListener('click', () => resetAll(true));
-
-    // Copy Buttons
-    getEl('copy-request-btn').addEventListener('click', () => copyToClipboard('clinicalRequestOutput', getEl('copy-request-btn-text')));
-    getEl('copy-note-btn').addEventListener('click', () => copyToClipboard('entryNoteOutput', getEl('copy-note-btn-text')));
-    
-    // Suture Logic Listeners
-    useDeepSutureEl.addEventListener('change', () => {
-        deepSutureContainer.classList.toggle('hidden', !useDeepSutureEl.checked);
-        checkLesionFormCompleteness();
-    });
-    useSkinSutureEl.addEventListener('change', () => {
-        skinSutureDetails.classList.toggle('hidden', !useSkinSutureEl.checked);
-        checkLesionFormCompleteness();
-    });
- 
-    // Suture Type Dropdown (to show/hide removal box)
-    skinSutureTypeEl.addEventListener('change', () => {
-        const removalBox = getEl('skin-suture-removal-container');
-        // Check if the selected suture is in the 'skin_dissolvable' list from settings
-        const isDissolvable = appSettings.sutures && appSettings.sutures.skin_dissolvable 
-            ? appSettings.sutures.skin_dissolvable.includes(skinSutureTypeEl.value)
-            : false;
-            
-        // Show removal box only if a non-dissolvable suture is selected
-        if (skinSutureTypeEl.value && !isDissolvable) {
-             removalBox.style.display = 'block';
-             removalBox.classList.remove('hidden');
-        } else {
-             removalBox.style.display = 'none';
-             removalBox.classList.add('hidden');
-        }
-        checkLesionFormCompleteness(); 
-    });
-
-    // Output Style Buttons
-    outputBtnCombined.addEventListener('click', () => setOutputStyle('combined'));
-    outputBtnSeparate.addEventListener('click', () => setOutputStyle('separate'));
-    
-    // Justification Buttons (Event Delegation)
-    justificationButtons.addEventListener('click', (e) => {
-        if(e.target.classList.contains('justification-btn')) {
-            e.target.classList.toggle('selected');
-            const selectedButtons = justificationButtons.querySelectorAll('.justification-btn.selected');
-            const justifications = Array.from(selectedButtons).map(btn => btn.dataset.text);
-            flapGraftJustificationInput.value = justifications.join(' ');
-            checkLesionFormCompleteness();
-        }
-    });
-
-    // Dermoscopy Buttons (Event Delegation)
-    dermoscopyBtnContainer.addEventListener('click', (e) => {
-        const target = e.target.closest('.dermoscopy-btn');
-        if (!target) return;
-        getEl('dermoscopyUsed').value = target.dataset.value;
-        dermoscopyBtnContainer.querySelectorAll('.dermoscopy-btn').forEach(btn => btn.classList.remove('selected'));
-        target.classList.add('selected');
-        checkLesionFormCompleteness();
-    });
-
-    // --- Connect Billing View Listeners ---
-    loadFilesBtn.addEventListener('click', async () => {
-        // "Refresh Database" re-scans for new doctors first
-        if (saveFolderHandle) {
-            const doctors = await getDoctorListFromFolders();
-            appSettings.doctorList = doctors;
-            populateDoctorDropdown(doctors);
-        }
-        // populateDoctorDropdown already triggers loadBillingFiles via handleDoctorChange
-    });
-    
-    // Search Bars
-    searchBar.addEventListener('input', () => renderFileLists()); // Main search
-    archiveSearch.addEventListener('input', () => renderFileLists()); // Archive-only search
-
-    // Collapsible Headers
-    unprocessedHeader.addEventListener('click', () => unprocessedList.classList.toggle('collapsed'));
-    billedHeader.addEventListener('click', () => billedList.classList.toggle('collapsed'));
-    archiveHeader.addEventListener('click', () => archiveList.classList.toggle('collapsed'));
-
-    // PM Batch Archive
-    selectAllBtn.addEventListener('click', toggleSelectAll); // <-- ADDED
-    batchArchiveBtn.addEventListener('click', archiveBatchFiles);
-    
-    // Print Button
-    printBilledListBtn.addEventListener('click', printBilledList);
-    
-    // Billing Panel Buttons
-    closeBillingPanelBtn.addEventListener('click', () => billingPanel.classList.add('hidden'));
-    saveAsBilledBtn.addEventListener('click', saveBilledFile);
-    deleteProcedureBtn.addEventListener('click', deleteBillingFile);
-    moveToArchiveBtn.addEventListener('click', archiveBilledFile);
-    sendBackBtn.addEventListener('click', sendBackToDoctor); // <-- ADDED
-    
+// --- ... existing code ... ---
     editProcedureBtn.addEventListener('click', () => {
         // Get the first lesion from the file and switch to the entry tab to edit
         if (currentBillingFile.data && currentBillingFile.data.lesions.length > 0) {
-            lesions = currentBillingFile.data.lesions; // Load all lesions
-            patientNameEl.value = currentBillingFile.data.patientName;
-            // This function (window.startEditLesion) is defined in entry-view.js
-            startEditLesion(lesions[0].id); // Start edit with the first lesion
-            billingPanel.classList.add('hidden'); // Close panel
+// --- ... existing code ... ---
         } else {
-            alert("Error: Cannot find lesion data in this file.");
+            showAppAlert("Error: Cannot find lesion data in this file.", "error");
         }
     });
 
 
     // --- Connect Settings View Listeners ---
-    setSaveFolderBtn.addEventListener('click', setSaveFolder);
-    saveAppSettingsBtn.addEventListener('click', saveAppSettings);
-    resetAppSettingsBtn.addEventListener('click', resetAppSettings);
-    addDoctorBtn.addEventListener('click', async () => {
-        // This just connects the button to the function in file-system.js
-        const newName = newDoctorNameInput.value.trim();
-        if (!newName) {
-            addDoctorStatus.textContent = "Error: Doctor name cannot be empty.";
-            addDoctorStatus.className = "text-sm mt-2 text-red-600";
-            return;
+// --- ... existing code ... ---
         }
+    });
 
-        try {
-            addDoctorStatus.textContent = "Creating folders...";
-            addDoctorStatus.className = "text-sm mt-2 text-slate-600";
+    // --- NEW: Global Key Press Listeners ---
+    document.addEventListener('keydown', (event) => {
+        // Check for Ctrl+P (Windows/Linux) or Cmd+P (Mac)
+        if ((event.ctrlKey || event.metaKey) && event.key === 'p') {
             
-            const result = await addNewDoctorFolder(newName);
+            // Check if we are on the Billing tab
+            const isBillingTabActive = billingView.classList.contains('active');
             
-            addDoctorStatus.textContent = `${result} Please refresh the app.`;
-            addDoctorStatus.className = "text-sm mt-2 text-green-600";
-            newDoctorNameInput.value = '';
-
-            // Refresh the doctor list in the app state
-            const doctors = await getDoctorListFromFolders();
-            appSettings.doctorList = doctors;
-            populateDoctorDropdown(doctors);
-
-        } catch (e) {
-            addDoctorStatus.textContent = `Error: ${e.message}`;
-            addDoctorStatus.className = "text-sm mt-2 text-red-600";
+            if (isBillingTabActive) {
+                // We are on the billing page, so *always* prevent the default browser print dialog.
+                event.preventDefault();
+                
+                // Now, check if we are in PM mode to trigger the custom print.
+                if (currentAppMode === 'PM') {
+                    // Trigger the app's custom print function (defined in billing-view.js)
+                    window.printBilledList();
+                } else {
+                    // In Doctor mode, let them know this is a PM-only feature.
+                    showAppAlert("Printing the 'Ready to Bill' list is a Practice Manager action. Please switch to PM mode to print.", "info");
+                }
+            }
+            // If not on the billing tab (e.g., Settings, Entry), we do nothing
+            // and allow the default browser behavior.
         }
     });
-
-    // --- Connect Modal Listeners ---
-    pathologyDisplayEl.addEventListener('click', openPathologyModal);
-    confirmPathologyBtn.addEventListener('click', confirmPathologySelection);
-    
-    // Orientation: Main Form Buttons
-    mainMarkerBtnContainer.addEventListener('click', (e) => {
-        const target = e.target.closest('.main-marker-btn');
-        if (!target) return;
-
-        const markerType = target.dataset.value;
-        getEl('orientationType').value = markerType;
-
-        if (markerType === 'None') {
-            getEl('orientationDescription').value = '';
-            updateOrientationButtons();
-        } else {
-            openOrientationModal();
-        }
-    });
-
-    // Orientation: Modal Buttons (Clock and Directions)
-    modalLocationSelector.addEventListener('click', (e) => {
-        const target = e.target.closest('.direction-btn, .hour-text');
-        if (!target) return;
-
-        getEl('orientationDescription').value = target.dataset.value;
-        updateOrientationButtons();
-        orientationModal.classList.add('hidden');
-    });
-    cancelOrientationBtn.addEventListener('click', () => orientationModal.classList.add('hidden'));
 
 
     // --- INITIAL APP LOAD ---
     
     // 1. Load settings from localStorage (or defaults)
-    loadAppSettings(); 
-    
-    // 2. Populate modals with data from settings
-    populatePathologyModal();
-    drawOrientationClock();
-    
-    // 3. Restore saved app mode (Doctor/PM)
-    const savedMode = localStorage.getItem('appMode') || 'Doctor';
-    setAppMode(savedMode);
-    
-    // 4. Load saved folder handle from IndexedDB
-    // This call is already happening in db.js onsuccess
-    
-    // 5. Final UI setup
-    updateOutputVisibility();
-    updateFormUI();
-    formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
-});
+// --- ... existing code ... ---
