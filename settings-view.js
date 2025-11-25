@@ -171,9 +171,9 @@ window.loadAppSettings = function() {
                  console.log("Old settings detected. Forcing reset to new billing logic.");
                  appSettings = defaultAppSettings;
                  needsResave = true;
-                 // Alert the user that settings were reset
+                 // Alert the user that settings were reset using the custom alert
                  setTimeout(() => {
-                    alert("Your application settings were outdated and have been reset to the new 2025 MBS billing logic.");
+                    showAppAlert("Your application settings were outdated and have been reset to the new 2025 MBS billing logic.", "info");
                  }, 1000);
             }
 
@@ -217,20 +217,23 @@ window.saveAppSettings = function() {
         appSettingsStatus.textContent = "Changes saved successfully! Reloading form data.";
         appSettingsStatus.className = "text-sm mt-2 text-green-600";
         populateSutureDropdowns(); // Re-populate dropdowns
+        showAppAlert("Settings saved successfully.", "success");
     } catch (e) {
         appSettingsStatus.textContent = `Error: ${e.message}. Changes NOT saved.`;
         appSettingsStatus.className = "text-sm mt-2 text-red-600";
+        showAppAlert("Failed to save settings. Invalid JSON.", "error");
     }
 }
     
-window.resetAppSettings = function() {
-    if (confirm("Are you sure you want to reset all app settings to the defaults? This will load the latest 2025 MBS billing logic and cannot be undone.")) {
+window.resetAppSettings = async function() {
+    if (await showAppConfirm("Are you sure you want to reset all app settings to the defaults? This will load the latest 2025 MBS billing logic and cannot be undone.", "warning")) {
         appSettings = defaultAppSettings;
         localStorage.setItem('appSettings', JSON.stringify(defaultAppSettings, null, 2));
         loadAppSettingsToEditor();
         populateSutureDropdowns();
         appSettingsStatus.textContent = "Settings reset to default. Form data reloaded.";
         appSettingsStatus.className = "text-sm mt-2 text-green-600";
+        showAppAlert("Settings reset to defaults.", "success");
     }
 }
 
