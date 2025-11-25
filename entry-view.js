@@ -328,7 +328,7 @@ window.addOrUpdateLesion = function() {
 window.saveProcedure = async function() {
     // --- Check for unsaved lesion in progress ---
     if (procedureTypeEl.value !== '') {
-        if (!confirm("You have an unsaved lesion in progress. Do you want to save the procedure without adding this last lesion?")) {
+        if (!await showAppConfirm("You have an unsaved lesion in progress. Do you want to save the procedure without adding this last lesion?", "warning")) {
             return; // User wants to finish the lesion first
         }
     }
@@ -344,7 +344,7 @@ window.saveProcedure = async function() {
     }
 
     if (!doctorDisplayName || doctorDisplayName === "No doctors found") {
-        alert("No doctor selected. Please select a doctor from the dropdown in the top navigation bar.");
+        showAppAlert("No doctor selected. Please select a doctor from the dropdown in the top navigation bar.", "error");
         navDoctorDropdown.classList.add('missing-field');
         return;
     } else {
@@ -360,7 +360,7 @@ window.saveProcedure = async function() {
     }
 
     if (lesions.length === 0) {
-        alert('Please add at least one lesion before saving.');
+        showAppAlert('Please add at least one lesion before saving.', "error");
         isValid = false;
     }
 
@@ -370,7 +370,9 @@ window.saveProcedure = async function() {
     const patientDOB = patientDOBEl.value;
     let finalPatientName = patientName;
     if (patientDOB) {
-        finalPatientName = `${patientName} (${patientDOB})`;
+        // Store DOB in formatted AU string for consistency if needed, or keep raw
+        // For the filename/display, we append it
+        finalPatientName = `${patientName} (${window.formatDateToAU(patientDOB)})`; 
     }
     // --- End NEW ---
 
@@ -381,6 +383,8 @@ window.saveProcedure = async function() {
         if (manualDateInput && manualDateInput.value) {
             // Use the date from the input, but keep the current time
             const datePart = manualDateInput.value;
+            // Create date object to ensure local time is respected or use ISO string simply
+            // Ideally we want YYYY-MM-DD from input
             const timePart = new Date().toISOString().split('T')[1];
             procedureDateStr = `${datePart}T${timePart}`;
         }
@@ -403,14 +407,14 @@ window.saveProcedure = async function() {
                 procedureRecord.procedureId = Date.now(); // Brand new ID
                 const newFilename = `${doctorDisplayName.replace(/\s+/g, '_')}_${procedureRecord.procedureId}.json`;
                 await saveFileToFolder(procedureRecord, newFilename, doctorDisplayName);
-                alert(`Doctor was changed. A new procedure file has been created for ${doctorDisplayName}. The original file for ${editingProcedureFile.fromDoctor} is unmodified.`);
+                showAppAlert(`Doctor was changed. A new procedure file has been created for ${doctorDisplayName}. The original file for ${editingProcedureFile.fromDoctor} is unmodified.`, "success");
             } else {
                 await overwriteFile(editingProcedureFile.handle, procedureRecord, editingProcedureFile.fromDoctor, editingProcedureFile.fromFolder);
-                alert(`Procedure for ${finalPatientName} has been updated.`);
+                showAppAlert(`Procedure for ${finalPatientName} has been updated.`, "success");
             }
         } else {
             await saveFileToFolder(procedureRecord, filename, doctorDisplayName);
-            alert(`Procedure for ${finalPatientName} saved to "Unprocessed" billing for Dr. ${doctorDisplayName}.`);
+            showAppAlert(`Procedure for ${finalPatientName} saved to "Unprocessed" billing for Dr. ${doctorDisplayName}.`, "success");
         }
         
         resetAll(false); // Pass false to NOT ask for confirmation
@@ -418,7 +422,7 @@ window.saveProcedure = async function() {
 
     } catch (err) {
         console.warn('Could not save to folder.', err.message);
-        alert(`Error: ${err.message}\n\nCould not save to default folder.`);
+        showAppAlert(`Error: ${err.message}\n\nCould not save to default folder.`, "error");
     }
 }
 
@@ -521,7 +525,7 @@ window.generateEntryNote = function() {
     const patientDOB = patientDOBEl.value;
     let finalPatientName = patientName;
     if (patientDOB) {
-        finalPatientName = `${patientName} (${patientDOB})`;
+        finalPatientName = `${patientName} (${window.formatDateToAU(patientDOB)})`;
     }
     // --- End Update ---
     
@@ -682,11 +686,22 @@ window.startEditLesion = function(id) {
     
     // --- NEW: Populate Patient Name and DOB ---
     const rawPatientName = currentBillingFile.data.patientName || patientNameEl.value; // Get name from file or form
-    const dobMatch = rawPatientName.match(/\(([^)]+)\)$/); // Regex to find (DOB)
+    
+    // Extract DOB from "Name (DD/MM/YYYY)" format
+    const dobMatch = rawPatientName.match(/\(([^)]+)\)$/); // Regex to find content in last parentheses
     
     if (dobMatch) {
-        // Found a DOB
-        patientDOBEl.value = dobMatch[1]; // Set DOB field
+        // Found a DOB string like "25/12/1980"
+        const dobStr = dobMatch[1];
+        
+        // We need to convert "DD/MM/YYYY" back to "YYYY-MM-DD" for the HTML input
+        const parts = dobStr.split('/');
+        if (parts.length === 3) {
+             patientDOBEl.value = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else {
+             patientDOBEl.value = ''; // Could not parse
+        }
+        
         patientNameEl.value = rawPatientName.substring(0, dobMatch.index).trim(); // Set name field
     } else {
         // No DOB found
@@ -781,9 +796,9 @@ window.startEditLesion = function(id) {
 /**
  * Cancels the edit and resets the form.
  */
-window.cancelEdit = function() {
+window.cancelEdit = async function() {
     if (editingProcedureFile && hasUnsavedChanges()) {
-        if (!confirm("You have made changes to this lesion. Cancelling will discard them. Are you sure?")) {
+        if (!await showAppConfirm("You have made changes to this lesion. Cancelling will discard them. Are you sure?", "warning")) {
             return;
         }
     }
@@ -864,9 +879,9 @@ window.resetLesionForm = function(resetProcType = true) {
  * Resets the entire form, including patient info and all lesions.
  * @param {boolean} [askConfirmation=true] - Whether to ask for user confirmation if data exists.
  */
-window.resetAll = function(askConfirmation = true) {
+window.resetAll = async function(askConfirmation = true) {
     if (askConfirmation && hasUnsavedChanges()) {
-        if (!confirm("Are you sure you want to clear all procedure details? This cannot be undone.")) {
+        if (!await showAppConfirm("Are you sure you want to clear all procedure details? This cannot be undone.", "warning")) {
             return;
         }
     }
@@ -1081,9 +1096,9 @@ window.updateLesionsList = function() {
  * Removes a lesion from the temporary list.
  * @param {number} id - The ID of the lesion to remove.
  */
-window.removeLesion = function(id) {
+window.removeLesion = async function(id) {
     if (editingProcedureFile) {
-        alert("You cannot remove lesions when editing a saved procedure. Please cancel the edit first.");
+        showAppAlert("You cannot remove lesions when editing a saved procedure. Please cancel the edit first.", "warning");
         return;
     }
 
@@ -1094,7 +1109,7 @@ window.removeLesion = function(id) {
     lesionCounter = lesions.length;
     formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
 
-    if (editingLesionId === id) cancelEdit();
+    if (editingLesionId === id) await cancelEdit();
     updateAllOutputs();
 }
 
