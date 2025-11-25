@@ -213,7 +213,8 @@ window.overwriteFile = async function(fileHandle, data, doctorDisplayName, fromF
 
     try {
         const doctorDir = await saveFolderHandle.getDirectoryHandle(doctorFolderName);
-        const sourceDir = await doctorDir.getDirectoryHandle(fromFolder);
+        // Just verifying the path exists, mostly logic-check
+        await doctorDir.getDirectoryHandle(fromFolder);
         
         // Use the *existing* fileHandle to overwrite
         const writable = await fileHandle.createWritable();
@@ -223,7 +224,7 @@ window.overwriteFile = async function(fileHandle, data, doctorDisplayName, fromF
         console.log(`Overwrote file ${fileHandle.name} in ${doctorFolderName}/${fromFolder}`);
     } catch (e) {
         console.error('Error overwriting file:', e);
-        alert(`Error overwriting file: ${e.message}`);
+        showAppAlert(`Error overwriting file: ${e.message}`, "error");
     }
 }
 
@@ -267,7 +268,7 @@ window.moveFile = async function(fromDir, toDir, fileHandle, newData, doctorDisp
             console.log(`Archiving to: ${doctorFolderName}/Archive/${year}/${monthFolderName}`);
 
         } else {
-            // Standard move (e.g., to "Billed")
+            // Standard move (e.g., to "Billed" or back to "Unprocessed")
             targetDirHandle = await doctorDir.getDirectoryHandle(toDir, { create: true });
         }
         // --- END NEW LOGIC ---
@@ -284,6 +285,6 @@ window.moveFile = async function(fromDir, toDir, fileHandle, newData, doctorDisp
         console.log(`Moved ${fileHandle.name} from ${doctorFolderName}/${fromDir} to ${targetDirHandle.name}`);
     } catch (e) {
         console.error('Error moving file:', e);
-        alert(`Error moving file: ${e.message}`);
+        showAppAlert(`Error moving file: ${e.message}`, "error");
     }
 }
