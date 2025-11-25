@@ -338,7 +338,15 @@ window.openBillingPanel = function(item) {
     });
 
 
-    // 4. Show correct action buttons
+    // 4. Show correct action buttons (reset disabled state)
+    saveAsBilledBtn.disabled = false;
+    saveAsBilledBtn.textContent = 'Save as Billed';
+    deleteProcedureBtn.disabled = false;
+    deleteProcedureBtn.textContent = 'Delete';
+    archiveBilledFile.disabled = false; 
+    sendBackBtn.disabled = false;
+    sendBackBtn.textContent = 'Send Back to Doctor';
+
     if (fromFolder === 'Unprocessed' && currentAppMode === 'Doctor') {
         doctorActions.classList.remove('hidden');
         pmActions.classList.add('hidden');
@@ -627,6 +635,11 @@ function validateBillingPanel() {
 // --- FILE ACTIONS (SAVE, DELETE, ARCHIVE) ---
 
 async function saveBilledFile() {
+    // Disable Button to prevent double-click
+    saveAsBilledBtn.disabled = true;
+    const originalBtnText = saveAsBilledBtn.textContent;
+    saveAsBilledBtn.textContent = 'Saving...';
+
     // --- NEW: Re-run validation and show specific errors ---
     if (!validateBillingPanel()) {
         // Find the *first* error and show a specific alert
@@ -634,6 +647,9 @@ async function saveBilledFile() {
         if (!billingConsultItem.value.trim() && !noConsultBtn.classList.contains('selected')) {
             showAppAlert("Error: Please enter a 'Consult Item' or select 'No Consult Item'.", "error");
             billingConsultItem.classList.add('missing-field');
+            // Re-enable button
+            saveAsBilledBtn.disabled = false;
+            saveAsBilledBtn.textContent = originalBtnText;
             return;
         }
         
@@ -646,6 +662,9 @@ async function saveBilledFile() {
             if (!selectedBtn) {
                 showAppAlert(`Error: Please select a 'Final Histology' (Step 1) for Lesion ${lesionId}.`, "error");
                 histoGroup.closest('.p-4').classList.add('missing-field');
+                // Re-enable button
+                saveAsBilledBtn.disabled = false;
+                saveAsBilledBtn.textContent = originalBtnText;
                 return; 
             } else {
                  histoGroup.closest('.p-4').classList.remove('missing-field');
@@ -659,10 +678,16 @@ async function saveBilledFile() {
                     showAppAlert(`Error: Please add a 'Final Procedure Item' for Lesion ${lesionId}.`, "error");
                 }
                 itemInput.focus();
+                // Re-enable button
+                saveAsBilledBtn.disabled = false;
+                saveAsBilledBtn.textContent = originalBtnText;
                 return;
             }
         }
-        return; // Fallback, button should have been disabled
+        // Re-enable button if something weird happened
+        saveAsBilledBtn.disabled = false;
+        saveAsBilledBtn.textContent = originalBtnText;
+        return; // Fallback
     }
     // --- End Validation ---
 
@@ -681,26 +706,40 @@ async function saveBilledFile() {
     });
 
     // 2. Move file
-    await moveFile('Unprocessed', 'Billed', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
-
-    // 3. Refresh UI
-    billingPanel.classList.add('hidden');
-    loadBillingFiles();
+    try {
+        await moveFile('Unprocessed', 'Billed', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
+        // 3. Refresh UI
+        billingPanel.classList.add('hidden');
+        loadBillingFiles();
+    } catch (e) {
+        // Error handled by moveFile alert, but re-enable button here just in case
+        saveAsBilledBtn.disabled = false;
+        saveAsBilledBtn.textContent = originalBtnText;
+    }
 }
 
 async function deleteBillingFile() {
     if (!await showAppConfirm('Are you sure you want to delete this unprocessed procedure? This cannot be undone.', "warning")) {
         return;
     }
+    
+    // Disable button
+    deleteProcedureBtn.disabled = true;
+    deleteProcedureBtn.textContent = 'Deleting...';
+
     // 1. Update status to 'Deleted'
     const updatedData = { ...currentBillingFile.data, status: 'Deleted', billingComment: `DELETED by doctor on ${new Date().toLocaleDateString()}` };
 
     // 2. Move file from 'Unprocessed' to 'Archive'
-    await moveFile('Unprocessed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
-
-    // 3. Refresh UI
-    billingPanel.classList.add('hidden');
-    loadBillingFiles();
+    try {
+        await moveFile('Unprocessed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
+        // 3. Refresh UI
+        billingPanel.classList.add('hidden');
+        loadBillingFiles();
+    } catch(e) {
+        deleteProcedureBtn.disabled = false;
+        deleteProcedureBtn.textContent = 'Delete';
+    }
 }
 
 /**
@@ -711,15 +750,23 @@ async function archiveBilledFile() {
         return;
     }
     
+    const archiveBtn = getEl('move-to-archive-btn');
+    archiveBtn.disabled = true;
+    archiveBtn.textContent = 'Archiving...';
+
     // 1. Update status to 'Archived'
     const updatedData = { ...currentBillingFile.data, status: 'Archived' };
     
     // 2. Move file from 'Billed' to 'Archive'
-    await moveFile('Billed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
-
-    // 3. Refresh UI
-    billingPanel.classList.add('hidden');
-    loadBillingFiles();
+    try {
+        await moveFile('Billed', 'Archive', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
+        // 3. Refresh UI
+        billingPanel.classList.add('hidden');
+        loadBillingFiles();
+    } catch(e) {
+        archiveBtn.disabled = false;
+        archiveBtn.textContent = 'Archive this one item';
+    }
 }
 
 /**
@@ -737,6 +784,9 @@ async function sendBackToDoctor() {
         return;
     }
     
+    sendBackBtn.disabled = true;
+    sendBackBtn.textContent = 'Sending...';
+
     // 1. Update status and add PM comment
     const updatedData = { ...currentBillingFile.data };
     updatedData.status = 'Unprocessed'; // Set status back
@@ -745,11 +795,15 @@ async function sendBackToDoctor() {
     updatedData.billingComment = `PM REVIEW: ${reason}${oldComment}`;
     
     // 2. Move file from 'Billed' to 'Unprocessed'
-    await moveFile('Billed', 'Unprocessed', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
-
-    // 3. Refresh UI
-    billingPanel.classList.add('hidden');
-    loadBillingFiles();
+    try {
+        await moveFile('Billed', 'Unprocessed', currentBillingFile.handle, updatedData, currentBillingFile.fromDoctor);
+        // 3. Refresh UI
+        billingPanel.classList.add('hidden');
+        loadBillingFiles();
+    } catch(e) {
+        sendBackBtn.disabled = false;
+        sendBackBtn.textContent = 'Send Back to Doctor';
+    }
 }
 
 
