@@ -66,14 +66,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const isDissolvable = appSettings.sutures && appSettings.sutures.skin_dissolvable 
                 ? appSettings.sutures.skin_dissolvable.includes(skinSutureTypeEl.value)
                 : false;
-                
-            // Show removal box only if a non-dissolvable suture is selected
-            if (skinSutureTypeEl.value && !isDissolvable) {
-                 removalBox.style.display = 'block';
-                 removalBox.classList.remove('hidden');
-            } else {
-                 removalBox.style.display = 'none';
-                 removalBox.classList.add('hidden');
+            
+            // FIX: Ensure removalBox exists before trying to access style
+            if (removalBox) {
+                // Show removal box only if a non-dissolvable suture is selected
+                if (skinSutureTypeEl.value && !isDissolvable) {
+                     removalBox.style.display = 'block';
+                     removalBox.classList.remove('hidden');
+                } else {
+                     removalBox.style.display = 'none';
+                     removalBox.classList.add('hidden');
+                }
             }
             checkLesionFormCompleteness(); 
         });
@@ -134,8 +137,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if(selectAllBtn) selectAllBtn.addEventListener('click', toggleSelectAll);
     if(batchArchiveBtn) batchArchiveBtn.addEventListener('click', archiveBatchFiles);
     
-    // Print Button
-    if(printBilledListBtn) printBilledListBtn.addEventListener('click', printBilledList);
+    // Print Buttons
+    if(printBilledListBtn) printBilledListBtn.addEventListener('click', window.printBilledList);
+    if(printUnprocessedListBtn) printUnprocessedListBtn.addEventListener('click', window.printUnprocessedList); // <-- NEW LISTENER
     
     // Billing Panel Buttons
     if(closeBillingPanelBtn) closeBillingPanelBtn.addEventListener('click', () => billingPanel.classList.add('hidden'));
@@ -278,13 +282,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // We are on the billing page, so *always* prevent the default browser print dialog.
                 event.preventDefault();
                 
-                // Now, check if we are in PM mode to trigger the custom print.
+                // Check Mode to decide which print function to call
                 if (currentAppMode === 'PM') {
-                    // Trigger the app's custom print function (defined in billing-view.js)
+                    // PM Mode -> Print Ready/Billed List
                     window.printBilledList();
                 } else {
-                    // In Doctor mode, let them know this is a PM-only feature.
-                    showAppAlert("Printing the 'Ready to Bill' list is a Practice Manager action. Please switch to PM mode to print.", "info");
+                    // Doctor Mode -> Print Unprocessed List
+                    window.printUnprocessedList();
                 }
             }
             // If not on the billing tab (e.g., Settings, Entry), we do nothing
