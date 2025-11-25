@@ -133,13 +133,16 @@ window.renderFileLists = function() {
     selectAllBtn.style.display = (currentAppMode === 'PM' && allFiles.billed.length > 0) ? 'flex' : 'none';
     selectAllBtn.textContent = 'Select All'; // Reset button text
     
-    // Show/Hide correct print button based on mode
+    // --- FIX: Safe access to print buttons ---
+    const uBtn = document.getElementById('print-unprocessed-list-btn');
+    const bBtn = document.getElementById('print-billed-list-btn');
+
     if (currentAppMode === 'Doctor') {
-        printUnprocessedListBtn.style.display = 'inline-flex';
-        printBilledListBtn.style.display = 'none';
+        if (uBtn) uBtn.style.display = 'inline-flex';
+        if (bBtn) bBtn.style.display = 'none';
     } else { // PM
-        printUnprocessedListBtn.style.display = 'none';
-        printBilledListBtn.style.display = 'inline-flex';
+        if (uBtn) uBtn.style.display = 'none';
+        if (bBtn) bBtn.style.display = 'inline-flex';
     }
 
     const filterAndRender = (listEl, data, searchTerm, isBilledList = false) => {
