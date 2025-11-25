@@ -56,7 +56,7 @@ var appAlertModal = getEl('appAlertModal');
 var appAlertTitle = getEl('appAlertTitle');
 var appAlertMessage = getEl('appAlertMessage');
 var appAlertIconContainer = getEl('appAlertIconContainer');
-var appAlertOkBtn = getEl('appAlertOkBtn');
+var appAlertOkBtn = getEl('appAlertOkBtn'); // Used as the close 'X' button now
 
 var appConfirmModal = getEl('appConfirmModal');
 var appConfirmTitle = getEl('appConfirmTitle');
@@ -84,6 +84,7 @@ var loadFilesBtn = getEl('load-files-btn');
 var searchBar = getEl('search-bar');
 var archiveSearch = getEl('archive-search'); 
 var printBilledListBtn = getEl('print-billed-list-btn');
+var printUnprocessedListBtn = getEl('print-unprocessed-list-btn'); // <-- NEW
 var unprocessedSection = getEl('unprocessed-section');
 var unprocessedHeader = getEl('unprocessed-header'); 
 var unprocessedList = getEl('unprocessed-list');
@@ -197,58 +198,102 @@ var pathologyOptions = {
 
 // --- CORE APP LOGIC ---
 
+// --- NEW: Date Formatting Helper (Australian Standard) ---
+window.formatDateToAU = function(dateInput) {
+    if (!dateInput) return '';
+    
+    // Handle YYYY-MM-DD string (from input[type=date]) explicitly to avoid timezone shifts
+    if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+        const parts = dateInput.split('-');
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    
+    // Handle ISO strings or Date objects
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return dateInput; // Return original if invalid
+
+    return new Intl.DateTimeFormat('en-AU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    }).format(d);
+}
+// --- End Date Helper ---
+
 // --- NEW: Custom Alert/Confirm Logic ---
 let confirmPromise = {
     resolve: null,
 };
 
+let alertTimeout = null; // Store timeout to clear it if a new alert pops up
+
 const ICONS = {
     info: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="text-blue-500" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l.208-.188c.196-.17.307-.397.477-.632l.5-1.027l.131-.273c.09-.176.152-.335.195-.44l.01-.025c.03-.06.05-.113.065-.166.015-.05.025-.101.03-.15.005-.05.007-.1.007-.15l-.001-.07a.996.996 0 0 0-.01-.07L10.02 7.02c-.01-.06-.02-.12-.03-.18c-.01-.06-.025-.12-.045-.18s-.04-.12-.06-.18c-.02-.06-.045-.12-.07-.18c-.025-.06-.055-.12-.09-.18c-.035-.06-.075-.12-.12-.18c-.045-.06-.1-.12-.15-.18c-.05-.06-.11-.12-.17-.18s-.125-.11-.19-.16c-.065-.05-.13-.09-.2-.13c-.07-.04-.14-.07-.21-.1s-.15-.05-.22-.06c-.07-.01-.15-.01-.22-.01s-.15 0-.22.01c-.07.01-.14.02-.21.04s-.13.05-.2.07c-.06.02-.12.05-.19.08s-.12.07-.17.11c-.05.04-.1.08-.15.13s-.09.11-.13.17c-.04.06-.08.12-.11.19c-.03.06-.06.12-.08.19c-.02.06-.04.12-.05.19s-.02.13-.03.19c-.01.06-.01.12-.01.19s0 .13.01.19c.01.06.01.12.02.18l.02.13c.01.06.03.12.05.18l.04.14c.02.06.04.12.07.18l.06.14c.02.06.05.12.08.18l.09.15c.03.06.07.12.11.18l.13.15c.04.06.09.11.15.17l.17.15c.05.04.11.08.17.12l.2.13c.07.04.14.07.22.1c.07.03.15.05.22.06c.07.01.15.01.22.01s.15 0 .22-.01c.07-.01.15-.02.22-.04c.07-.02.14-.04.2-.07c.06-.02.12-.05.18-.08c.06-.03.12-.07.17-.11l.15-.12c.05-.04.1-.09.14-.14l.l3-.15c.04-.05.07-.11.1-.17l.08-.14c.02-.06.04-.12.06-.19l.05-.15c.01-.06.02-.12.03-.18l.02-.15c.01-.06.01-.12.01-.18V8.98l-.007-.07a.5.5 0 0 0-.03-.19z"/></svg>',
     warning: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="text-amber-500" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zM8 4a.905.905 0 0 1 .9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995A.905.905 0 0 1 8 4zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>',
-    error: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="text-red-600" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/></svg>',
+    error: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="text-red-600" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.647 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/></svg>',
     success: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="text-green-500" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>'
 };
 
 /**
- * Shows a custom alert modal.
+ * Shows a custom toast alert (bottom right).
  * @param {string} message - The message to display.
  * @param {string} [type='info'] - 'info', 'success', 'warning', or 'error'.
- * e.g., showAppAlert("File saved successfully.", "success");
- * e.g., showAppAlert("Please fill all required fields.", "error");
  */
 window.showAppAlert = function(message, type = 'info') {
+    if (!appAlertModal) return;
+
     let title;
     let icon = ICONS[type] || ICONS.info;
-    let buttonClass;
+    let borderClass;
 
+    // Determine colors based on type
     switch(type) {
         case 'error':
             title = 'Error';
-            buttonClass = 'bg-red-600 hover:bg-red-700';
+            borderClass = 'border-red-500';
             break;
         case 'success':
             title = 'Success';
-            buttonClass = 'bg-green-600 hover:bg-green-700';
+            borderClass = 'border-green-500';
             break;
         case 'warning':
             title = 'Warning';
-            buttonClass = 'bg-amber-500 hover:bg-amber-600';
+            borderClass = 'border-amber-500';
             break;
         case 'info':
         default:
             title = 'Information';
-            buttonClass = 'bg-blue-600 hover:bg-blue-700';
+            borderClass = 'border-blue-500';
             break;
     }
 
+    // Update Content
     appAlertTitle.textContent = title;
     appAlertMessage.textContent = message;
     appAlertIconContainer.innerHTML = icon;
     
-    appAlertOkBtn.className = `font-bold py-2 px-5 rounded-lg text-white ${buttonClass}`;
+    // Reset and apply border color
+    const contentDiv = getEl('appAlertContent');
+    if (contentDiv) {
+        contentDiv.className = `max-w-sm bg-white p-4 rounded-xl shadow-2xl border-l-4 flex items-start gap-3 ${borderClass}`;
+    }
     
+    // Clear existing timeout if we are spamming alerts
+    if (alertTimeout) {
+        clearTimeout(alertTimeout);
+    }
+
+    // Show the toast
     appAlertModal.classList.remove('hidden');
-    appAlertOkBtn.focus();
+    // Slight delay to allow display:block to apply before changing opacity for transition
+    setTimeout(() => {
+        appAlertModal.classList.remove('opacity-0');
+    }, 10);
+
+    // Auto hide after 3 seconds
+    alertTimeout = setTimeout(() => {
+        handleAlertOk(); // Uses the hide logic
+    }, 3000);
 }
 
 /**
@@ -285,7 +330,12 @@ window.showAppConfirm = function(message, type = 'warning') {
 }
 
 function handleAlertOk() {
-    appAlertModal.classList.add('hidden');
+    // Fade out
+    appAlertModal.classList.add('opacity-0');
+    // Wait for transition to finish before hiding element
+    setTimeout(() => {
+        appAlertModal.classList.add('hidden');
+    }, 500); // match duration-500 class
 }
 
 function handleConfirm(result) {
