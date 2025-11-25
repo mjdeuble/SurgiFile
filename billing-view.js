@@ -132,6 +132,15 @@ window.renderFileLists = function() {
     batchArchiveBtn.style.display = (currentAppMode === 'PM' && allFiles.billed.length > 0) ? 'flex' : 'none';
     selectAllBtn.style.display = (currentAppMode === 'PM' && allFiles.billed.length > 0) ? 'flex' : 'none';
     selectAllBtn.textContent = 'Select All'; // Reset button text
+    
+    // Show/Hide correct print button based on mode
+    if (currentAppMode === 'Doctor') {
+        printUnprocessedListBtn.style.display = 'inline-flex';
+        printBilledListBtn.style.display = 'none';
+    } else { // PM
+        printUnprocessedListBtn.style.display = 'none';
+        printBilledListBtn.style.display = 'inline-flex';
+    }
 
     const filterAndRender = (listEl, data, searchTerm, isBilledList = false) => {
         listEl.innerHTML = '';
@@ -175,8 +184,8 @@ function createFileListItem(item, addCheckbox = false) {
     const el = document.createElement('div');
     el.className = 'file-list-item bg-white p-3 rounded-lg shadow border border-slate-200';
     
-    // Use the stored procedureDate
-    const date = new Date(data.procedureDate).toLocaleDateString();
+    // Use helper for Australian Date
+    const date = window.formatDateToAU(data.procedureDate);
     
     let codes = data.consultItem || '';
     if (data.lesions) {
@@ -806,7 +815,7 @@ window.toggleSelectAll = function() {
 
 
 /**
- * Generates and triggers the print dialog
+ * Generates and triggers the print dialog for the "Ready to Bill" list
  */
 window.printBilledList = function() {
     const mainSearchTerm = searchBar.value.toLowerCase();
@@ -823,14 +832,13 @@ window.printBilledList = function() {
     let doctorHeader = (currentAppMode === 'PM') ? 'All Doctors' : currentDoctor;
     
     let reportHTML = `<h1 class="text-2xl font-bold mb-4">Billing Run Sheet - ${doctorHeader}</h1>`;
-    reportHTML += `<h2 class="text-lg font-medium mb-6">Generated: ${new Date().toLocaleString()}</h2>`;
+    // Use new date helper
+    reportHTML += `<h2 class="text-lg font-medium mb-6">Generated: ${window.formatDateToAU(new Date())}</h2>`;
     
     let currentDoctorGroup = "";
     
     itemsToPrint.forEach(item => {
         const data = item.data;
-        
-        // --- NEW HIERARCHICAL LAYOUT ---
         
         // 1. Print Doctor Header (if PM mode and doctor is different)
         if (currentAppMode === 'PM' && data.doctorCode !== currentDoctorGroup) {
@@ -839,8 +847,8 @@ window.printBilledList = function() {
         }
         
         // 2. Print Patient Subheading
-        const date = new Date(data.procedureDate).toLocaleDateString();
-        reportHTML += `<div style="border-top: 1px solid #ccc; padding: 10px 0;">`; // Container for one patient
+        const date = window.formatDateToAU(data.procedureDate);
+        reportHTML += `<div style="border-top: 1px solid #ccc; padding: 10px 0;">`; 
         reportHTML += `<h2 class="text-lg font-semibold">${data.patientName}</h2>`;
         reportHTML += `<div class="ml-4 mb-2 text-sm text-slate-700"><strong>Date:</strong> ${date}</div>`;
         
@@ -849,7 +857,6 @@ window.printBilledList = function() {
             let procText = l.procedure;
             if (l.procedure === 'Excision') {
                 procText += ` (${l.excisionClosureType})`;
-                // --- FIX: Only add graft type if it's a graft ---
                 if (l.excisionClosureType === 'Graft Repair' || l.excisionClosureType === 'Graft + Flap') {
                      procText += ` (${l.graftType})`;
                 }
@@ -877,21 +884,90 @@ window.printBilledList = function() {
         if (data.billingComment) {
             reportHTML += `<div class="text-sm italic text-amber-700"><strong>Comment:</strong> ${data.billingComment}</div>`;
         }
-        reportHTML += `</div></div>`; // Close patient container
+        reportHTML += `</div></div>`; 
     });
     
-    // --- END NEW LAYOUT ---
-    
-    
-    // Get the hidden printable report element
+    printContent(reportHTML);
+}
+
+/**
+ * --- NEW FUNCTION ---
+ * Prints the "Unprocessed" list for the doctor, with space for notes
+ */
+window.printUnprocessedList = function() {
+    const mainSearchTerm = searchBar.value.toLowerCase();
+    const itemsToPrint = allFiles.unprocessed.filter(item => 
+        item.data.patientName.toLowerCase().includes(mainSearchTerm)
+    );
+
+    if (itemsToPrint.length === 0) {
+        showAppAlert("No items in 'Unprocessed' to print.", "info");
+        return;
+    }
+
+    let reportHTML = `<h1 class="text-2xl font-bold mb-4">Outstanding Billing List - ${currentDoctor}</h1>`;
+    reportHTML += `<h2 class="text-lg font-medium mb-6">Generated: ${window.formatDateToAU(new Date())}</h2>`;
+    reportHTML += `<p class="mb-6 text-sm italic">Use this sheet to manually record item numbers for later entry.</p>`;
+
+    itemsToPrint.forEach(item => {
+        const data = item.data;
+        const date = window.formatDateToAU(data.procedureDate);
+        
+        reportHTML += `<div style="border: 1px solid #94a3b8; padding: 15px; margin-bottom: 20px; break-inside: avoid; border-radius: 8px;">`;
+        reportHTML += `<div style="display:flex; justify-content:space-between;">`;
+        reportHTML += `<h2 class="text-lg font-bold">${data.patientName}</h2>`;
+        reportHTML += `<span class="text-slate-600">${date}</span>`;
+        reportHTML += `</div>`;
+
+        data.lesions.forEach(l => {
+             let procText = l.procedure;
+             if (l.procedure === 'Excision') procText += ` (${l.excisionClosureType})`;
+             
+             reportHTML += `
+                <div style="margin-top: 10px; padding-left: 10px; border-left: 4px solid #cbd5e1;">
+                    <div><strong>Lesion ${l.id}:</strong> ${l.location}</div>
+                    <div class="text-sm text-slate-600">${procText}</div>
+                    <div class="text-sm text-slate-600">Defect: ${l.defectSize.toFixed(1)}mm</div>
+                    <div class="text-sm text-slate-600">PDx: ${l.pathology}</div>
+                    
+                    <div style="margin-top: 8px; display: flex; gap: 15px; align-items: center;">
+                        <div style="border-bottom: 1px solid #334155; width: 150px; height: 25px;">
+                            <span class="text-xs text-slate-500">Item Number(s):</span>
+                        </div>
+                        <div style="border-bottom: 1px solid #334155; width: 100px; height: 25px;">
+                            <span class="text-xs text-slate-500">Consult:</span>
+                        </div>
+                    </div>
+                </div>
+             `;
+        });
+        
+        // General notes area
+        reportHTML += `<div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 5px;">`;
+        reportHTML += `<span class="text-xs text-slate-400">Notes:</span>`;
+        reportHTML += `<div style="height: 40px;"></div>`;
+        reportHTML += `</div>`;
+        
+        reportHTML += `</div>`; 
+    });
+
+    printContent(reportHTML);
+}
+
+/**
+ * Helper to execute print
+ */
+function printContent(htmlContent) {
     const printReportEl = getEl('printable-report');
-    printReportEl.innerHTML = reportHTML;
+    printReportEl.innerHTML = htmlContent;
     
-    // --- NEW PRINT LOGIC ---
-    // Force it to be visible *before* calling window.print()
     printReportEl.style.display = 'block';
+    printReportEl.style.position = 'static'; 
+    printReportEl.style.width = 'auto';
+    printReportEl.style.height = 'auto';
+    printReportEl.style.overflow = 'visible';
+    
     window.print();
-    // The 'onafterprint' event will hide it again.
 }
 
 // --- NEW: Add event listener to hide report after printing ---
