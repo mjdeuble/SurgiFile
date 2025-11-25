@@ -17,15 +17,15 @@ dbOpenRequest.onsuccess = (event) => {
     db = event.target.result;
     console.log("Database connection ready.");
     
-    // Check if loadSavedFolder is available, otherwise wait for window load
+    // Check if loadSavedFolder is available (it's in file-system.js), otherwise wait for window load.
+    // This prevents "loadSavedFolder is not defined" errors if scripts load out of order.
     if (typeof window.loadSavedFolder === 'function') {
         window.loadSavedFolder();
     } else {
-        // If file-system.js hasn't loaded yet, wait for it
         window.addEventListener('load', () => {
-             if (typeof window.loadSavedFolder === 'function') {
+            if (typeof window.loadSavedFolder === 'function') {
                 window.loadSavedFolder();
-             }
+            }
         });
     }
 };
