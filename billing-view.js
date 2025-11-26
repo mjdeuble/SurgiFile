@@ -529,6 +529,7 @@ function validateBillingPanel() {
 
     // 2. Check Consult Item Input
     // If Time Based Mode: Input MUST be populated (toggle is hidden, so we treat it as "forced ON")
+    // If Standard Mode: Input MUST be populated IF Toggle is ON
     if (isTimeBasedMode) {
         if (!billingConsultItem.value.trim()) {
             isPanelValid = false;
