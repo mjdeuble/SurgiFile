@@ -166,6 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(sendBackBtn) sendBackBtn.addEventListener('click', sendBackToDoctor);
     
     // 'No Consult Item' toggle button
+    // FIX: Safely access global noConsultBtn using window
     if(window.noConsultBtn) {
         window.noConsultBtn.addEventListener('click', () => {
             const isSelected = window.noConsultBtn.classList.toggle('selected');
