@@ -328,7 +328,8 @@ window.openBillingPanel = function(item) {
 
     // 4. Show correct action buttons & Initialize UI
     saveAsBilledBtn.disabled = false;
-    saveAsBilledBtn.textContent = 'Save as Billed';
+    // CHANGED: Update reset text
+    saveAsBilledBtn.textContent = 'Send to Practice Manager';
     deleteProcedureBtn.disabled = false;
     deleteProcedureBtn.textContent = 'Delete';
     sendBackBtn.disabled = false;
@@ -684,11 +685,26 @@ function validateBillingPanel() {
 async function saveBilledFile() {
     // Disable Button to prevent double-click
     saveAsBilledBtn.disabled = true;
-    const originalBtnText = saveAsBilledBtn.textContent;
+    const originalBtnText = 'Send to Practice Manager'; // CHANGED: Update original text constant
     saveAsBilledBtn.textContent = 'Saving...';
 
     // --- NEW: Re-run validation and show specific errors ---
     if (!validateBillingPanel()) {
+        
+        // --- NEW: SCROLL AND SHAKE LOGIC ---
+        // Find the first element marked as missing within the billing panel
+        const firstMissing = document.querySelector('#billing-panel .missing-field');
+        if (firstMissing) {
+            // Scroll to it
+            firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstMissing.focus();
+            
+            // Shake animation
+            firstMissing.classList.add('shake');
+            setTimeout(() => firstMissing.classList.remove('shake'), 500);
+        }
+        // --- END NEW LOGIC ---
+
         // Check global mode
         let isTimeBasedMode = (billingConsultLabel.textContent.includes("Custom Codes"));
 
