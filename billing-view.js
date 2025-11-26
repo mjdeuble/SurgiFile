@@ -1074,18 +1074,19 @@ function printContent(htmlContent) {
     const printReportEl = getEl('printable-report');
     printReportEl.innerHTML = htmlContent;
     
-    // CSS @media print now handles the display toggling (display: none -> display: block)
-    // effectively removing the whitespace from the rest of the app.
+    printReportEl.style.display = 'block';
+    printReportEl.style.position = 'static'; 
+    printReportEl.style.width = 'auto';
+    printReportEl.style.height = 'auto';
+    printReportEl.style.overflow = 'visible';
     
     window.print();
 }
 
 // --- NEW: Add event listener to hide report after printing ---
-// This is largely a fallback now, but good to keep.
 window.onafterprint = () => {
     const printReportEl = getEl('printable-report');
     if (printReportEl) {
-        // Clear content to free memory
-        printReportEl.innerHTML = '';
+        printReportEl.style.display = 'none';
     }
 };
