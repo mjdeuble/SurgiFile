@@ -9,10 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if(tabClinicalNoteBtn) tabClinicalNoteBtn.addEventListener('click', () => performSafeAction(() => switchTab('clinical-note')));
     if(tabManualBillingBtn) tabManualBillingBtn.addEventListener('click', () => performSafeAction(() => switchTab('manual-billing')));
     if(tabBillingBtn) tabBillingBtn.addEventListener('click', () => performSafeAction(() => switchTab('billing')));
-    if(tabSettingsBtn) tabSettingsBtn.addEventListener('click', () => performSafeAction(() => switchTab('settings'))); // Cogwheel
+    if(tabSettingsBtn) tabSettingsBtn.addEventListener('click', () => performSafeAction(() => switchTab('settings'))); 
 
     // --- Connect Nav Bar Listeners ---
-    // New Toggle Switch Listener (on settings page)
     if(pmModeToggleSettings) {
         pmModeToggleSettings.addEventListener('change', () => {
             performSafeAction(() => {
@@ -35,10 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Combined Input Listener: Validation + Auto-Save
         let draftSaveTimeout;
         lesionForm.addEventListener('input', () => {
-            // 1. Real-time Validation (Red borders)
             checkLesionFormCompleteness();
 
-            // 2. Auto-Save Draft (Debounced by 1 second)
             clearTimeout(draftSaveTimeout);
             draftSaveTimeout = setTimeout(() => {
                 if (typeof window.saveDraft === 'function') {
@@ -58,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(getEl('copy-request-btn')) getEl('copy-request-btn').addEventListener('click', () => copyToClipboard('clinicalRequestOutput', getEl('copy-request-btn-text')));
     if(getEl('copy-note-btn')) getEl('copy-note-btn').addEventListener('click', () => copyToClipboard('entryNoteOutput', getEl('copy-note-btn-text')));
     
-    // Suture Logic Listeners
+    // Suture Logic
     if(useDeepSutureEl) {
         useDeepSutureEl.addEventListener('change', () => {
             deepSutureContainer.classList.toggle('hidden', !useDeepSutureEl.checked);
@@ -72,17 +69,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
  
-    // Suture Type Dropdown (to show/hide removal box)
+    // Suture Type Dropdown
     if(skinSutureTypeEl) {
         skinSutureTypeEl.addEventListener('change', () => {
             const removalBox = getEl('skin-suture-removal-container');
-            // Check if the selected suture is in the 'skin_dissolvable' list from settings
             const isDissolvable = appSettings.sutures && appSettings.sutures.skin_dissolvable 
                 ? appSettings.sutures.skin_dissolvable.includes(skinSutureTypeEl.value)
                 : false;
             
             if (removalBox) {
-                // Show removal box only if a non-dissolvable suture is selected
                 if (skinSutureTypeEl.value && !isDissolvable) {
                      removalBox.style.display = 'block';
                      removalBox.classList.remove('hidden');
@@ -99,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(outputBtnCombined) outputBtnCombined.addEventListener('click', () => setOutputStyle('combined'));
     if(outputBtnSeparate) outputBtnSeparate.addEventListener('click', () => setOutputStyle('separate'));
     
-    // Justification Buttons (Event Delegation)
+    // Justification Buttons
     if(justificationButtons) {
         justificationButtons.addEventListener('click', (e) => {
             if(e.target.classList.contains('justification-btn')) {
@@ -108,13 +103,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const justifications = Array.from(selectedButtons).map(btn => btn.dataset.text);
                 flapGraftJustificationInput.value = justifications.join(' ');
                 checkLesionFormCompleteness();
-                // Trigger manual save draft on button click
                 if (typeof window.saveDraft === 'function') window.saveDraft();
             }
         });
     }
 
-    // Dermoscopy Buttons (Event Delegation)
+    // Dermoscopy Buttons
     if(dermoscopyBtnContainer) {
         dermoscopyBtnContainer.addEventListener('click', (e) => {
             const target = e.target.closest('.dermoscopy-btn');
@@ -123,7 +117,6 @@ document.addEventListener('DOMContentLoaded', () => {
             dermoscopyBtnContainer.querySelectorAll('.dermoscopy-btn').forEach(btn => btn.classList.remove('selected'));
             target.classList.add('selected');
             checkLesionFormCompleteness();
-            // Trigger manual save draft on button click
             if (typeof window.saveDraft === 'function') window.saveDraft();
         });
     }
@@ -131,19 +124,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Connect Billing View Listeners ---
     if(loadFilesBtn) {
         loadFilesBtn.addEventListener('click', async () => {
-            // "Refresh Database" re-scans for new doctors first
             if (saveFolderHandle) {
                 const doctors = await getDoctorListFromFolders();
                 appSettings.doctorList = doctors;
                 populateDoctorDropdown(doctors);
             }
-            // populateDoctorDropdown already triggers loadBillingFiles via handleDoctorChange
         });
     }
     
     // Search Bars
-    if(searchBar) searchBar.addEventListener('input', () => renderFileLists()); // Main search
-    if(archiveSearch) archiveSearch.addEventListener('input', () => renderFileLists()); // Archive-only search
+    if(searchBar) searchBar.addEventListener('input', () => renderFileLists()); 
+    if(archiveSearch) archiveSearch.addEventListener('input', () => renderFileLists()); 
 
     // Collapsible Headers
     if(unprocessedHeader) unprocessedHeader.addEventListener('click', () => unprocessedList.classList.toggle('collapsed'));
@@ -165,50 +156,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if(moveToArchiveBtn) moveToArchiveBtn.addEventListener('click', archiveBilledFile);
     if(sendBackBtn) sendBackBtn.addEventListener('click', sendBackToDoctor);
     
-    // 'No Consult Item' toggle button
-    // FIX: Safely access global noConsultBtn using window
-    if(window.noConsultBtn) {
-        window.noConsultBtn.addEventListener('click', () => {
-            const isSelected = window.noConsultBtn.classList.toggle('selected');
-            if (isSelected) {
-                // Button is ON ("No Consult Item")
-                billingConsultItem.value = '';
-                billingConsultItem.disabled = true;
-                window.noConsultBtn.textContent = 'No Consult Item';
-            } else {
-                // Button is OFF (User wants to add one)
-                billingConsultItem.disabled = false;
-                billingConsultItem.focus();
-                window.noConsultBtn.textContent = 'Clear Consult Item';
+    // --- UPDATED: Robust Consult Toggle Listener ---
+    // We fetch the element directly to ensure we have the right one
+    const toggleEl = document.getElementById('consult-toggle');
+    if(toggleEl) {
+        toggleEl.addEventListener('change', () => {
+            window.updateConsultUI();
+            if (typeof validateBillingPanel === 'function') {
+                validateBillingPanel();
             }
-            validateBillingPanel();
         });
     }
 
     // Listener for consult item input
     if(billingConsultItem) {
         billingConsultItem.addEventListener('input', () => {
-             // If user types, deselect the 'No Consult' button
-            if (billingConsultItem.value.trim() !== '') {
-                if(window.noConsultBtn) {
-                    window.noConsultBtn.classList.remove('selected');
-                    window.noConsultBtn.textContent = 'Clear Consult Item';
-                }
-                billingConsultItem.disabled = false;
+            if (typeof validateBillingPanel === 'function') {
+                validateBillingPanel();
             }
-            validateBillingPanel();
         });
     }
     
     if(editProcedureBtn) {
         editProcedureBtn.addEventListener('click', () => {
-            // Get the first lesion from the file and switch to the entry tab to edit
             if (currentBillingFile.data && currentBillingFile.data.lesions.length > 0) {
-                lesions = currentBillingFile.data.lesions; // Load all lesions
+                lesions = currentBillingFile.data.lesions; 
                 patientNameEl.value = currentBillingFile.data.patientName;
-                // This function (window.startEditLesion) is defined in entry-view.js
-                startEditLesion(lesions[0].id); // Start edit with the first lesion
-                billingPanel.classList.add('hidden'); // Close panel
+                startEditLesion(lesions[0].id); 
+                billingPanel.classList.add('hidden'); 
             } else {
                 showAppAlert("Error: Cannot find lesion data in this file.", "error");
             }
@@ -222,7 +197,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if(resetAppSettingsBtn) resetAppSettingsBtn.addEventListener('click', resetAppSettings);
     if(addDoctorBtn) {
         addDoctorBtn.addEventListener('click', async () => {
-            // This just connects the button to the function in file-system.js
             const newName = newDoctorNameInput.value.trim();
             if (!newName) {
                 addDoctorStatus.textContent = "Error: Doctor name cannot be empty.";
@@ -240,7 +214,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 addDoctorStatus.className = "text-sm mt-2 text-green-600";
                 newDoctorNameInput.value = '';
 
-                // Refresh the doctor list in the app state
                 const doctors = await getDoctorListFromFolders();
                 appSettings.doctorList = doctors;
                 populateDoctorDropdown(doctors);
@@ -256,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(pathologyDisplayEl) pathologyDisplayEl.addEventListener('click', openPathologyModal);
     if(confirmPathologyBtn) confirmPathologyBtn.addEventListener('click', confirmPathologySelection);
     
-    // Orientation: Main Form Buttons
+    // Orientation Buttons
     if(mainMarkerBtnContainer) {
         mainMarkerBtnContainer.addEventListener('click', (e) => {
             const target = e.target.closest('.main-marker-btn');
@@ -271,12 +244,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 openOrientationModal();
             }
-            // Trigger manual save draft
             if (typeof window.saveDraft === 'function') window.saveDraft();
         });
     }
 
-    // Orientation: Modal Buttons (Clock and Directions)
     if(modalLocationSelector) {
         modalLocationSelector.addEventListener('click', (e) => {
             const target = e.target.closest('.direction-btn, .hour-text');
@@ -285,7 +256,6 @@ document.addEventListener('DOMContentLoaded', () => {
             getEl('orientationDescription').value = target.dataset.value;
             updateOrientationButtons();
             orientationModal.classList.add('hidden');
-            // Trigger manual save draft
             if (typeof window.saveDraft === 'function') window.saveDraft();
         });
     }
@@ -293,51 +263,64 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Global Key Press Listeners ---
     document.addEventListener('keydown', (event) => {
-        // Check for Ctrl+P (Windows/Linux) or Cmd+P (Mac)
         if ((event.ctrlKey || event.metaKey) && event.key === 'p') {
-            
-            // Check if we are on the Billing tab
             const isBillingTabActive = billingView.classList.contains('active');
             
             if (isBillingTabActive) {
-                // We are on the billing page, so *always* prevent the default browser print dialog.
                 event.preventDefault();
-                
-                // Check Mode to decide which print function to call
                 if (currentAppMode === 'PM') {
-                    // PM Mode -> Print Ready/Billed List
                     window.printBilledList();
                 } else {
-                    // Doctor Mode -> Print Unprocessed List
                     window.printUnprocessedList();
                 }
             }
-            // If not on the billing tab (e.g., Settings, Entry), we do nothing
-            // and allow the default browser behavior.
         }
     });
 
 
     // --- INITIAL APP LOAD ---
+    if(typeof loadAppSettings === 'function') loadAppSettings(); 
+    if(typeof populatePathologyModal === 'function') populatePathologyModal();
+    if(typeof drawOrientationClock === 'function') drawOrientationClock();
     
-    // 1. Load settings from localStorage (or defaults)
-    loadAppSettings(); 
-    
-    // 2. Populate modals with data from settings
-    populatePathologyModal();
-    drawOrientationClock();
-    
-    // 3. Restore saved app mode (Doctor/PM)
     const savedMode = localStorage.getItem('appMode') || 'Doctor';
     setAppMode(savedMode);
     
-    // 4. Load saved folder handle from IndexedDB
-    // This call is already happening in db.js onsuccess
-    
-    // 5. Final UI setup
     updateOutputVisibility();
     updateFormUI();
-    formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
+    if(formTitle) formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
 
-    // 6. Check for Auto-Save Draft (New) is handled in app.js timeout
+    // Check for Auto-Save Draft
+    setTimeout(() => {
+        if (typeof window.checkForDraft === 'function') {
+            window.checkForDraft();
+        }
+    }, 500);
 });
+
+// --- HELPER: Update Consult UI State ---
+// Defined globally so billing-view.js can call it
+window.updateConsultUI = function() {
+    // Fetch elements robustly
+    const toggle = document.getElementById('consult-toggle');
+    const input = document.getElementById('billing-consult-item');
+    const msg = document.getElementById('consult-disabled-msg');
+
+    if (!toggle || !input) return;
+
+    if (toggle.checked) {
+        // ON: User wants to bill a consult
+        input.style.display = 'block';
+        input.disabled = false;
+        if (msg) msg.classList.add('hidden');
+        // Optional: Focus if empty (can be annoying on open, so maybe skip)
+        // if (!input.value) input.focus();
+    } else {
+        // OFF: User explicitly says NO consult
+        input.style.display = 'none';
+        input.disabled = true;
+        input.value = ''; // Clear value
+        input.classList.remove('missing-field'); // Clear error
+        if (msg) msg.classList.remove('hidden');
+    }
+}
