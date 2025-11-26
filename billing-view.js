@@ -249,9 +249,9 @@ window.openBillingPanel = function(item) {
     billingConsultItem.value = data.consultItem || '';
     billingComment.value = data.billingComment || '';
 
-    // --- UPDATED LOGIC FOR TOGGLE INITIALIZATION ---
-    // Default: ON (Checked) to force user to either enter code or turn off.
-    consultToggle.checked = true;
+    // --- TOGGLE INITIALIZATION ---
+    // Default to ON to force the user to either enter a number or explicitly toggle it off
+    if (consultToggle) consultToggle.checked = true;
     
     // 2. Build Billing Assistant Cards
     billingAssistantLesions.innerHTML = data.lesions.map(l => {
@@ -266,9 +266,6 @@ window.openBillingPanel = function(item) {
         if (l.excisionClosureType === 'Graft Repair' || l.excisionClosureType === 'Graft + Flap') {
             closureText += ` (${l.graftType || 'N/A'})`;
         }
-
-        // Check if this lesion had a "Time Based" code saved previously (unlikely on unprocessed, but robust)
-        const isTimeBased = false; // Default to false on load, buttons will set it
 
         return `
         <div class="p-4 bg-slate-50 rounded-lg border border-slate-200" data-lesion-id="${l.id}">
@@ -350,10 +347,8 @@ window.openBillingPanel = function(item) {
 
     billingPanel.classList.remove('hidden');
     
-    // Initialize Global UI state (hides toggle if needed based on previously selected data, though unlikely for new)
+    // Initialize Global UI state (hides toggle if needed based on previously selected data)
     updateGlobalConsultUI();
-    // Also run updateConsultUI to hide/show input based on default toggle state
-    if (typeof window.updateConsultUI === 'function') window.updateConsultUI();
     validateBillingPanel(); 
 }
 
@@ -380,7 +375,7 @@ window.updateGlobalConsultUI = function() {
         if(billingConsultLabel) billingConsultLabel.textContent = "Consult Item/Custom Codes";
         // 2. Hide Toggle Container
         if(consultToggleContainer) consultToggleContainer.classList.add('hidden');
-        // 3. Force Input visible and enabled
+        // 3. Force Input visible and enabled (simulating toggle ON)
         if(billingConsultItem) {
             billingConsultItem.style.display = 'block';
             billingConsultItem.disabled = false;
@@ -528,7 +523,7 @@ function validateBillingPanel() {
     }
 
     // 2. Check Consult Item Input
-    // If Time Based Mode: Input MUST be populated (toggle is hidden, so we treat it as "forced ON")
+    // If Time Based Mode: Input MUST be populated (toggle is hidden, but effectively ON)
     // If Standard Mode: Input MUST be populated IF Toggle is ON
     if (isTimeBasedMode) {
         if (!billingConsultItem.value.trim()) {
@@ -538,8 +533,7 @@ function validateBillingPanel() {
             billingConsultItem.classList.remove('missing-field');
         }
     } else {
-        // Standard logic:
-        // Valid if (Toggle OFF) OR (Toggle ON AND Input has text)
+        // Standard logic: Valid if (Toggle OFF) OR (Toggle ON AND Input has text)
         if (consultToggle.checked && !billingConsultItem.value.trim()) {
             isPanelValid = false;
             billingConsultItem.classList.add('missing-field');
