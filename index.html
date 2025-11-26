@@ -221,33 +221,44 @@
             display: inline-flex; /* Show send back button */
         }
 
-        /* Print Styles */
+        /* --- IMPROVED PRINT STYLES --- */
         @media print {
-            body * {
-                visibility: hidden;
+            /* 1. Hide EVERYTHING by default to collapse whitespace */
+            body > * {
+                display: none !important;
             }
-            #printable-report, #printable-report * {
-                visibility: visible;
+
+            /* 2. Un-hide ONLY the report container */
+            /* We target it specifically to override the rule above */
+            body > #printable-report {
+                display: block !important;
+                position: static !important; /* Let it flow naturally */
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+                background-color: white;
+                margin: 0;
+                padding: 0;
             }
-            #printable-report {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                font-size: 12px; /* Set a base font size for print */
-                color: #000;
+            
+            /* 3. Ensure report contents are visible */
+            #printable-report * {
+                visibility: visible !important;
             }
-            /* These styles will apply to the new list format */
-            #printable-report h1, #printable-report h2, #printable-report div {
-                visibility: visible;
-            }
+            
+            /* Re-assert flex/grid layouts inside the report */
+            #printable-report .flex { display: flex !important; }
+            #printable-report .grid { display: grid !important; }
+
+            /* 4. Page Settings */
             @page {
                 size: auto;
-                margin: 20mm;
+                margin: 15mm; /* Reasonable margin */
             }
         }
+        
         #printable-report {
-            display: none; /* Hidden by default, only shown for printing */
+            display: none; /* Hidden by default on screen */
         }
 
         /* Billing Assistant Suggestion Style */
