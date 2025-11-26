@@ -84,7 +84,7 @@ var loadFilesBtn = getEl('load-files-btn');
 var searchBar = getEl('search-bar');
 var archiveSearch = getEl('archive-search'); 
 var printBilledListBtn = getEl('print-billed-list-btn');
-var printUnprocessedListBtn = getEl('print-unprocessed-list-btn'); // <-- NEW
+var printUnprocessedListBtn = getEl('print-unprocessed-list-btn'); // <-- NEW for Doctor Work List
 var unprocessedSection = getEl('unprocessed-section');
 var unprocessedHeader = getEl('unprocessed-header'); 
 var unprocessedList = getEl('unprocessed-list');
@@ -104,7 +104,7 @@ var billingPanel = getEl('billing-panel');
 var billingPanelTitle = getEl('billing-panel-title');
 var billingAssistantLesions = getEl('billing-assistant-lesions');
 var billingConsultItem = getEl('billing-consult-item');
-var noConsultBtn = getEl('no-consult-btn'); // <-- ENSURED THIS IS HERE
+var noConsultBtn = getEl('no-consult-btn'); 
 var billingComment = getEl('billing-comment');
 var closeBillingPanelBtn = getEl('close-billing-panel-btn');
 var doctorActions = getEl('billing-panel-doctor-actions');
@@ -205,7 +205,7 @@ window.formatDateToAU = function(dateInput) {
     // Handle YYYY-MM-DD string (from input[type=date]) explicitly to avoid timezone shifts
     if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
         const parts = dateInput.split('-');
-        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        return `${parts[2]}/${parts[1]}/${parts[0]}`; // DD/MM/YYYY
     }
     
     // Handle ISO strings or Date objects
@@ -220,7 +220,7 @@ window.formatDateToAU = function(dateInput) {
 }
 // --- End Date Helper ---
 
-// --- NEW: Custom Alert/Confirm Logic ---
+// --- Custom Alert/Confirm Logic ---
 let confirmPromise = {
     resolve: null,
 };
@@ -588,3 +588,32 @@ window.handleDoctorChange = async function() {
         loadBillingFiles();
     }
 }
+
+// --- INITIAL APP LOAD ---
+    
+    // 1. Load settings from localStorage (or defaults)
+    loadAppSettings(); 
+    
+    // 2. Populate modals with data from settings
+    populatePathologyModal();
+    drawOrientationClock();
+    
+    // 3. Restore saved app mode (Doctor/PM)
+    const savedMode = localStorage.getItem('appMode') || 'Doctor';
+    setAppMode(savedMode);
+    
+    // 4. Load saved folder handle from IndexedDB
+    // This call is already happening in db.js onsuccess
+    
+    // 5. Final UI setup
+    updateOutputVisibility();
+    updateFormUI();
+    formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
+
+    // 6. Check for Auto-Save Draft (New)
+    // Slight delay to allow DB and other inits to settle
+    setTimeout(() => {
+        if (typeof window.checkForDraft === 'function') {
+            window.checkForDraft();
+        }
+    }, 500);
