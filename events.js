@@ -31,7 +31,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Connect Entry View Listeners ---
     if(lesionForm) {
         lesionForm.addEventListener('change', updateFormUI);
-        lesionForm.addEventListener('input', checkLesionFormCompleteness);
+        
+        // Combined Input Listener: Validation + Auto-Save
+        let draftSaveTimeout;
+        lesionForm.addEventListener('input', () => {
+            // 1. Real-time Validation (Red borders)
+            checkLesionFormCompleteness();
+
+            // 2. Auto-Save Draft (Debounced by 1 second)
+            clearTimeout(draftSaveTimeout);
+            draftSaveTimeout = setTimeout(() => {
+                if (typeof window.saveDraft === 'function') {
+                    window.saveDraft();
+                }
+            }, 1000);
+        });
     }
     
     if(addLesionBtn) addLesionBtn.addEventListener('click', addOrUpdateLesion);
@@ -67,7 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? appSettings.sutures.skin_dissolvable.includes(skinSutureTypeEl.value)
                 : false;
             
-            // FIX: Ensure removalBox exists before trying to access style
             if (removalBox) {
                 // Show removal box only if a non-dissolvable suture is selected
                 if (skinSutureTypeEl.value && !isDissolvable) {
@@ -95,6 +108,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const justifications = Array.from(selectedButtons).map(btn => btn.dataset.text);
                 flapGraftJustificationInput.value = justifications.join(' ');
                 checkLesionFormCompleteness();
+                // Trigger manual save draft on button click
+                if (typeof window.saveDraft === 'function') window.saveDraft();
             }
         });
     }
@@ -108,6 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
             dermoscopyBtnContainer.querySelectorAll('.dermoscopy-btn').forEach(btn => btn.classList.remove('selected'));
             target.classList.add('selected');
             checkLesionFormCompleteness();
+            // Trigger manual save draft on button click
+            if (typeof window.saveDraft === 'function') window.saveDraft();
         });
     }
 
@@ -139,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Print Buttons
     if(printBilledListBtn) printBilledListBtn.addEventListener('click', window.printBilledList);
-    if(printUnprocessedListBtn) printUnprocessedListBtn.addEventListener('click', window.printUnprocessedList); // <-- NEW LISTENER
+    if(printUnprocessedListBtn) printUnprocessedListBtn.addEventListener('click', window.printUnprocessedList);
     
     // Billing Panel Buttons
     if(closeBillingPanelBtn) closeBillingPanelBtn.addEventListener('click', () => billingPanel.classList.add('hidden'));
@@ -149,7 +166,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if(sendBackBtn) sendBackBtn.addEventListener('click', sendBackToDoctor);
     
     // 'No Consult Item' toggle button
-    // FIX: Safely access global noConsultBtn using window
     if(window.noConsultBtn) {
         window.noConsultBtn.addEventListener('click', () => {
             const isSelected = window.noConsultBtn.classList.toggle('selected');
@@ -254,6 +270,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 openOrientationModal();
             }
+            // Trigger manual save draft
+            if (typeof window.saveDraft === 'function') window.saveDraft();
         });
     }
 
@@ -266,6 +284,8 @@ document.addEventListener('DOMContentLoaded', () => {
             getEl('orientationDescription').value = target.dataset.value;
             updateOrientationButtons();
             orientationModal.classList.add('hidden');
+            // Trigger manual save draft
+            if (typeof window.saveDraft === 'function') window.saveDraft();
         });
     }
     if(cancelOrientationBtn) cancelOrientationBtn.addEventListener('click', () => orientationModal.classList.add('hidden'));
@@ -317,4 +337,6 @@ document.addEventListener('DOMContentLoaded', () => {
     updateOutputVisibility();
     updateFormUI();
     formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
+
+    // 6. Check for Auto-Save Draft (New) is handled in app.js timeout
 });
