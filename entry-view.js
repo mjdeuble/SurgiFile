@@ -395,9 +395,9 @@ window.saveProcedure = async function() {
     const patientDOB = patientDOBEl.value;
     let finalPatientName = patientName;
     if (patientDOB) {
-        // Store DOB in formatted AU string for consistency if needed, or keep raw
-        // For the filename/display, we append it
-        finalPatientName = `${patientName} (${window.formatDateToAU(patientDOB)})`; 
+        // Format date to AU standard for display/filename
+        const formattedDOB = window.formatDateToAU ? window.formatDateToAU(patientDOB) : patientDOB;
+        finalPatientName = `${patientName} (${formattedDOB})`; 
     }
     // --- End NEW ---
 
@@ -463,11 +463,6 @@ window.generateClinicalRequest = function() {
     }
 
     return lesions.map(lesion => {
-        // --- UPDATED: Show summary even for billing-only ---
-        // if (lesion.billingOnly) {
-        //     return `Lesion ${lesion.id} (${lesion.location}) was entered for billing-only. No clinical note.`;
-        // }
-
         const auditParts = [];
         auditParts.push(lesion.location);
         auditParts.push(lesion.pathology);
@@ -551,7 +546,9 @@ window.generateEntryNote = function() {
     const patientDOB = patientDOBEl.value;
     let finalPatientName = patientName;
     if (patientDOB) {
-        finalPatientName = `${patientName} (${window.formatDateToAU(patientDOB)})`;
+        // Format date to AU standard
+        const formattedDOB = window.formatDateToAU ? window.formatDateToAU(patientDOB) : patientDOB;
+        finalPatientName = `${patientName} (${formattedDOB})`;
     }
     // --- End Update ---
     
@@ -1120,28 +1117,6 @@ window.updateLesionsList = function() {
         `;
         lesionsListEl.appendChild(listItem);
     });
-}
-
-/**
- * Removes a lesion from the temporary list.
- * @param {number} id - The ID of the lesion to remove.
- */
-window.removeLesion = async function(id) {
-    if (editingProcedureFile) {
-        showAppAlert("You cannot remove lesions when editing a saved procedure. Please cancel the edit first.", "warning");
-        return;
-    }
-
-    lesions = lesions.filter(l => l.id !== id);
-    lesions.forEach((lesion, index) => {
-        lesion.id = index + 1;
-    });
-    lesionCounter = lesions.length;
-    formTitle.textContent = `Enter Lesion ${lesionCounter + 1} Details`;
-
-    if (editingLesionId === id) await cancelEdit();
-    updateAllOutputs();
-    saveDraft(); // <-- UPDATE DRAFT
 }
 
 /**
