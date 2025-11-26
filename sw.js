@@ -1,6 +1,6 @@
 // A simple service worker for offline capability
 
-const CACHE_NAME = 'surgifile-pwa-v2'; // Incremented version
+const CACHE_NAME = 'surgifile-pwa-v3'; // Incremented version for recent updates
 const URLS_TO_CACHE = [
   './',
   'index.html',
