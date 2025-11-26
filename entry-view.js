@@ -29,7 +29,7 @@ window.updateFormUI = function(event) {
     
     if (!procedure) {
         dynamicOptionsContainer.style.display = 'none';
-        checkLesionFormCompleteness();
+        checkLesionFormCompleteness(); // Run check to ensure styles are up to date
         return;
     }
     
@@ -100,8 +100,9 @@ window.updateFormUI = function(event) {
 }
 
 /**
- * Checks if all required fields are filled and enables/disables the Add Lesion button.
- * Highlights missing fields.
+ * Checks if all required fields are filled.
+ * Highlights missing fields with visual cues.
+ * @returns {boolean} True if valid, False if missing fields.
  */
 window.checkLesionFormCompleteness = function() {
     // Helper to validate a single field
@@ -144,8 +145,8 @@ window.checkLesionFormCompleteness = function() {
     }
 
     if (!procedure) {
-        addLesionBtn.disabled = true;
-        return;
+        // We don't disable the button anymore, but we return false status
+        return false;
     }
     
     // Validate patient name
@@ -234,7 +235,9 @@ window.checkLesionFormCompleteness = function() {
         }
     }
     
-    addLesionBtn.disabled = !isAllValid;
+    // CHANGE: We no longer disable the button. We let the user click it to trigger validation feedback.
+    // addLesionBtn.disabled = !isAllValid;
+    return isAllValid;
 }
 
 
@@ -244,6 +247,27 @@ window.checkLesionFormCompleteness = function() {
  * Collects data from the form and adds or updates a lesion in the `lesions` array.
  */
 window.addOrUpdateLesion = function() {
+    // --- NEW: Validation Check & Guidance ---
+    if (!checkLesionFormCompleteness()) {
+        // Validation failed. Find the first missing field.
+        const firstMissing = document.querySelector('.missing-field');
+        if (firstMissing) {
+            // Scroll to it
+            firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstMissing.focus();
+            
+            // Shake animation
+            firstMissing.classList.add('shake');
+            setTimeout(() => firstMissing.classList.remove('shake'), 500);
+            
+            showAppAlert("Please complete the highlighted required fields.", "error");
+        } else {
+            showAppAlert("Please select a Procedure Type.", "error");
+        }
+        return; // Stop execution
+    }
+    // --- End Validation ---
+
     const isUpdating = editingLesionId !== null;
     const getVal = id => getEl(id).value;
     const getChecked = id => getEl(id).checked;
@@ -320,6 +344,7 @@ window.addOrUpdateLesion = function() {
 
     updateAllOutputs();
     resetLesionForm();
+    saveDraft(); // <-- SAVE DRAFT ON SUCCESSFUL ADD/UPDATE
 }
 
 /**
@@ -417,6 +442,7 @@ window.saveProcedure = async function() {
             showAppAlert(`Procedure for ${finalPatientName} saved to "Unprocessed" billing for Dr. ${doctorDisplayName}.`, "success");
         }
         
+        clearDraft(); // <-- CLEAR DRAFT ON SUCCESSFUL SAVE
         resetAll(false); // Pass false to NOT ask for confirmation
         switchTab('billing');
 
@@ -815,6 +841,8 @@ window.cancelEdit = async function() {
     editingLesionId = null;
     editingProcedureFile = null; 
     currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' };
+    
+    clearDraft(); // <-- CLEAR DRAFT
 }
 
 /**
@@ -873,6 +901,7 @@ window.resetLesionForm = function(resetProcType = true) {
     
     updateFormUI();
     checkLesionFormCompleteness();
+    saveDraft(); // <-- UPDATE DRAFT
 }
 
 /**
@@ -899,6 +928,7 @@ window.resetAll = async function(askConfirmation = true) {
     editingProcedureFile = null; 
     currentBillingFile = { handle: null, data: null, fromFolder: '', fromDoctor: '' };
     
+    clearDraft(); // <-- CLEAR DRAFT
     resetLesionForm();
     updateAllOutputs();
 }
@@ -1084,7 +1114,7 @@ window.updateLesionsList = function() {
                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/></svg>
                 </button>
                 <button onclick="window.removeLesion(${lesion.id})" class="text-red-500 hover:text-red-700 p-1 rounded-full focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2" aria-label="Remove lesion ${lesion.id}">
-                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
+                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8 8.707l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
                 </button>
             </div>
         `;
@@ -1111,6 +1141,7 @@ window.removeLesion = async function(id) {
 
     if (editingLesionId === id) await cancelEdit();
     updateAllOutputs();
+    saveDraft(); // <-- UPDATE DRAFT
 }
 
 /**
@@ -1123,4 +1154,106 @@ window.updateAllOutputs = function() {
     clinicalRequestOutputEl.value = requestText;
     entryNoteOutputEl.value = noteText;
     updateOutputVisibility();
+}
+
+// --- AUTO-SAVE DRAFT LOGIC ---
+
+const DRAFT_KEY = 'surgifile_draft_v1';
+
+window.saveDraft = function() {
+    // Don't auto-save if we are editing an existing file (too complex to sync state)
+    if (editingProcedureFile) return;
+
+    const draft = {
+        patientName: patientNameEl.value,
+        patientDOB: patientDOBEl.value,
+        lesions: lesions,
+        lesionCounter: lesionCounter,
+        isBillingOnlyMode: isBillingOnlyMode,
+        doctor: currentDoctor,
+        // Save current form inputs to restore "work in progress" lesion
+        currentForm: {
+            procedureType: getEl('procedureType').value,
+            location: getEl('lesionLocation').value,
+            region: getEl('anatomicalRegion').value,
+            length: getEl('lesionLength').value,
+            width: getEl('lesionWidth').value,
+            // ... add other fields if critical, but these are the basics
+        },
+        timestamp: Date.now()
+    };
+    
+    // Only save if there's actually data
+    if (draft.patientName || draft.lesions.length > 0 || draft.currentForm.location) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    }
+}
+
+window.restoreDraft = function() {
+    try {
+        const draftStr = localStorage.getItem(DRAFT_KEY);
+        if (!draftStr) return;
+        
+        const draft = JSON.parse(draftStr);
+        
+        // Restore Global State
+        lesions = draft.lesions || [];
+        lesionCounter = draft.lesionCounter || 0;
+        isBillingOnlyMode = draft.isBillingOnlyMode || false;
+        
+        // Restore UI State
+        if (draft.isBillingOnlyMode) {
+            switchTab('manual-billing');
+        } else {
+            switchTab('clinical-note');
+        }
+        
+        // Restore Inputs
+        patientNameEl.value = draft.patientName || '';
+        patientDOBEl.value = draft.patientDOB || '';
+        
+        if (draft.currentForm) {
+            getEl('procedureType').value = draft.currentForm.procedureType || '';
+            // Trigger UI update for procedure type
+            updateFormUI(); 
+            
+            getEl('lesionLocation').value = draft.currentForm.location || '';
+            getEl('anatomicalRegion').value = draft.currentForm.region || '';
+            getEl('lesionLength').value = draft.currentForm.length || '';
+            getEl('lesionWidth').value = draft.currentForm.width || '';
+        }
+        
+        // Restore Doctor if possible
+        if (draft.doctor && navDoctorDropdown) {
+            navDoctorDropdown.value = draft.doctor;
+            currentDoctor = draft.doctor;
+        }
+
+        updateAllOutputs();
+        showAppAlert("Draft restored successfully.", "success");
+        
+    } catch (e) {
+        console.error("Failed to restore draft", e);
+        clearDraft();
+    }
+}
+
+window.clearDraft = function() {
+    localStorage.removeItem(DRAFT_KEY);
+}
+
+window.checkForDraft = async function() {
+    const draftStr = localStorage.getItem(DRAFT_KEY);
+    if (draftStr && !editingProcedureFile) {
+        const draft = JSON.parse(draftStr);
+        // Simple validity check: needs a patient name or lesions
+        if (draft.patientName || (draft.lesions && draft.lesions.length > 0)) {
+            const date = new Date(draft.timestamp).toLocaleString();
+            if (await showAppConfirm(`Unsaved draft found from ${date}. Would you like to restore it?`, "info")) {
+                restoreDraft();
+            } else {
+                clearDraft();
+            }
+        }
+    }
 }
