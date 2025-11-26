@@ -249,9 +249,9 @@ window.openBillingPanel = function(item) {
     billingConsultItem.value = data.consultItem || '';
     billingComment.value = data.billingComment || '';
 
-    // --- TOGGLE INITIALIZATION ---
-    // Default to ON to force the user to either enter a number or explicitly toggle it off
-    if (consultToggle) consultToggle.checked = true;
+    // --- UPDATED LOGIC FOR TOGGLE INITIALIZATION ---
+    // Default: ON (Checked) to force user to either enter code or turn off.
+    consultToggle.checked = true;
     
     // 2. Build Billing Assistant Cards
     billingAssistantLesions.innerHTML = data.lesions.map(l => {
@@ -349,6 +349,8 @@ window.openBillingPanel = function(item) {
     
     // Initialize Global UI state (hides toggle if needed based on previously selected data)
     updateGlobalConsultUI();
+    // Also run updateConsultUI to hide/show input based on default toggle state
+    if (typeof window.updateConsultUI === 'function') window.updateConsultUI();
     validateBillingPanel(); 
 }
 
@@ -375,7 +377,7 @@ window.updateGlobalConsultUI = function() {
         if(billingConsultLabel) billingConsultLabel.textContent = "Consult Item/Custom Codes";
         // 2. Hide Toggle Container
         if(consultToggleContainer) consultToggleContainer.classList.add('hidden');
-        // 3. Force Input visible and enabled (simulating toggle ON)
+        // 3. Force Input visible and enabled
         if(billingConsultItem) {
             billingConsultItem.style.display = 'block';
             billingConsultItem.disabled = false;
@@ -460,7 +462,12 @@ function handleHistoClick(event, lesion) {
         const biopsyCode = appSettings.biopsy["30071"];
         if (biopsyCode) excisionCodes = [biopsyCode];
     } else {
-        excisionCodes = findExcisionCode(histoType, region, defectSize);
+        // --- FIX: Ensure findExcisionCode is defined ---
+        if (typeof findExcisionCode === 'function') {
+            excisionCodes = findExcisionCode(histoType, region, defectSize);
+        } else {
+            console.error("findExcisionCode function is missing!");
+        }
     }
     
     if (excisionCodes.length > 0) {
@@ -508,10 +515,104 @@ function handleHistoClick(event, lesion) {
     updateFinalCode(lesionId);
 }
 
-// ... (findExcisionCode, createBillingSuggestion, handleConfirmClick, updateFinalCode) ...
+/**
+ * Finds the correct excision code from appSettings
+ */
+function findExcisionCode(histoType, region, size) {
+    // Safety check for appSettings
+    if (!appSettings || !appSettings.excisions) return [];
+
+    const codes = appSettings.excisions[histoType]?.[region];
+    if (!codes) return [];
+
+    // Use .filter to find all matches (though usually it's one)
+    const matchingCodes = codes.filter(code => {
+        const minOk = code.minSize ? size >= code.minSize : true;
+        const maxOk = code.maxSize ? size <= code.maxSize : true;
+        return minOk && maxOk;
+    });
+    
+    return matchingCodes;
+}
 
 /**
- * --- UPDATED VALIDATION FUNCTION ---
+ * Creates the HTML for a billing suggestion
+ */
+function createBillingSuggestion(item, desc, type, isRecommended = false, isDisabled = false, reason = '') {
+    const suggestionEl = document.createElement('div');
+    // --- EDIT: Add 'confirmed' class if isRecommended ---
+    const confirmedClass = isRecommended ? 'confirmed' : '';
+    suggestionEl.className = `billing-suggestion ${confirmedClass} ${isDisabled ? 'disabled' : ''}`;
+    suggestionEl.dataset.item = item;
+    suggestionEl.dataset.type = type;
+
+    // --- EDIT: Toggle button text ---
+    const btnText = isRecommended ? 'Remove' : 'Add';
+    const reasonHTML = reason ? `<span class="text-xs text-red-600 ml-2">${reason}</span>` : '';
+    // --- EDIT: Add "Suggested" badge if isRecommended ---
+    const recommendedHTML = isRecommended ? '<span class="text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">Suggested</span>' : ''; 
+
+    suggestionEl.innerHTML = `
+        <div class="flex-grow">
+            <div>
+                <span class="font-bold text-slate-800">${item}</span>
+                <span class="text-sm text-slate-600 ml-2">${desc}</span>
+                ${reasonHTML}
+            </div>
+        </div>
+        <div class="flex-shrink-0 flex items-center gap-2">
+            ${recommendedHTML}
+            <button type="button" class="confirm-btn" ${isDisabled ? 'disabled' : ''}>${btnText}</button>
+        </div>
+    `;
+    return suggestionEl;
+}
+
+/**
+ * Handles clicks on the "Add" / "Remove" buttons
+ */
+function handleConfirmClick(event, lesionId, groupType) {
+    const target = event.target.closest('.confirm-btn');
+    if (!target) return;
+
+    const suggestionEl = target.closest('.billing-suggestion');
+    if (!suggestionEl) return;
+    
+    // Toggle confirmed state
+    suggestionEl.classList.toggle('confirmed');
+    // --- FIX: Toggle button text ---
+    target.textContent = suggestionEl.classList.contains('confirmed') ? 'Remove' : 'Add';
+    
+    if (groupType === 'excision') {
+        // TODO: Re-validate repair codes based on this new selection
+    }
+
+    updateFinalCode(lesionId);
+}
+
+/**
+ * Updates the final item code text box
+ */
+function updateFinalCode(lesionId) {
+    const confirmedItems = [];
+    // Get all confirmed buttons, respecting the order (excision then repair)
+    const excisionBtn = getEl(`excision-btn-group-${lesionId}`).querySelector('.confirmed');
+    if (excisionBtn) confirmedItems.push(excisionBtn.dataset.item);
+
+    const repairBtns = getEl(`repair-btn-group-${lesionId}`).querySelectorAll('.confirmed');
+    repairBtns.forEach(btn => confirmedItems.push(btn.dataset.item));
+    
+    const finalCode = confirmedItems.filter(Boolean).join(', ');
+    getEl(`lesion-item-${lesionId}`).value = finalCode;
+    
+    // --- NEW: Validate the whole panel ---
+    validateBillingPanel();
+}
+
+/**
+ * --- REPLACED FUNCTION ---
+ * Validates the entire billing panel to enable/disable the Save button
+ * @returns {boolean} True if the panel is valid
  */
 function validateBillingPanel() {
     let isPanelValid = true;
@@ -523,7 +624,7 @@ function validateBillingPanel() {
     }
 
     // 2. Check Consult Item Input
-    // If Time Based Mode: Input MUST be populated (toggle is hidden, but effectively ON)
+    // If Time Based Mode: Input MUST be populated (toggle is hidden, so we treat it as "forced ON")
     // If Standard Mode: Input MUST be populated IF Toggle is ON
     if (isTimeBasedMode) {
         if (!billingConsultItem.value.trim()) {
