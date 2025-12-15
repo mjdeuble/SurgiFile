@@ -438,7 +438,7 @@ window.generateClinicalRequest = function() {
         return 'Your clinical request will appear here...';
     }
 
-    const requestTemplate = appSettings.templates.request || "[LesionID]. [LesionLocation]; [PDx]; [ManagementCode]; D=[Dermoscopy] [[Dimensions]]";
+    const requestTemplate = (appSettings.templates && appSettings.templates.request) ? appSettings.templates.request : "[LesionID]. [LesionLocation]; [PDx]; [ManagementCode]; D=[Dermoscopy] [[Dimensions]]";
 
     return lesions.map(lesion => {
         let managementCode = 'O';
@@ -516,9 +516,9 @@ window.generateEntryNote = function() {
         return 'Your generated note will appear here...';
     }
     
-    // Get templates from settings, with defaults
-    const noteTemplate = appSettings.templates.note || "PATIENT: [PatientName]\nDOCTOR: [DoctorName]\n\nOBJECTIVE:\n[LesionList]\n\nFollow up:\n[PlanList]";
-    const lesionTemplate = appSettings.templates.lesion || "PROCEDURE [LesionID]: [LesionProcedure] of the [LesionLocation]\n- Findings: [Findings]\n- Closure: [Closure]\n- Specimen: [Specimen]";
+    // Get templates from settings, with defaults for robust handling
+    const noteTemplate = (appSettings.templates && appSettings.templates.note) ? appSettings.templates.note : "PATIENT: [PatientName]\nDOCTOR: [DoctorName]\n\nOBJECTIVE:\n[LesionList]\n\nFollow up:\n[PlanList]";
+    const lesionTemplate = (appSettings.templates && appSettings.templates.lesion) ? appSettings.templates.lesion : "PROCEDURE [LesionID]: [LesionProcedure] of the [LesionLocation]\n- Findings: [Findings]\n- Closure: [Closure]\n- Specimen: [Specimen]";
 
     // --- 1. Fill Main Note Placeholders ---
     const patientName = patientNameEl.value.trim();
@@ -761,6 +761,7 @@ window.startEditLesion = function(id) {
             
             const isDissolvable = appSettings.sutures.skin_dissolvable.includes(lesion.skinSutureType);
             const removalBox = getEl('skin-suture-removal-container');
+            // --- FIX: Use style.display to show/hide ---
             removalBox.style.display = (lesion.skinSutureType && !isDissolvable) ? 'block' : 'none';
             setVal('removalOfSkinSutures', lesion.skinSutureRemoval);
         }
@@ -942,6 +943,7 @@ window.updateOutputVisibility = function() {
         const request = generateClinicalRequest();
 
         const noteText = note.startsWith('Your') ? '' : note;
+        // --- FIX: Typo 'F' was here ---
         const requestText = request.startsWith('Your') ? '' : `\n\n---\nCLINICAL REQUEST:\n${request}`;
         
         if (noteText || requestText) {
