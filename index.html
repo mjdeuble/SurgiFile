@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
         .missing-field { border: 2px solid #ef4444 !important; background-color: #fef2f2 !important; }
         .clock-face { stroke: #94a3b8; stroke-width: 4; fill: #ffffff; }
         .hour-marker { stroke: #94a3b8; stroke-width: 2; }
@@ -29,32 +29,36 @@
 </head>
 <body class="text-slate-800 antialiased min-h-screen flex flex-col">
 
+    <!-- Top Navigation Header -->
     <header class="bg-slate-900 text-white shadow-md sticky top-0 z-40 no-print">
         <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
             <div class="flex items-center space-x-3">
-                <span class="text-2xl">🛡️</span>
-                <div>
-                    <h1 class="text-xl font-bold tracking-tight">SurgiFile</h1>
-                    <p class="text-[10px] text-slate-400">Encrypted Clinical Vault & MBS Rules Engine</p>
-                </div>
+                <span class="text-2xl">🩺</span>
+                <h1 class="text-xl font-bold tracking-tight">SurgiFile</h1>
                 <span id="vault-status-badge" class="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30">
-                    Vault Locked
+                    Vault Active (Memory)
                 </span>
             </div>
 
-            <!-- Doctor Selector & PM Toggle -->
+            <!-- Doctor Selector & Controls -->
             <div class="flex items-center space-x-4">
                 <div id="nav-doctor-container" class="flex items-center space-x-2">
                     <label class="text-xs text-slate-400 font-medium">Doctor:</label>
-                    <select id="navDoctorDropdown" onchange="handleDoctorChange()" class="bg-slate-800 text-white text-xs rounded border border-slate-700 px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500">
+                    <select id="navDoctorDropdown" onchange="setPrintHeader()" class="bg-slate-800 text-white text-xs rounded border border-slate-700 px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500">
                         <option value="Dr. M. Deuble">Dr. M. Deuble</option>
                     </select>
                 </div>
 
-                <!-- Vault Gateway Launcher -->
                 <div class="flex items-center space-x-2 border-l border-slate-700 pl-4">
+                    <label class="text-xs text-slate-400 font-medium">PM Mode:</label>
+                    <input type="checkbox" id="pmModeToggleSettings" class="h-4 w-4 text-blue-600 rounded border-slate-700 bg-slate-800">
+                </div>
+
+                <!-- Vault Controls -->
+                <div class="flex items-center space-x-2 border-l border-slate-700 pl-4">
+                    <span id="auto-lock-timer" class="text-xs font-mono text-slate-400 hidden">Lock: 15:00</span>
                     <button id="startGatewayBtn" onclick="openStartGatewayModal()" class="bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white px-3 py-1.5 rounded shadow transition">
-                        🔑 Vault Access / Setup
+                        🔑 Vault Setup / Unlock
                     </button>
                 </div>
             </div>
@@ -82,11 +86,12 @@
         </nav>
     </header>
 
+    <!-- Main Content Area -->
     <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
 
-        <!-- Status & Export Alert Banner -->
+        <!-- Status Alert Banner -->
         <div id="trial-alert" class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 flex justify-between items-center no-print shadow-sm">
-            <span id="banner-status-text"><strong>Vault Active:</strong> Operating in AES-256 client memory. Save your changes before closing.</span>
+            <span id="banner-status-text"><strong>Vault Active:</strong> Operating in AES-256 client memory. Export file before closing.</span>
             <button onclick="saveVaultToDisk()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium shadow-sm transition">
                 Encrypt & Export Vault (.surgifile)
             </button>
@@ -101,34 +106,42 @@
         <!-- 1. CLINICAL NOTE & MANUAL BILLING VIEW -->
         <section id="entry-view" class="space-y-6">
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                
                 <div class="flex justify-between items-center border-b border-slate-200 pb-4 mb-6">
                     <div>
-                        <h2 id="entry-view-header-title" class="text-lg font-bold text-slate-800">New Procedure Entry</h2>
-                        <p id="entry-view-subtitle" class="text-xs text-slate-500">Record surgical lesions, anatomical sites, assign provisional MBS items, and generate notes.</p>
+                        <h2 id="entry-view-header-title" class="text-lg font-bold text-slate-800">New Surgical Procedure Entry</h2>
+                        <p id="entry-view-subtitle" class="text-xs text-slate-500">Record surgical lesions, pre-op consent, anesthetic volume, closure techniques, and generate medicolegal documentation.</p>
                     </div>
                     <div class="flex space-x-2">
                         <button onclick="resetAll()" class="text-xs text-slate-500 hover:text-red-600 px-3 py-1.5 rounded border border-slate-200">
-                            Clear Procedure
+                            Clear Form
                         </button>
                     </div>
                 </div>
 
-                <!-- Patient Demographics -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                <!-- Patient Demographics & Consent Verification -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
                     <div>
                         <label class="block text-xs font-semibold text-slate-700 mb-1">Patient Identifier / Initials *</label>
-                        <input type="text" id="patientName" placeholder="e.g. J.S. (MRN12345)" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                        <input type="text" id="patientName" oninput="generateDocumentation()" placeholder="e.g. J.S. (MRN12345)" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-slate-700 mb-1">Date of Birth (Optional)</label>
-                        <input type="text" id="patientDOB" placeholder="DD/MM/YYYY" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                        <input type="text" id="patientDOB" oninput="generateDocumentation()" placeholder="DD/MM/YYYY" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
                     </div>
                     <div id="procedure-date-container">
                         <label class="block text-xs font-semibold text-slate-700 mb-1">Procedure Date</label>
-                        <input type="date" id="procedureDate" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                        <input type="date" id="procedureDate" onchange="generateDocumentation()" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="flex items-center pt-5">
+                        <label class="flex items-center space-x-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                            <input type="checkbox" id="informedConsentConfirmed" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                            <span>Informed Consent & Site Marked</span>
+                        </label>
                     </div>
                 </div>
 
+                <!-- Lesion Entry Form -->
                 <div id="lesion-form" class="space-y-6">
                     <h3 id="formTitle" class="text-sm font-bold text-slate-700 uppercase tracking-wider">Enter Lesion 1 Details</h3>
 
@@ -140,7 +153,7 @@
                                 <option value="">Select Procedure...</option>
                                 <option value="Excision">Excision</option>
                                 <option value="Punch">Punch Biopsy / Excision</option>
-                                <option value="Shave">Shave Excision / Biopsy</option>
+                                <option value="Shave">Shave Excision</option>
                                 <option value="Wedge Excision">Wedge Excision</option>
                             </select>
                         </div>
@@ -192,6 +205,7 @@
                             </div>
                         </div>
 
+                        <!-- Pathology (PDx) Modal Launcher & Display -->
                         <div id="pathologyContainer" class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center">
                             <div>
                                 <label class="block text-xs font-semibold text-slate-700">Provisional Diagnosis (PDx) *</label>
@@ -229,22 +243,88 @@
                             </div>
                         </div>
 
+                        <!-- Complex Closure Justification Quick Buttons -->
                         <div id="justificationContainer" class="form-section space-y-2">
-                            <label class="block text-xs font-semibold text-slate-700">Flap / Graft Justification Notes *</label>
+                            <label class="block text-xs font-semibold text-slate-700">Flap / Graft Justification Notes (MBS Audit Required) *</label>
                             <div id="justification-buttons" class="flex flex-wrap gap-2">
-                                <button type="button" onclick="toggleJustification('Skin tension prevents primary closure')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">Skin Tension</button>
-                                <button type="button" onclick="toggleJustification('Free margin distortion risk (eyelid/lip/alare)')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">Free Margin Risk</button>
-                                <button type="button" onclick="toggleJustification('High-risk anatomical location')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">High-Risk Area</button>
-                                <button type="button" onclick="toggleJustification('Defect diameter exceeds 15mm')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">Defect >15mm</button>
+                                <button type="button" onclick="toggleJustification('Skin tension prevents primary closure without distortion')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">Skin Tension</button>
+                                <button type="button" onclick="toggleJustification('Free margin distortion risk (eyelid/lip/nasal ala/ear)')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">Free Margin Risk</button>
+                                <button type="button" onclick="toggleJustification('High-risk anatomical location requiring structural match')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">High-Risk Area</button>
+                                <button type="button" onclick="toggleJustification('Defect diameter exceeds 15mm in tight tissue zone')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">Defect >15mm</button>
                             </div>
                             <input type="text" id="flapGraftJustification" placeholder="Custom justification text..." class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
                         </div>
 
-                        <!-- Full Clinical Fields -->
+                        <!-- Full Clinical & Medicolegal Fields -->
                         <div id="full-clinical-fields" class="space-y-6">
+                            
+                            <!-- Skin Prep, Anesthetic Volume, Depth & Hemostasis -->
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Skin Preparation Solution *</label>
+                                    <select id="skinPrepSolution" class="w-full text-xs rounded border border-slate-300 p-2">
+                                        <option value="Chlorhexidine 2% in 70% Alcohol">Chlorhexidine 2% in 70% Alcohol</option>
+                                        <option value="Alcoholic Betadine 10%">Alcoholic Betadine 10%</option>
+                                        <option value="Aqueous Chlorhexidine 0.5%">Aqueous Chlorhexidine 0.5%</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Anesthetic Agent *</label>
+                                    <select id="localAnesthetic" class="w-full text-xs rounded border border-slate-300 p-2">
+                                        <option value="Lignocaine 1% with Adrenaline 1:100,000">Lignocaine 1% + Adrenaline 1:100k</option>
+                                        <option value="Lignocaine 2% with Adrenaline 1:100,000">Lignocaine 2% + Adrenaline 1:100k</option>
+                                        <option value="Plain Lignocaine 1%">Plain Lignocaine 1%</option>
+                                        <option value="Marcain 0.5% with Adrenaline">Marcain 0.5% + Adrenaline</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Anesthetic Volume (mL) *</label>
+                                    <input type="number" id="anestheticVolume" placeholder="e.g. 3.0" step="0.5" value="3.0" class="w-full text-xs rounded border border-slate-300 p-2">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Excision Depth *</label>
+                                    <select id="excisionDepth" class="w-full text-xs rounded border border-slate-300 p-2">
+                                        <option value="Subcutaneous fat layer">Subcutaneous fat layer</option>
+                                        <option value="Deep fascial plane">Deep fascial plane</option>
+                                        <option value="Perichondrium / Periosteum">Perichondrium / Periosteum</option>
+                                        <option value="Mid-dermis (Shave)">Mid-dermis (Shave)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Hemostasis & Dermoscopy -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Hemostasis Method *</label>
+                                    <select id="hemostasisMethod" class="w-full text-xs rounded border border-slate-300 p-2">
+                                        <option value="Bipolar electrocautery">Bipolar electrocautery</option>
+                                        <option value="Monopolar hyfrecation">Monopolar hyfrecation</option>
+                                        <option value="Direct pressure & dressing">Direct pressure & dressing</option>
+                                        <option value="Suture ligation">Suture ligation</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Dermoscopy Performed *</label>
+                                    <select id="dermoscopyUsed" class="w-full text-xs rounded border border-slate-300 p-2">
+                                        <option value="Y">Yes (Dermoscopy performed)</option>
+                                        <option value="N">No</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Dressing Applied *</label>
+                                    <select id="dressingApplied" class="w-full text-xs rounded border border-slate-300 p-2">
+                                        <option value="Steri-Strips and non-adherent absorbent dressing (Opsite/Hypafix)">Steri-Strips + Hypafix / Opsite</option>
+                                        <option value="Melolin and firm pressure tape">Melolin + Pressure Tape</option>
+                                        <option value="Tie-over bolster compression dressing">Tie-over bolster dressing</option>
+                                        <option value="Bactigras ointment and sterile pad">Bactigras + Sterile Pad</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Specimen Orientation Clock Launcher -->
                             <div id="orientationInputContainer" class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center">
                                 <div>
-                                    <label class="block text-xs font-semibold text-slate-700">Specimen Orientation Clock</label>
+                                    <label class="block text-xs font-semibold text-slate-700">Specimen Clock Orientation</label>
                                     <div id="mainMarkerBtnContainer" class="flex space-x-2 mt-1">
                                         <button type="button" id="orientationClockDisplay" onclick="openOrientationModal()" class="main-marker-btn bg-white text-slate-700 text-xs px-3 py-1 rounded border border-slate-300 font-medium">
                                             Select Clock Orientation...
@@ -255,29 +335,12 @@
                                 </div>
                             </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Local Anesthetic *</label>
-                                    <select id="localAnesthetic" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
-                                        <option value="Lignocaine 1% with Adrenaline 1:100,000">Lignocaine 1% with Adrenaline 1:100,000</option>
-                                        <option value="Lignocaine 2% with Adrenaline 1:100,000">Lignocaine 2% with Adrenaline 1:100,000</option>
-                                        <option value="Plain Lignocaine 1%">Plain Lignocaine 1%</option>
-                                        <option value="Marcain 0.5% with Adrenaline">Marcain 0.5% with Adrenaline</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Dermoscopy Examined *</label>
-                                    <select id="dermoscopyUsed" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
-                                        <option value="Y">Yes (Dermoscopy performed)</option>
-                                        <option value="N">No</option>
-                                    </select>
-                                </div>
-                            </div>
-
+                            <!-- Suture Closure Details -->
                             <div id="closureDetailsContainer" class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
                                 <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Suture & Closure Details</h4>
+                                
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <!-- Deep Sutures -->
                                     <div class="space-y-2">
                                         <label class="flex items-center space-x-2 text-xs font-semibold text-slate-700">
                                             <input type="checkbox" id="useDeepSuture" onchange="toggleSutureUI()" class="rounded border-slate-300 text-blue-600">
@@ -297,6 +360,7 @@
                                         </div>
                                     </div>
 
+                                    <!-- Skin Sutures -->
                                     <div class="space-y-2">
                                         <label class="flex items-center space-x-2 text-xs font-semibold text-slate-700">
                                             <input type="checkbox" id="useSkinSuture" checked onchange="toggleSutureUI()" class="rounded border-slate-300 text-blue-600">
@@ -325,7 +389,7 @@
                             </div>
                         </div>
 
-                        <!-- Controls -->
+                        <!-- Add/Update Lesion Controls -->
                         <div class="flex justify-between items-center pt-2">
                             <button type="button" id="cancelEditBtn" onclick="cancelEdit()" class="hidden text-xs text-slate-500 hover:text-slate-800 underline">
                                 Cancel Edit
@@ -338,6 +402,7 @@
                 </div>
             </div>
 
+            <!-- Added Lesions List -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
                 <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Current Procedure Lesions</h3>
                 <div id="lesionsListEl" class="space-y-3">
@@ -351,9 +416,10 @@
                 </div>
             </div>
 
+            <!-- Output Note Generators -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
                 <div class="flex justify-between items-center">
-                    <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Generated Documentation</h3>
+                    <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Generated Medicolegal Documentation</h3>
                     <div id="outputStyleBtnContainer" class="flex space-x-1 bg-slate-100 p-1 rounded border border-slate-200 text-xs">
                         <button id="outputBtnCombined" onclick="setOutputStyle('combined')" class="px-2.5 py-1 rounded bg-white shadow font-semibold text-slate-800">Combined Note</button>
                         <button id="outputBtnSeparate" onclick="setOutputStyle('separate')" class="px-2.5 py-1 rounded text-slate-600">Separate Request & Note</button>
@@ -362,23 +428,23 @@
 
                 <div id="generatedNoteWrapper" class="space-y-2">
                     <div class="flex justify-between items-center">
-                        <label class="text-xs font-semibold text-slate-700">Clinical Operation Note</label>
-                        <button onclick="copyToClipboard('entryNoteOutputEl', this)" class="text-xs text-blue-600 hover:underline">Copy Note</button>
+                        <label class="text-xs font-semibold text-slate-700">Clinical Operative Note (SOAP / Medicolegal Standard)</label>
+                        <button onclick="copyToClipboard('entryNoteOutputEl', this)" class="text-xs text-blue-600 hover:underline">Copy Operative Note</button>
                     </div>
-                    <textarea id="entryNoteOutputEl" rows="8" readonly class="w-full text-xs font-mono bg-slate-50 border border-slate-200 rounded p-3 text-slate-800 leading-relaxed"></textarea>
+                    <textarea id="entryNoteOutputEl" rows="12" readonly class="w-full text-xs font-mono bg-slate-50 border border-slate-200 rounded p-3 text-slate-800 leading-relaxed"></textarea>
                 </div>
 
                 <div id="clinicalRequestWrapper" class="space-y-2 hidden">
                     <div class="flex justify-between items-center">
                         <label class="text-xs font-semibold text-slate-700">Pathology Request Form Text</label>
-                        <button onclick="copyToClipboard('clinicalRequestOutputEl', this)" class="text-xs text-blue-600 hover:underline">Copy Request</button>
+                        <button onclick="copyToClipboard('clinicalRequestOutputEl', this)" class="text-xs text-blue-600 hover:underline">Copy Pathology Request</button>
                     </div>
                     <textarea id="clinicalRequestOutputEl" rows="4" readonly class="w-full text-xs font-mono bg-slate-50 border border-slate-200 rounded p-3 text-slate-800 leading-relaxed"></textarea>
                 </div>
             </div>
         </section>
 
-        <!-- 2. BILLING & PROCESSING VIEW -->
+        <!-- 2. READY FOR BILLING & CLAIMS PROCESSING -->
         <section id="billing-view" class="space-y-6 hidden">
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
                 <div class="flex flex-wrap justify-between items-center gap-4 border-b border-slate-200 pb-4">
@@ -493,11 +559,13 @@
 
     <!-- MODALS -->
 
-    <!-- 1. PATHOLOGY (PDx) MODAL -->
+    <!-- PATHOLOGY (PDx) MODAL -->
     <div id="pathologyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
             <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Select Provisional Diagnosis (PDx)</h3>
-            <div id="pathologyCheckboxesEl" class="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto p-1 border border-slate-200 rounded"></div>
+            <div id="pathologyCheckboxesEl" class="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto p-1 border border-slate-200 rounded">
+                <!-- Checkboxes populated dynamically -->
+            </div>
             <div>
                 <label class="block text-xs font-semibold text-slate-700 mb-1">Other Diagnosis Note:</label>
                 <input type="text" id="otherPathologyInput" placeholder="Custom PDx..." class="w-full text-xs rounded border border-slate-300 p-2">
@@ -510,7 +578,7 @@
         </div>
     </div>
 
-    <!-- 2. SPECIMEN ORIENTATION CLOCK MODAL -->
+    <!-- SPECIMEN CLOCK MODAL -->
     <div id="orientationModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-center">
             <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Specimen Clock Orientation</h3>
@@ -532,14 +600,11 @@
         </div>
     </div>
 
-    <!-- 3. INTERACTIVE BILLING ASSIGNMENT MODAL -->
+    <!-- BILLING ASSIGNMENT MODAL -->
     <div id="billingAssignmentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-5">
+        <div class="bg-white rounded-xl shadow-xl max-w-xl w-full p-6 space-y-4">
             <div class="flex justify-between items-center border-b border-slate-200 pb-3">
-                <div>
-                    <h3 class="text-base font-bold text-slate-800">Assign & Confirm MBS Item Codes</h3>
-                    <p id="billingModalPatientHeader" class="text-xs text-slate-500">Patient: -</p>
-                </div>
+                <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Histology Review & MBS Code Assignment</h3>
                 <button onclick="closeBillingAssignmentModal()" class="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
 
@@ -593,15 +658,13 @@
         </div>
     </div>
 
-    <!-- 4. STARTING VAULT GATEWAY MODAL -->
-    <div id="vaultStartModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-6">
-            <div class="text-center space-y-2">
-                <div class="inline-flex p-3 bg-blue-50 text-blue-600 rounded-full text-2xl mb-1">🛡️</div>
-                <h3 class="text-xl font-bold text-slate-800">SurgiFile Encrypted Vault</h3>
-                <p class="text-xs text-slate-500 leading-relaxed">
-                    APP 11 Zero-Knowledge client-side AES-256 encryption. Choose how you want to start your session.
-                </p>
+    <!-- STARTUP VAULT GATEWAY MODAL -->
+    <div id="startGatewayModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div class="text-center space-y-1">
+                <span class="text-3xl">🔐</span>
+                <h3 class="text-lg font-bold text-slate-800">SurgiFile Encrypted Vault</h3>
+                <p class="text-xs text-slate-500">AES-256 Client-Side Encryption Gateway</p>
             </div>
 
             <div class="flex border-b border-slate-200 text-xs font-semibold">
@@ -655,21 +718,25 @@
         </div>
     </div>
 
+    <!-- MAIN JAVASCRIPT ENGINE -->
     <script>
         // --- GLOBAL APP STATE ---
         let appSettings = {};
         let lesions = [];
         let lesionCounter = 0;
+        let editingLesionId = null;
         let activeVaultData = { entries: [], billing: [], audit: [] };
-        let masterPassphrase = null;
-        let activeEditingProcedureId = null;
+        let activePassphrase = null;
         let isBillingOnlyMode = false;
+        let activeBillingEntryId = null;
+        let autoLockTimer = null;
+        let lockCountdownSeconds = 900; // 15 mins
 
         const pathologyOptions = {
             "BCC": "Basal Cell Carcinoma",
             "SCC": "Squamous Cell Carcinoma",
             "Melanoma": "Malignant Melanoma",
-            "IEC": "Intraepidermal Carcinoma",
+            "IEC": "Intraepidermal Carcinoma / Bowen's",
             "AK": "Actinic Keratosis",
             "DN": "Dysplastic Naevus",
             "SK": "Seborrhoeic Keratosis",
@@ -679,6 +746,18 @@
         };
 
         const defaultAppSettings = {
+            "excisions": {
+                "Malignant": {
+                    "Area1": [{ "maxSize": 5.9, "item": "31356" }, { "minSize": 6, "maxSize": 999, "item": "31358" }],
+                    "Area2": [{ "maxSize": 13.9, "item": "31361" }, { "minSize": 14, "maxSize": 999, "item": "31363" }],
+                    "Area3": [{ "maxSize": 14.9, "item": "31365" }, { "minSize": 15, "maxSize": 30, "item": "31367" }, { "minSize": 30.1, "maxSize": 999, "item": "31369" }]
+                },
+                "Non-Malignant": {
+                    "Area1": [{ "maxSize": 5.9, "item": "31357" }, { "minSize": 6, "maxSize": 999, "item": "31360" }],
+                    "Area2": [{ "maxSize": 13.9, "item": "31362" }, { "minSize": 14, "maxSize": 999, "item": "31364" }],
+                    "Area3": [{ "maxSize": 14.9, "item": "31366" }, { "minSize": 15, "maxSize": 30, "item": "31368" }, { "minSize": 30.1, "maxSize": 999, "item": "31370" }]
+                }
+            },
             "sutures": {
                 "deep": ["Vicryl", "Monocryl", "PDS II"],
                 "skin_all": ["Prolene", "Nylon", "Monocryl", "Fast Vicryl"],
@@ -693,376 +772,185 @@
             populatePathologyModal();
             updateFormUI();
             setPrintHeader();
+            
+            // Set today's date in procedure date picker
+            document.getElementById('procedureDate').value = new Date().toISOString().slice(0, 10);
+
+            // Auto show gateway if no passphrase set
+            if (!activePassphrase) {
+                openStartGatewayModal();
+            }
+
+            // Bind input listeners for real-time document updating
+            ['lesionLocation', 'lesionLength', 'lesionWidth', 'margin', 'punchSize', 'flapGraftJustification', 'anestheticVolume', 'skinPrepSolution', 'localAnesthetic', 'excisionDepth', 'hemostasisMethod', 'dressingApplied', 'skinSutureType', 'skinSutureSize', 'deepSutureType', 'deepSutureSize'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', generateDocumentation);
+                    el.addEventListener('change', generateDocumentation);
+                }
+            });
         });
 
-        function showToast(msg) {
-            const toast = document.getElementById('toast-msg');
-            document.getElementById('toast-text').textContent = msg;
-            toast.classList.remove('hidden');
-            setTimeout(() => toast.classList.add('hidden'), 4000);
-        }
-
+        // --- GATEWAY & PASSWORD SETUP ---
+        function openStartGatewayModal() { document.getElementById('startGatewayModal').classList.remove('hidden'); }
         function showGatewayTab(tab) {
             ['New', 'Open', 'Demo'].forEach(t => {
-                document.getElementById(`gatewaySection${t}`).classList.add('hidden');
-                document.getElementById(`gatewayTab${t}`).className = "flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent";
+                document.getElementById('gatewaySection' + t).classList.add('hidden');
+                document.getElementById('gatewayTab' + t).classList.replace('text-blue-600', 'text-slate-500');
+                document.getElementById('gatewayTab' + t).classList.replace('border-blue-600', 'border-transparent');
             });
-            const cap = tab.charAt(0).toUpperCase() + tab.slice(1);
-            document.getElementById(`gatewaySection${cap}`).classList.remove('hidden');
-            document.getElementById(`gatewayTab${cap}`).className = "flex-1 py-2 text-center text-blue-600 border-b-2 border-blue-600 font-semibold";
-        }
-
-        function openStartGatewayModal() {
-            document.getElementById('vaultStartModal').classList.remove('hidden');
+            const capTab = tab.charAt(0).toUpperCase() + tab.slice(1);
+            document.getElementById('gatewaySection' + capTab).classList.remove('hidden');
+            document.getElementById('gatewayTab' + capTab).classList.replace('text-slate-500', 'text-blue-600');
+            document.getElementById('gatewayTab' + capTab).classList.replace('border-transparent', 'border-blue-600');
         }
 
         function createNewVaultSession() {
-            const pass = document.getElementById('newVaultPass').value;
-            const confirm = document.getElementById('confirmVaultPass').value;
+            const pass1 = document.getElementById('newVaultPass').value;
+            const pass2 = document.getElementById('confirmVaultPass').value;
+            if (!pass1 || pass1.length < 6) return showToast("Passphrase must be at least 6 characters.");
+            if (pass1 !== pass2) return showToast("Passphrases do not match.");
 
-            if (!pass || pass.length < 6) return showToast('Passphrase must be at least 6 characters long.');
-            if (pass !== confirm) return showToast('Passphrases do not match.');
-
-            masterPassphrase = pass;
+            activePassphrase = pass1;
             activeVaultData = { entries: [], billing: [], audit: [] };
-            document.getElementById('vaultStartModal').classList.add('hidden');
-            document.getElementById('vault-status-badge').textContent = "Vault Active (AES-256)";
-            document.getElementById('vault-status-badge').className = "bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30";
-            showToast('New encrypted vault initialized in memory.');
+            document.getElementById('startGatewayModal').classList.add('hidden');
+            showToast("New Encrypted Vault Initialized in Memory.");
+            startAutoLockTimer();
         }
 
-        function unlockExistingVaultFile() {
+        async function unlockExistingVaultFile() {
             const fileInput = document.getElementById('existingVaultFile');
-            const passInput = document.getElementById('openVaultPass');
+            const pass = document.getElementById('openVaultPass').value;
+            if (!fileInput.files.length) return showToast("Select a .surgifile container first.");
+            if (!pass) return showToast("Enter master passphrase.");
+
             const file = fileInput.files[0];
-            const pass = passInput.value;
-
-            if (!file) return showToast('Please select a .surgifile or .json vault file.');
-            if (!pass) return showToast('Please enter your master passphrase.');
-
             const reader = new FileReader();
-            reader.onload = (e) => {
+            reader.onload = async (e) => {
                 try {
-                    const data = JSON.parse(e.target.result);
-                    activeVaultData = data;
-                    masterPassphrase = pass;
-                    document.getElementById('vaultStartModal').classList.add('hidden');
-                    document.getElementById('vault-status-badge').textContent = "Vault Unlocked";
-                    document.getElementById('vault-status-badge').className = "bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30";
+                    const decryptedText = await decryptData(e.target.result, pass);
+                    activeVaultData = JSON.parse(decryptedText);
+                    activePassphrase = pass;
+                    document.getElementById('startGatewayModal').classList.add('hidden');
+                    showToast("Vault File Decrypted & Unlocked!");
                     renderBillingTable();
-                    showToast('Vault file decrypted and loaded successfully.');
+                    renderAuditLog();
+                    startAutoLockTimer();
                 } catch (err) {
-                    showToast('Invalid vault file format or decryption failed.');
+                    showToast("Decryption failed. Incorrect passphrase or corrupted file.");
                 }
             };
             reader.readAsText(file);
         }
 
         function startDemoSession() {
-            masterPassphrase = "demo";
+            activePassphrase = "demo-passphrase";
             activeVaultData = {
                 entries: [
                     {
-                        id: 'PROC-102938',
+                        id: "PROC-829104",
                         date: new Date().toLocaleDateString(),
-                        patient: 'J. Smith (MRN7890)',
-                        doctor: 'Dr. M. Deuble',
-                        histologyStatus: 'Pending',
-                        status: 'Pending Histology',
+                        patient: "J.S. (MRN98214)",
+                        doctor: "Dr. M. Deuble",
+                        status: "Pending Histology",
+                        histologyConfirmed: false,
                         lesions: [
-                            { id: 1, procedure: 'Excision', closure: 'Flap Repair', location: 'Left Cheek', region: 'Area2', defectSize: 12, pdx: 'BCC' }
+                            { id: 1, procedure: "Excision", closure: "Flap Repair", location: "Right Cheek", region: "Area2", pdx: "BCC", defectSize: 14.0, suggestedCode: "31363", repairCode: "45201" }
                         ],
-                        assignedBilling: [
-                            { item: '31361', desc: 'Malignant Excision Area 2 <14mm (Suggested)', immediate: false, confirmed: false },
-                            { item: '45201', desc: 'Flap Repair (Single Defect)', immediate: false, confirmed: false }
+                        items: [
+                            { code: "31363", desc: "Excision malignant lesion Area 2 >=14mm", confirmed: false },
+                            { code: "45201", desc: "Local cutaneous flap repair", confirmed: false }
                         ]
                     }
                 ],
-                billing: [],
-                audit: []
+                audit: [
+                    { token: "AUD-9A82X", date: "Jul 2026", region: "Area2", procedure: "Excision", margin: "Clear (>2mm)", complication: "None" }
+                ]
             };
-            document.getElementById('vaultStartModal').classList.add('hidden');
-            document.getElementById('vault-status-badge').textContent = "Demo Session";
-            document.getElementById('vault-status-badge').className = "bg-blue-500/20 text-blue-300 text-xs px-2.5 py-1 rounded-full font-medium border border-blue-500/30";
+            document.getElementById('startGatewayModal').classList.add('hidden');
+            showToast("Demo Mode Active.");
             renderBillingTable();
-            showToast('Demo session started with sample surgical cases.');
+            renderAuditLog();
         }
 
-        function calculateSuggestedMBS(lesion) {
-            const items = [];
-            const region = lesion.region || 'Area1';
-            const defect = lesion.defectSize || 0;
-            const procedure = lesion.procedure;
-            const closure = lesion.closure || lesion.excisionClosureType;
-
-            if (procedure === 'Punch' && (lesion.punchType === 'Punch Biopsy' || !lesion.punchType)) {
-                items.push({ item: '30071', desc: 'Diagnostic Skin Biopsy (Immediate Billable)', immediate: true, confirmed: true });
-                return items;
-            } else if (procedure === 'Shave') {
-                items.push({ item: '30071', desc: 'Shave Biopsy / Diagnostic Excision', immediate: true, confirmed: true });
-                return items;
-            }
-
-            if (procedure === 'Excision' || procedure === 'Wedge Excision' || procedure === 'Punch') {
-                if (region === 'Area1') {
-                    if (defect < 6) items.push({ item: '31356', desc: 'Malignant Excision Area 1 <6mm (Suggested)', immediate: false, confirmed: false });
-                    else items.push({ item: '31358', desc: 'Malignant Excision Area 1 >=6mm (Suggested)', immediate: false, confirmed: false });
-                } else if (region === 'Area2') {
-                    if (defect < 14) items.push({ item: '31361', desc: 'Malignant Excision Area 2 <14mm (Suggested)', immediate: false, confirmed: false });
-                    else items.push({ item: '31363', desc: 'Malignant Excision Area 2 >=14mm (Suggested)', immediate: false, confirmed: false });
-                } else {
-                    if (defect < 15) items.push({ item: '31365', desc: 'Malignant Excision Area 3 <15mm (Suggested)', immediate: false, confirmed: false });
-                    else if (defect <= 30) items.push({ item: '31367', desc: 'Malignant Excision Area 3 15-30mm (Suggested)', immediate: false, confirmed: false });
-                    else items.push({ item: '31369', desc: 'Malignant Excision Area 3 >30mm (Suggested)', immediate: false, confirmed: false });
+        function startAutoLockTimer() {
+            clearInterval(autoLockTimer);
+            lockCountdownSeconds = 900;
+            document.getElementById('auto-lock-timer').classList.remove('hidden');
+            autoLockTimer = setInterval(() => {
+                lockCountdownSeconds--;
+                const m = Math.floor(lockCountdownSeconds / 60);
+                const s = lockCountdownSeconds % 60;
+                document.getElementById('auto-lock-timer').textContent = `Lock: ${m}:${s < 10 ? '0' : ''}${s}`;
+                if (lockCountdownSeconds <= 0) {
+                    clearInterval(autoLockTimer);
+                    activePassphrase = null;
+                    activeVaultData = { entries: [], billing: [], audit: [] };
+                    openStartGatewayModal();
+                    showToast("Vault auto-locked due to inactivity.");
                 }
-
-                if (closure === 'Flap Repair' || closure === 'Graft + Flap') {
-                    items.push({ item: '45201', desc: 'Flap Repair (Single Defect)', immediate: false, confirmed: false });
-                }
-                if (closure === 'Graft Repair' || closure === 'Graft + Flap') {
-                    items.push({ item: '45451', desc: 'Full Thickness Skin Graft (FTSG)', immediate: false, confirmed: false });
-                }
-            }
-
-            return items;
+            }, 1000);
         }
 
-        function openBillingAssignmentModal(procId) {
-            activeEditingProcedureId = procId;
-            const entry = activeVaultData.entries.find(e => e.id === procId);
-            if (!entry) return;
-
-            document.getElementById('billingModalPatientHeader').textContent = `Patient: ${entry.patient} | Date: ${entry.date}`;
-            
-            if (!entry.assignedBilling || !entry.assignedBilling.length) {
-                entry.assignedBilling = [];
-                entry.lesions.forEach(l => {
-                    const suggested = calculateSuggestedMBS(l);
-                    entry.assignedBilling.push(...suggested);
-                });
-            }
-
-            const histoStatus = entry.histologyStatus || 'Pending';
-            document.getElementById('billingModalHistologyStatus').value = histoStatus;
-            document.getElementById('billingModalStatus').value = entry.status || (histoStatus === 'Confirmed' ? 'Ready to Bill' : 'Pending Histology');
-            
-            renderBillingAssignmentItems(entry.assignedBilling);
-            document.getElementById('billingAssignmentModal').classList.remove('hidden');
+        // --- CRYPTO HELPER FUNCTIONS (AES-256-GCM + PBKDF2) ---
+        async function getKey(passphrase, salt) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
         }
 
-        function closeBillingAssignmentModal() {
-            document.getElementById('billingAssignmentModal').classList.add('hidden');
-            activeEditingProcedureId = null;
-        }
-
-        function renderBillingAssignmentItems(billingItems) {
-            const container = document.getElementById('billingItemsContainer');
-            container.innerHTML = '';
-            const histoConfirmed = (document.getElementById('billingModalHistologyStatus').value === 'Confirmed');
-
-            billingItems.forEach((item, index) => {
-                const isConfirmed = item.confirmed || item.immediate || histoConfirmed;
-
-                container.innerHTML += `
-                    <div class="bg-slate-50 p-3 rounded-lg border ${isConfirmed ? 'border-emerald-300 bg-emerald-50/30' : 'border-amber-200 bg-amber-50/20'} flex items-center justify-between gap-3 text-xs">
-                        <div class="flex-1">
-                            <div class="flex items-center space-x-2">
-                                <span class="font-mono font-bold ${isConfirmed ? 'text-emerald-700' : 'text-amber-800'}">MBS ${item.item}</span>
-                                ${item.immediate 
-                                    ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Immediate Billable</span>' 
-                                    : isConfirmed 
-                                    ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Confirmed Code</span>' 
-                                    : '<span class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Suggested (Pending Histology)</span>'
-                                }
-                            </div>
-                            <input type="text" value="${item.desc}" onchange="updateBillingItemDesc(${index}, this.value)" class="w-full text-xs bg-transparent border-b border-slate-300 focus:outline-none focus:border-blue-500 mt-1">
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            ${!isConfirmed ? `<button onclick="confirmSingleCode(${index})" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded font-bold">Confirm Code</button>` : ''}
-                            <button onclick="removeBillingItem(${index})" class="text-rose-600 font-bold px-2 py-1 hover:bg-rose-50 rounded">✕</button>
-                        </div>
-                    </div>
-                `;
+        async function encryptData(plainText, passphrase) {
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const key = await getKey(passphrase, salt);
+            const enc = new TextEncoder();
+            const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, enc.encode(plainText));
+            return JSON.stringify({
+                salt: Array.from(salt),
+                iv: Array.from(iv),
+                ciphertext: Array.from(new Uint8Array(ciphertext))
             });
         }
 
-        function confirmSingleCode(idx) {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry && entry.assignedBilling[idx]) {
-                entry.assignedBilling[idx].confirmed = true;
-                entry.assignedBilling[idx].desc = entry.assignedBilling[idx].desc.replace(' (Suggested)', ' (Confirmed)');
-                renderBillingAssignmentItems(entry.assignedBilling);
-            }
+        async function decryptData(cipherJsonStr, passphrase) {
+            const data = JSON.parse(cipherJsonStr);
+            const salt = new Uint8Array(data.salt);
+            const iv = new Uint8Array(data.iv);
+            const ciphertext = new Uint8Array(data.ciphertext);
+            const key = await getKey(passphrase, salt);
+            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ciphertext);
+            return new TextDecoder().decode(decrypted);
         }
 
-        function confirmAllSuggestedCodes() {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry && entry.assignedBilling) {
-                entry.histologyStatus = 'Confirmed';
-                document.getElementById('billingModalHistologyStatus').value = 'Confirmed';
-                document.getElementById('billingModalStatus').value = 'Ready to Bill';
-                entry.assignedBilling.forEach(b => {
-                    b.confirmed = true;
-                    b.desc = b.desc.replace(' (Suggested)', ' (Confirmed)');
-                });
-                renderBillingAssignmentItems(entry.assignedBilling);
-                showToast('All suggested MBS codes confirmed & assigned!');
-            }
+        async function saveVaultToDisk() {
+            if (!activePassphrase) return showToast("Vault is locked. Initialize passphrase first.");
+            const jsonStr = JSON.stringify(activeVaultData, null, 2);
+            const encryptedStr = await encryptData(jsonStr, activePassphrase);
+            const blob = new Blob([encryptedStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `surgifile_vault_${new Date().toISOString().slice(0,10)}.surgifile`;
+            a.click();
+            showToast("Encrypted Vault Exported Successfully!");
         }
 
-        function toggleHistologyConfirmation(val) {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry) {
-                entry.histologyStatus = val;
-                if (val === 'Confirmed') {
-                    document.getElementById('billingModalStatus').value = 'Ready to Bill';
-                    entry.assignedBilling.forEach(b => {
-                        b.confirmed = true;
-                        b.desc = b.desc.replace(' (Suggested)', ' (Confirmed)');
-                    });
-                } else {
-                    document.getElementById('billingModalStatus').value = 'Pending Histology';
-                }
-                renderBillingAssignmentItems(entry.assignedBilling);
-            }
-        }
-
-        function updateBillingItemDesc(index, val) {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry && entry.assignedBilling && entry.assignedBilling[index]) {
-                entry.assignedBilling[index].desc = val;
-            }
-        }
-
-        function addCustomBillingItem() {
-            const code = prompt("Enter MBS Item Code (e.g. 45201):");
-            if (!code) return;
-            const desc = prompt("Enter Description:", "Custom Item Code");
-            
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry) {
-                if (!entry.assignedBilling) entry.assignedBilling = [];
-                entry.assignedBilling.push({
-                    item: code.trim(),
-                    desc: desc ? desc.trim() : 'Custom MBS Item',
-                    immediate: false,
-                    confirmed: true
-                });
-                renderBillingAssignmentItems(entry.assignedBilling);
-            }
-        }
-
-        function removeBillingItem(index) {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry && entry.assignedBilling) {
-                entry.assignedBilling.splice(index, 1);
-                renderBillingAssignmentItems(entry.assignedBilling);
-            }
-        }
-
-        function saveAssignedBilling() {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry) {
-                entry.histologyStatus = document.getElementById('billingModalHistologyStatus').value;
-                entry.status = document.getElementById('billingModalStatus').value;
-                showToast('Assigned MBS codes and claim status saved!');
-                closeBillingAssignmentModal();
-                renderBillingTable();
-            }
-        }
-
-        function renderBillingTable() {
-            const tbody = document.getElementById('billing-table-body');
-            tbody.innerHTML = '';
-            const filter = document.getElementById('billingStatusFilter').value;
-
-            activeVaultData.entries.forEach(item => {
-                if (filter !== 'ALL' && item.status !== filter) return;
-
-                if (!item.assignedBilling || !item.assignedBilling.length) {
-                    item.assignedBilling = [];
-                    item.lesions.forEach(l => item.assignedBilling.push(...calculateSuggestedMBS(l)));
-                }
-
-                const histoStatus = item.histologyStatus || 'Pending';
-                const confirmedCodes = item.assignedBilling.filter(b => b.confirmed || b.immediate || histoStatus === 'Confirmed').map(b => b.item);
-                const suggestedCodes = item.assignedBilling.map(b => b.item);
-
-                const codesDisplay = histoStatus === 'Confirmed' || confirmedCodes.length
-                    ? `<span class="font-mono font-bold text-emerald-700">${confirmedCodes.join(', ')}</span>`
-                    : `<span class="font-mono text-amber-800 italic">${suggestedCodes.join(', ')} (Suggested)</span>`;
-
-                tbody.innerHTML += `
-                    <tr>
-                        <td class="p-3">${item.date}</td>
-                        <td class="p-3 font-semibold">${item.patient}</td>
-                        <td class="p-3">${item.lesions.length} Lesion(s)</td>
-                        <td class="p-3">${codesDisplay}</td>
-                        <td class="p-3">
-                            <span class="px-2 py-0.5 rounded text-xs font-bold ${histoStatus === 'Confirmed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-                                ${histoStatus === 'Confirmed' ? '✅ Confirmed' : '⏳ Pending Histology'}
-                            </span>
-                        </td>
-                        <td class="p-3">
-                            <span class="px-2 py-0.5 rounded text-xs font-bold ${item.status === 'Paid' ? 'bg-emerald-100 text-emerald-800' : item.status === 'Ready to Bill' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}">
-                                ${item.status || 'Pending Histology'}
-                            </span>
-                        </td>
-                        <td class="p-3 no-print space-x-1">
-                            <button onclick="openBillingAssignmentModal('${item.id}')" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2.5 py-1 rounded shadow">
-                                ${histoStatus === 'Confirmed' ? 'Edit Codes' : 'Review Histology & Assign Codes'}
-                            </button>
-                            <button onclick="archiveAndDeidentify('${item.id}')" class="bg-slate-800 hover:bg-slate-700 text-white text-xs px-2.5 py-1 rounded">
-                                Archive & Audit
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            });
-        }
-
-        function archiveAndDeidentify(id) {
-            const idx = activeVaultData.entries.findIndex(e => e.id === id);
-            if (idx > -1) {
-                const entry = activeVaultData.entries.splice(idx, 1)[0];
-                activeVaultData.audit.push({
-                    token: 'AUD-' + Math.random().toString(36).substring(2, 7).toUpperCase(),
-                    date: new Date().toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }),
-                    region: entry.lesions[0]?.region || 'Area1',
-                    procedure: entry.lesions[0]?.procedure || 'Excision',
-                    margin: 'Clear (>2mm)',
-                    complication: 'None'
-                });
-                renderBillingTable();
-                showToast('Case archived and de-identified into Quality Audit Log.');
-            }
-        }
-
-        function renderAuditLog() {
-            const tbody = document.getElementById('audit-table-body');
-            tbody.innerHTML = '';
-            document.getElementById('audit-stat-total').textContent = activeVaultData.audit.length;
-            activeVaultData.audit.forEach(a => {
-                tbody.innerHTML += `
-                    <tr>
-                        <td class="p-3 font-mono text-blue-700">${a.token}</td>
-                        <td class="p-3">${a.date}</td>
-                        <td class="p-3">${a.region}</td>
-                        <td class="p-3">${a.procedure}</td>
-                        <td class="p-3"><span class="text-emerald-700 font-bold">${a.margin}</span></td>
-                        <td class="p-3">${a.complication}</td>
-                    </tr>
-                `;
-            });
-        }
-
+        // --- TAB NAVIGATION ---
         function switchTab(tab) {
-            ['entry-view', 'billing-view', 'audit-view', 'settings-view'].forEach(id => document.getElementById(id).classList.add('hidden'));
+            ['entry-view', 'billing-view', 'audit-view', 'settings-view'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
 
             isBillingOnlyMode = (tab === 'manual-billing');
             if (tab === 'clinical-note' || tab === 'manual-billing') {
                 document.getElementById('entry-view').classList.remove('hidden');
-                document.getElementById('entry-view-header-title').textContent = isBillingOnlyMode ? "Manual Billing Entry" : "New Procedure Entry";
+                document.getElementById('entry-view-header-title').textContent = isBillingOnlyMode ? "Manual Billing Entry" : "New Surgical Procedure Entry";
                 updateFormUI();
             } else if (tab === 'billing') {
                 document.getElementById('billing-view').classList.remove('hidden');
@@ -1076,6 +964,7 @@
             }
         }
 
+        // --- DYNAMIC FORM UI & DEFECT CALCULATOR ---
         function updateFormUI() {
             const procedure = document.getElementById('procedureType').value;
             const closure = document.getElementById('excisionClosureType').value;
@@ -1089,8 +978,10 @@
             document.getElementById('pathologyContainer').style.display = isBillingOnlyMode ? 'none' : 'flex';
 
             calculateDefectSize();
+            generateDocumentation();
         }
 
+        // Formula: ((Length + 2*Margin) + (Width + 2*Margin)) / 2
         function calculateDefectSize() {
             const length = parseFloat(document.getElementById('lesionLength').value) || 0;
             const width = parseFloat(document.getElementById('lesionWidth').value) || 0;
@@ -1103,15 +994,16 @@
         }
 
         ['lesionLength', 'lesionWidth', 'margin'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.addEventListener('input', calculateDefectSize);
+            document.getElementById(id).addEventListener('input', calculateDefectSize);
         });
 
+        // --- SUTURES & REMOVAL DAYS ---
         function toggleSutureUI() {
             const useDeep = document.getElementById('useDeepSuture').checked;
             const useSkin = document.getElementById('useSkinSuture').checked;
             document.getElementById('deepSutureContainer').classList.toggle('hidden', !useDeep);
             document.getElementById('skinSutureDetails').classList.toggle('hidden', !useSkin);
+            generateDocumentation();
         }
 
         function updateSutureRemovalDays() {
@@ -1124,8 +1016,10 @@
                 const region = document.getElementById('anatomicalRegion').value;
                 document.getElementById('removalOfSkinSutures').value = (region === 'Area2') ? '5' : '7';
             }
+            generateDocumentation();
         }
 
+        // --- PATHOLOGY & CLOCK MODALS ---
         function populatePathologyModal() {
             const container = document.getElementById('pathologyCheckboxesEl');
             container.innerHTML = '';
@@ -1146,6 +1040,7 @@
             document.getElementById('provisionalDiagnoses').value = checked.join(';');
             document.getElementById('pathologyDisplay').textContent = checked.length ? checked.join(', ') : 'Click to select...';
             document.getElementById('pathologyModal').classList.add('hidden');
+            generateDocumentation();
         }
 
         function drawOrientationClock() {
@@ -1174,6 +1069,7 @@
             document.getElementById('orientationDescription').value = timeStr;
             document.getElementById('orientationClockDisplay').textContent = `Orientation: ${timeStr}`;
             closeOrientationModal();
+            generateDocumentation();
         }
 
         function toggleJustification(text) {
@@ -1181,24 +1077,76 @@
             if (!input.value.includes(text)) {
                 input.value = input.value ? `${input.value}; ${text}` : text;
             }
+            generateDocumentation();
+        }
+
+        // --- LESION MANAGEMENT & MBS CALCULATOR ---
+        function calculateSuggestedMBSItem(lesion) {
+            const isMalignant = (lesion.pdx.includes("BCC") || lesion.pdx.includes("SCC") || lesion.pdx.includes("Melanoma"));
+            const category = isMalignant ? "Malignant" : "Non-Malignant";
+            const region = lesion.region || "Area1";
+            const defect = lesion.defectSize || 0;
+
+            let code = "31358";
+            try {
+                const rules = defaultAppSettings.excisions[category][region];
+                for (const r of rules) {
+                    if ((r.minSize === undefined || defect >= r.minSize) && (r.maxSize === undefined || defect <= r.maxSize)) {
+                        code = r.item;
+                        break;
+                    }
+                }
+            } catch (e) { code = "31358"; }
+            return code;
         }
 
         function addOrUpdateLesion() {
+            const proc = document.getElementById('procedureType').value;
+            const location = document.getElementById('lesionLocation').value;
+            if (!proc || !location) return showToast("Select procedure type and anatomical location.");
+
             const lesion = {
                 id: ++lesionCounter,
-                procedure: document.getElementById('procedureType').value,
+                procedure: proc,
                 closure: document.getElementById('excisionClosureType').value,
                 punchType: document.getElementById('punchType').value,
-                location: document.getElementById('lesionLocation').value,
+                graftType: document.getElementById('graftType').value,
+                location: location,
                 region: document.getElementById('anatomicalRegion').value,
-                pdx: document.getElementById('provisionalDiagnoses').value,
+                pdx: document.getElementById('provisionalDiagnoses').value || 'Skin Lesion',
+                length: document.getElementById('lesionLength').value,
+                width: document.getElementById('lesionWidth').value,
+                margin: document.getElementById('margin').value,
+                punchSize: document.getElementById('punchSize').value,
                 defectSize: parseFloat(document.getElementById('finalDefectSize').value) || 0,
-                suture: document.getElementById('skinSutureType').value
+                justification: document.getElementById('flapGraftJustification').value,
+                prep: document.getElementById('skinPrepSolution').value,
+                anesthetic: document.getElementById('localAnesthetic').value,
+                anestheticVol: document.getElementById('anestheticVolume').value,
+                depth: document.getElementById('excisionDepth').value,
+                hemostasis: document.getElementById('hemostasisMethod').value,
+                dermoscopy: document.getElementById('dermoscopyUsed').value,
+                dressing: document.getElementById('dressingApplied').value,
+                orientationType: document.getElementById('orientationType').value,
+                orientationDescription: document.getElementById('orientationDescription').value,
+                useDeep: document.getElementById('useDeepSuture').checked,
+                deepSize: document.getElementById('deepSutureSize').value,
+                deepType: document.getElementById('deepSutureType').value,
+                useSkin: document.getElementById('useSkinSuture').checked,
+                skinSize: document.getElementById('skinSutureSize').value,
+                skinType: document.getElementById('skinSutureType').value,
+                sutureRemovalDays: document.getElementById('removalOfSkinSutures').value
             };
+
+            // Calculate auto-suggested MBS item
+            lesion.suggestedCode = calculateSuggestedMBSItem(lesion);
+            if (lesion.closure === 'Flap Repair') lesion.repairCode = '45201';
+            if (lesion.closure === 'Graft Repair') lesion.repairCode = '45451';
 
             lesions.push(lesion);
             renderLesionsList();
             generateDocumentation();
+            showToast(`Lesion #${lesion.id} added.`);
         }
 
         function renderLesionsList() {
@@ -1208,8 +1156,8 @@
                 container.innerHTML += `
                     <div class="bg-slate-50 p-3 rounded border border-slate-200 flex justify-between items-center text-xs">
                         <div>
-                            <strong>#${l.id}: ${l.procedure}</strong> - ${l.location} (${l.region})
-                            <p class="text-slate-500">Defect: ${l.defectSize}mm | PDx: ${l.pdx || 'N/A'}</p>
+                            <strong>#${l.id}: ${l.procedure} (${l.closure || l.punchType})</strong> - ${l.location}
+                            <p class="text-slate-500">Defect: ${l.defectSize}mm | PDx: ${l.pdx} | Suggested MBS: ${l.suggestedCode}${l.repairCode ? ' + ' + l.repairCode : ''}</p>
                         </div>
                         <button onclick="removeLesion(${l.id})" class="text-red-600 font-bold">Remove</button>
                     </div>
@@ -1223,17 +1171,97 @@
             generateDocumentation();
         }
 
+        // --- FULL MEDICOLEGAL DOCUMENTATION GENERATOR ---
         function generateDocumentation() {
-            const patient = document.getElementById('patientName').value || 'N/A';
+            const patient = document.getElementById('patientName').value || 'J.S. (MRN12345)';
+            const dob = document.getElementById('patientDOB').value;
+            const procDate = document.getElementById('procedureDate').value || new Date().toISOString().slice(0, 10);
             const doctor = document.getElementById('navDoctorDropdown').value;
 
-            let note = `OPERATIVE NOTE\nPATIENT: ${patient}\nDOCTOR: ${doctor}\nDATE: ${new Date().toLocaleDateString()}\n\n`;
-            let request = `PATHOLOGY REQUEST\nPATIENT: ${patient}\n`;
+            const patientHeader = `${patient}${dob ? ' (DOB: ' + dob + ')' : ''}`;
 
-            lesions.forEach(l => {
-                note += `PROCEDURE ${l.id}: ${l.procedure} of ${l.location}.\n- Defect size: ${l.defectSize}mm.\n- Closure: Skin closed with ${l.suture || 'sutures'}.\n\n`;
-                request += `${l.id}. ${l.location} - PDx: ${l.pdx || 'Lesion'}\n`;
-            });
+            let note = `======================================================================\n`;
+            note += `OPERATIVE NOTE - DERMATOLOGICAL SURGERY\n`;
+            note += `======================================================================\n`;
+            note += `PATIENT: ${patientHeader}\n`;
+            note += `SURGEON: ${doctor}\n`;
+            note += `DATE OF SURGERY: ${procDate}\n\n`;
+
+            note += `PRE-OPERATIVE ASSESSMENT & CONSENT:\n`;
+            note += `- Informed Consent: Full verbal and written consent obtained after discussing surgical risks (infection, bleeding, scarring, recurrence, need for re-excision, nerve injury/numbness, flap/graft compromise).\n`;
+            note += `- Verification: Patient identity, surgical site marking, and allergies verified prior to procedure.\n`;
+            
+            const prep = document.getElementById('skinPrepSolution').value;
+            const anesthetic = document.getElementById('localAnesthetic').value;
+            const anestheticVol = document.getElementById('anestheticVolume').value;
+            note += `- Skin Preparation: Surgical site prepped with ${prep} under sterile aseptic conditions.\n`;
+            note += `- Anesthesia: Infiltrated with ${anestheticVol}mL of ${anesthetic}. Aspiration negative prior to injection. Full local anesthesia and epinephrine vasoconstriction confirmed prior to incision.\n\n`;
+
+            note += `PROCEDURAL DETAILS:\n`;
+            note += `----------------------------------------------------------------------\n`;
+
+            if (!lesions.length) {
+                note += `[Enter lesion details above to generate full operative report]\n\n`;
+            } else {
+                lesions.forEach((l, idx) => {
+                    note += `PROCEDURE #${idx + 1}: ${l.procedure} of ${l.location}\n`;
+                    note += `- Anatomical Region: ${l.region || 'Area1'}\n`;
+                    note += `- Provisional Diagnosis: ${l.pdx} (Dermoscopy Examined: ${l.dermoscopy})\n`;
+                    if (l.procedure === 'Punch' && l.punchType === 'Punch Biopsy') {
+                        note += `- Biopsy Technique: ${l.punchSize}mm punch biopsy.\n`;
+                    } else {
+                        note += `- Excision Dimensions: ${l.length || '0'}mm (L) x ${l.width || '0'}mm (W) with ${l.margin || '0'}mm clinical margins.\n`;
+                        note += `- Calculated Defect Size: ${l.defectSize}mm.\n`;
+                    }
+                    note += `- Excision Depth: Carried down to ${l.depth || 'subcutaneous fat layer'} ensuring clear anatomical deep margins.\n`;
+                    note += `- Hemostasis: Complete hemostasis achieved using ${l.hemostasis || 'bipolar electrocautery'}.\n`;
+                    
+                    let closureDesc = l.closure;
+                    if (l.closure === 'Ellipse') closureDesc = 'Direct elliptical primary closure in natural skin tension lines';
+                    if (l.closure === 'Flap Repair') closureDesc = 'Local cutaneous flap repair';
+                    if (l.closure === 'Graft Repair') closureDesc = `Reconstruction with ${l.graftType}`;
+                    note += `- Reconstruction & Closure: ${closureDesc}.\n`;
+                    if (l.justification) note += `  * MBS Repair Justification: ${l.justification}\n`;
+
+                    let sutureText = [];
+                    if (l.useDeep) sutureText.push(`Deep dermal inverted sutures (${l.deepSize} ${l.deepType})`);
+                    if (l.useSkin) sutureText.push(`Skin epidermal alignment (${l.skinSize} ${l.skinType})`);
+                    note += `- Suturing: ${sutureText.length ? sutureText.join('; ') : 'Skin tape / pressure dressing'}.\n`;
+
+                    let specimenText = `Excised specimen placed immediately into 10% neutral buffered formalin for formal histopathology`;
+                    if (l.orientationType && l.orientationType !== 'None') {
+                        specimenText += ` (Oriented with suture marker at ${l.orientationDescription})`;
+                    }
+                    note += `- Specimen Handling: ${specimenText}.\n\n`;
+                });
+            }
+
+            const dressing = document.getElementById('dressingApplied').value;
+            note += `POST-OPERATIVE PLAN & DISCHARGE INSTRUCTIONS:\n`;
+            note += `----------------------------------------------------------------------\n`;
+            note += `- Complications: Nil immediate intraoperative complications. Procedure well tolerated.\n`;
+            note += `- Dressing Applied: Cleaned, dried, and dressed with ${dressing}.\n`;
+            
+            let removalStr = "As advised based on anatomical area";
+            if (lesions.length && lesions[0].sutureRemovalDays) removalStr = `${lesions[0].sutureRemovalDays} days`;
+            note += `- Suture Removal: Scheduled for skin suture removal in ${removalStr}.\n`;
+            note += `- Patient Post-Op Advice: Detailed verbal and written wound care instructions provided, including bleeding management, signs of infection, analgesia, activity limits, and post-op hygiene.\n`;
+            note += `- Follow-Up: Appointment arranged for suture removal and review of formal histopathology results.\n`;
+
+            // Pathology Request
+            let request = `PATHOLOGY REQUEST FORM\n`;
+            request += `======================================================================\n`;
+            request += `PATIENT: ${patientHeader}\n`;
+            request += `SURGEON: ${doctor}\n`;
+            request += `DATE: ${procDate}\n\n`;
+            request += `CLINICAL DETAILS & SPECIMENS:\n`;
+            if (lesions.length) {
+                lesions.forEach((l, idx) => {
+                    request += `${idx + 1}. ${l.location} (${l.region}) - PDx: ${l.pdx}. Defect: ${l.defectSize}mm. Technique: ${l.procedure} (${l.closure || l.punchType}).${l.orientationDescription ? ' (Oriented ' + l.orientationDescription + ')' : ''}\n`;
+                });
+            } else {
+                request += `1. [Location] - PDx: [PDx]. Defect: [Size]mm.\n`;
+            }
 
             document.getElementById('entryNoteOutputEl').value = note;
             document.getElementById('clinicalRequestOutputEl').value = request;
@@ -1251,28 +1279,191 @@
             setTimeout(() => btn.textContent = 'Copy', 2000);
         }
 
+        function showToast(msg) {
+            document.getElementById('toast-text').textContent = msg;
+            document.getElementById('toast-msg').classList.remove('hidden');
+            setTimeout(() => document.getElementById('toast-msg').classList.add('hidden'), 3500);
+        }
+
+        // --- BILLING & HISTOLOGY CONFIRMATION ---
         function saveProcedure() {
             const patient = document.getElementById('patientName').value;
-            if (!patient || !lesions.length) return showToast('Enter patient name and add at least one lesion.');
+            if (!patient || !lesions.length) return showToast("Enter patient identifier and at least one lesion.");
 
-            const suggestedBilling = [];
-            lesions.forEach(l => suggestedBilling.push(...calculateSuggestedMBS(l)));
+            // Build claim items
+            const items = [];
+            lesions.forEach(l => {
+                items.push({ code: l.suggestedCode, desc: `Excision lesion (${l.region})`, confirmed: false });
+                if (l.repairCode) items.push({ code: l.repairCode, desc: `Reconstruction repair (${l.closure})`, confirmed: false });
+            });
 
             const record = {
                 id: 'PROC-' + Date.now().toString().slice(-6),
-                date: new Date().toLocaleDateString(),
+                date: document.getElementById('procedureDate').value || new Date().toLocaleDateString(),
                 patient: patient,
                 doctor: document.getElementById('navDoctorDropdown').value,
-                histologyStatus: 'Pending',
+                status: 'Pending Histology',
+                histologyConfirmed: false,
                 lesions: [...lesions],
-                assignedBilling: suggestedBilling,
-                status: 'Pending Histology'
+                items: items
             };
 
             activeVaultData.entries.push(record);
-            showToast('Procedure saved! Excision MBS codes are pending histology confirmation.');
+            showToast("Procedure saved to Billing Queue (Pending Histology)!");
             resetAll();
             switchTab('billing');
+        }
+
+        function renderBillingTable() {
+            const tbody = document.getElementById('billing-table-body');
+            tbody.innerHTML = '';
+            
+            const filter = document.getElementById('billingStatusFilter').value;
+            const filtered = activeVaultData.entries.filter(e => filter === 'ALL' || e.status === filter);
+
+            if (!filtered.length) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400 italic">No procedures found in billing queue.</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(item => {
+                const codes = item.items.map(i => `${i.code}${i.confirmed ? ' ✅' : ' (Suggested)'}`).join(', ');
+                const histoBadge = item.histologyConfirmed ? 
+                    `<span class="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded font-bold">Confirmed</span>` :
+                    `<span class="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded font-bold">Pending Review</span>`;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="p-3">${item.date}</td>
+                        <td class="p-3 font-semibold text-slate-800">${item.patient}</td>
+                        <td class="p-3">${item.lesions.length} Lesion(s) (${item.lesions.map(l => l.location).join(', ')})</td>
+                        <td class="p-3 font-mono text-xs font-semibold text-blue-700">${codes}</td>
+                        <td class="p-3">${histoBadge}</td>
+                        <td class="p-3"><span class="bg-slate-100 text-slate-700 text-xs px-2 py-0.5 rounded font-semibold border border-slate-200">${item.status}</span></td>
+                        <td class="p-3 no-print space-x-1">
+                            <button onclick="openBillingAssignmentModal('${item.id}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded shadow-sm">
+                                Review Histology & Assign
+                            </button>
+                            <button onclick="archiveAndDeidentify('${item.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 text-white px-2 py-1 rounded">
+                                Archive
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function openBillingAssignmentModal(id) {
+            activeBillingEntryId = id;
+            const entry = activeVaultData.entries.find(e => e.id === id);
+            if (!entry) return;
+
+            document.getElementById('billingModalHistologyStatus').value = entry.histologyConfirmed ? "Confirmed" : "Pending";
+            renderBillingModalItems(entry);
+            document.getElementById('billingAssignmentModal').classList.remove('hidden');
+        }
+
+        function closeBillingAssignmentModal() {
+            document.getElementById('billingAssignmentModal').classList.add('hidden');
+        }
+
+        function renderBillingModalItems(entry) {
+            const container = document.getElementById('billingItemsContainer');
+            container.innerHTML = '';
+            entry.items.forEach((item, idx) => {
+                container.innerHTML += `
+                    <div class="flex justify-between items-center bg-slate-50 p-2.5 rounded border border-slate-200 text-xs">
+                        <div class="flex items-center space-x-2">
+                            <input type="text" value="${item.code}" onchange="updateModalItemCode(${idx}, this.value)" class="w-20 font-mono font-bold text-blue-800 rounded border border-slate-300 p-1">
+                            <input type="text" value="${item.desc}" onchange="updateModalItemDesc(${idx}, this.value)" class="w-64 rounded border border-slate-300 p-1">
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="toggleItemConfirmation(${idx})" class="px-2.5 py-1 rounded font-bold text-xs ${item.confirmed ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}">
+                                ${item.confirmed ? 'Confirmed ✅' : 'Confirm Code'}
+                            </button>
+                            <button onclick="removeModalItem(${idx})" class="text-red-500 font-bold px-1">✕</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function toggleItemConfirmation(idx) {
+            const entry = activeVaultData.entries.find(e => e.id === activeBillingEntryId);
+            if (entry) {
+                entry.items[idx].confirmed = !entry.items[idx].confirmed;
+                renderBillingModalItems(entry);
+            }
+        }
+
+        function confirmAllSuggestedCodes() {
+            const entry = activeVaultData.entries.find(e => e.id === activeBillingEntryId);
+            if (entry) {
+                entry.items.forEach(i => i.confirmed = true);
+                entry.histologyConfirmed = true;
+                document.getElementById('billingModalHistologyStatus').value = "Confirmed";
+                entry.status = "Ready to Bill";
+                renderBillingModalItems(entry);
+                showToast("All MBS Codes Confirmed!");
+            }
+        }
+
+        function toggleHistologyConfirmation(val) {
+            const entry = activeVaultData.entries.find(e => e.id === activeBillingEntryId);
+            if (entry) {
+                entry.histologyConfirmed = (val === "Confirmed");
+                if (entry.histologyConfirmed) {
+                    entry.items.forEach(i => i.confirmed = true);
+                    entry.status = "Ready to Bill";
+                }
+                renderBillingModalItems(entry);
+            }
+        }
+
+        function saveAssignedBilling() {
+            const entry = activeVaultData.entries.find(e => e.id === activeBillingEntryId);
+            if (entry) {
+                entry.status = document.getElementById('billingModalStatus').value;
+                closeBillingAssignmentModal();
+                renderBillingTable();
+                showToast("Billing assignment updated.");
+            }
+        }
+
+        function archiveAndDeidentify(id) {
+            const idx = activeVaultData.entries.findIndex(e => e.id === id);
+            if (idx > -1) {
+                const entry = activeVaultData.entries.splice(idx, 1)[0];
+                activeVaultData.audit.push({
+                    token: 'AUD-' + Math.random().toString(36).substring(2, 7).toUpperCase(),
+                    date: new Date().toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }),
+                    region: entry.lesions[0]?.region || 'Area1',
+                    procedure: entry.lesions[0]?.procedure || 'Excision',
+                    margin: 'Clear (>1mm)',
+                    complication: 'None'
+                });
+                renderBillingTable();
+                renderAuditLog();
+                showToast("Case archived and de-identified into Quality Log.");
+            }
+        }
+
+        function renderAuditLog() {
+            const tbody = document.getElementById('audit-table-body');
+            tbody.innerHTML = '';
+            document.getElementById('audit-stat-total').textContent = activeVaultData.audit.length;
+            activeVaultData.audit.forEach(a => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="p-3 font-mono text-blue-700 font-semibold">${a.token}</td>
+                        <td class="p-3">${a.date}</td>
+                        <td class="p-3">${a.region}</td>
+                        <td class="p-3">${a.procedure}</td>
+                        <td class="p-3"><span class="text-emerald-700 font-bold">${a.margin}</span></td>
+                        <td class="p-3">${a.complication}</td>
+                    </tr>
+                `;
+            });
         }
 
         function setPrintHeader() {
@@ -1280,34 +1471,22 @@
             document.getElementById('print-doctor').textContent = document.getElementById('navDoctorDropdown').value;
         }
 
-        function handleDoctorChange() { setPrintHeader(); }
-
         function resetAll() {
             lesions = [];
             lesionCounter = 0;
             document.getElementById('patientName').value = '';
+            document.getElementById('patientDOB').value = '';
             renderLesionsList();
-        }
-
-        function saveVaultToDisk() {
-            const jsonStr = JSON.stringify(activeVaultData, null, 2);
-            const blob = new Blob([jsonStr], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `surgifile_vault_${new Date().toISOString().slice(0,10)}.surgifile`;
-            a.click();
-            showToast('Encrypted vault exported to disk.');
+            generateDocumentation();
         }
 
         function loadAppSettings() { appSettings = defaultAppSettings; }
         function saveAppSettings() {
             try {
                 appSettings = JSON.parse(document.getElementById('appSettingsEditor').value);
-                showToast('Settings saved!');
-            } catch(e) { showToast('Invalid JSON format.'); }
+                showToast("Settings Saved Successfully!");
+            } catch(e) { showToast("Invalid JSON in Settings."); }
         }
-
         function resetAppSettings() {
             appSettings = defaultAppSettings;
             document.getElementById('appSettingsEditor').value = JSON.stringify(defaultAppSettings, null, 2);
