@@ -1,66 +1,66 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SurgiFile - Clinical Vault & MBS Billing Engine</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
-        .missing-field { border: 2px solid #ef4444 !important; background-color: #fef2f2 !important; }
-        .clock-face { stroke: #94a3b8; stroke-width: 4; fill: #ffffff; }
-        .hour-marker { stroke: #94a3b8; stroke-width: 2; }
-        .hour-text { font-size: 13px; font-weight: 600; fill: #334155; text-anchor: middle; dominant-baseline: central; cursor: pointer; }
-        .hour-text:hover { fill: #2563eb; font-weight: 700; }
-        .center-dot { fill: #1e293b; }
-        .justification-btn.selected, .dermoscopy-btn.selected, .main-marker-btn.selected { background-color: #2563eb !important; color: white !important; }
-        
-        @media print {
-            .no-print { display: none !important; }
-            .print-only { display: block !important; }
-            body { background-color: #ffffff; color: #000000; font-size: 11pt; }
-            .container-print { width: 100%; margin: 0; padding: 0; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
-        }
-        .print-only { display: none; }
-    </style>
-</head>
-<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+        <!-- 3. INTERACTIVE BILLING ASSIGNMENT MODAL (Code-focused, No Dollar Amounts) -->
+        <div id="billingAssignmentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+            <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-5">
+                <div class="flex justify-between items-center border-b border-slate-200 pb-3">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-800">Review Histology & Confirm MBS Items</h3>
+                        <p id="billingModalPatientHeader" class="text-xs text-slate-500">Patient: -</p>
+                    </div>
+                    <button onclick="closeBillingAssignmentModal()" class="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                </div>
 
-    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-40 no-print">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
-            <div class="flex items-center space-x-3">
-                <span class="text-2xl">🩺</span>
-                <h1 class="text-xl font-bold tracking-tight">Surgi<span class="text-blue-400">File</span></h1>
-                <span id="vault-status-badge" class="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30">
-                    Vault Locked
-                </span>
-            </div>
+                <!-- Histology Status Switcher -->
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-amber-900">Histopathology Confirmation Status:</span>
+                        <select id="billingModalHistologyStatus" onchange="toggleHistologyConfirmation(this.value)" class="text-xs rounded border border-amber-300 p-1.5 font-bold">
+                            <option value="Pending">⏳ Pending Histology Review (Codes Suggested)</option>
+                            <option value="Confirmed">✅ Histology Reviewed & Confirmed (Assign Codes)</option>
+                        </select>
+                    </div>
+                    <p class="text-[11px] text-amber-700">MBS codes for excisions are held as suggestions until you review the histopathology report. Diagnostic punch biopsies (MBS 30071) and shave biopsies can be billed immediately.</p>
+                </div>
 
-            <!-- Doctor Selector & Vault Control Bar -->
-            <div class="flex items-center space-x-4">
-                <div id="nav-doctor-container" class="flex items-center space-x-2">
-                    <label class="text-xs text-slate-400 font-medium">Doctor:</label>
-                    <select id="navDoctorDropdown" onchange="handleDoctorChange()" class="bg-slate-800 text-white text-sm rounded border border-slate-700 px-2.5 py-1 focus:ring-2 focus:ring-blue-500">
-                        <option value="Dr. M. Deuble">Dr. M. Deuble</option>
+                <!-- Suggested vs Assigned MBS Items Section -->
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span id="billingModalSectionTitle" class="text-xs font-bold text-slate-700 uppercase tracking-wider">Suggested MBS Item Codes</span>
+                        <div class="space-x-2">
+                            <button id="confirmAllSuggestedBtn" onclick="confirmAllSuggestedCodes()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded font-semibold shadow-sm">
+                                ✅ Confirm & Assign All Suggested Codes
+                            </button>
+                            <button onclick="addCustomBillingItem()" class="text-xs bg-slate-100 hover:bg-slate-200 text-blue-700 px-2.5 py-1 rounded font-semibold border border-slate-300">
+                                + Add Custom Code
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="billingItemsContainer" class="space-y-2 max-h-60 overflow-y-auto p-1">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Claim Status Selector -->
+                <div class="flex items-center space-x-3 pt-2">
+                    <label class="text-xs font-semibold text-slate-700">Claim Processing Status:</label>
+                    <select id="billingModalStatus" class="text-xs rounded border border-slate-300 p-2 font-semibold">
+                        <option value="Pending Histology">Pending Histology</option>
+                        <option value="Ready to Bill">Ready to Bill</option>
+                        <option value="Billed">Billed / Submitted</option>
+                        <option value="Paid">Paid / Settled</option>
                     </select>
                 </div>
 
-                <div class="flex items-center space-x-2 border-l border-slate-700 pl-4">
-                    <label class="text-xs text-slate-400 font-medium">PM Mode:</label>
-                    <input type="checkbox" id="pmModeToggleSettings" onchange="togglePmMode()" class="h-4 w-4 text-blue-600 rounded border-slate-700 bg-slate-800">
-                </div>
-
-                <!-- Live Vault Controls -->
-                <div class="flex items-center space-x-2 border-l border-slate-700 pl-4">
-                    <span id="auto-lock-countdown" class="text-xs font-mono text-slate-400">Auto-lock: 15:00</span>
-                    <button id="lockVaultBtn" onclick="lockVault()" class="hidden bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs px-3 py-1.5 rounded border border-rose-500/30 transition">
-                        Lock Vault
+                <!-- Modal Action Buttons -->
+                <div class="flex justify-end space-x-2 pt-3 border-t border-slate-200">
+                    <button onclick="closeBillingAssignmentModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-4 py-2 rounded font-medium">
+                        Cancel
                     </button>
-                    <button id="openVaultBtn" onclick="openStartGatewayModal()" class="bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white px-3 py-1.5 rounded shadow transition">
-                        Setup / Unlock Vault
+                    <button onclick="saveAssignedBilling()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-5 py-2 rounded font-bold shadow">
+                        Save Assigned MBS Codes
                     </button>
                 </div>
             </div>
@@ -740,113 +740,6 @@
             masterPassphrase = pass;
             activeVaultData = { entries: [], billing: [], audit: [] };
             
-            document.getElementById('vaultStartModal').classList.add('hidden');
-            document.getElementById('vault-status-badge').textContent = "Vault Unlocked";
-            document.getElementById('vault-status-badge').className = "bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30";
-            document.getElementById('lockVaultBtn').classList.remove('hidden');
-            
-            showToast('New Encrypted Vault session created successfully!');
-            resetAll();
-        }
-
-        function unlockExistingVaultFile() {
-            const fileInput = document.getElementById('existingVaultFile');
-            const pass = document.getElementById('openVaultPass').value;
-
-            if (!fileInput.files[0]) return showToast('Please select a .surgifile vault container.');
-            if (!pass) return showToast('Please enter your vault passphrase.');
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    activeVaultData = JSON.parse(e.target.result);
-                    masterPassphrase = pass;
-                    document.getElementById('vaultStartModal').classList.add('hidden');
-                    document.getElementById('vault-status-badge').textContent = "Vault Unlocked";
-                    document.getElementById('vault-status-badge').className = "bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30";
-                    document.getElementById('lockVaultBtn').classList.remove('hidden');
-                    
-                    showToast('Vault decrypted and loaded into client RAM successfully!');
-                    renderBillingTable();
-                    renderAuditLog();
-                } catch(err) {
-                    showToast('Failed to parse vault file. Invalid file format.');
-                }
-            };
-            reader.readAsText(fileInput.files[0]);
-        }
-
-        function startDemoSession() {
-            masterPassphrase = "DEMO_PASSPHRASE";
-            activeVaultData = {
-                entries: [
-                    {
-                        id: 'PROC-991823',
-                        date: new Date().toLocaleDateString(),
-                        patient: 'Demo Patient A.S. (MRN4412)',
-                        doctor: 'Dr. M. Deuble',
-                        histologyStatus: 'Pending',
-                        lesions: [{ id: 1, procedure: 'Excision', location: 'Right Forehead', region: 'Area1', pdx: 'BCC', defectSize: 12.0, closure: 'Flap Repair', suture: 'Prolene' }],
-                        assignedBilling: [
-                            { item: '31358', desc: 'Malignant Excision Area 1 >=6mm (Provisional)', immediate: false },
-                            { item: '45201', desc: 'Flap Repair (Single Defect)', immediate: false }
-                        ],
-                        status: 'Pending Histology'
-                    },
-                    {
-                        id: 'PROC-991824',
-                        date: new Date().toLocaleDateString(),
-                        patient: 'Demo Patient B.R. (MRN4413)',
-                        doctor: 'Dr. M. Deuble',
-                        histologyStatus: 'Confirmed',
-                        lesions: [{ id: 1, procedure: 'Punch', location: 'Left Forearm', region: 'Area3', pdx: 'Punch Biopsy', defectSize: 4.0, suture: 'Nylon' }],
-                        assignedBilling: [
-                            { item: '30071', desc: 'Diagnostic Skin Biopsy', immediate: true }
-                        ],
-                        status: 'Ready to Bill'
-                    }
-                ],
-                billing: [],
-                audit: [
-                    { token: 'AUD-88910', date: 'Jul 2026', region: 'Area1', procedure: 'Excision', margin: 'Clear (>2mm)', complication: 'None' }
-                ]
-            };
-
-            document.getElementById('vaultStartModal').classList.add('hidden');
-            document.getElementById('vault-status-badge').textContent = "Demo Session";
-            document.getElementById('vault-status-badge').className = "bg-cyan-500/20 text-cyan-300 text-xs px-2.5 py-1 rounded-full font-medium border border-cyan-500/30";
-            document.getElementById('lockVaultBtn').classList.remove('hidden');
-            showToast('Demo Mode initialized with sample clinical dataset.');
-            renderBillingTable();
-            renderAuditLog();
-        }
-
-        function lockVault() {
-            masterPassphrase = null;
-            activeVaultData = { entries: [], billing: [], audit: [] };
-            document.getElementById('vault-status-badge').textContent = "Vault Locked";
-            document.getElementById('vault-status-badge').className = "bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30";
-            document.getElementById('lockVaultBtn').classList.add('hidden');
-            openStartGatewayModal();
-            showToast('Vault locked and client memory cleared.');
-        }
-
-        function initAutoLockCountdown() {
-            setInterval(() => {
-                if (masterPassphrase && autoLockSeconds > 0) {
-                    autoLockSeconds--;
-                    const mins = Math.floor(autoLockSeconds / 60);
-                    const secs = autoLockSeconds % 60;
-                    document.getElementById('auto-lock-countdown').textContent = `Auto-lock: ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                } else if (masterPassphrase && autoLockSeconds <= 0) {
-                    lockVault();
-                }
-            }, 1000);
-
-            window.addEventListener('mousemove', () => autoLockSeconds = 900);
-            window.addEventListener('keydown', () => autoLockSeconds = 900);
-        }
-
         function calculateSuggestedMBS(lesion) {
             const items = [];
             const region = lesion.region || 'Area1';
@@ -856,32 +749,32 @@
 
             // Punch biopsy & shave biopsies can be billed immediately without waiting for histology
             if (procedure === 'Punch' && (lesion.punchType === 'Punch Biopsy' || !lesion.punchType)) {
-                items.push({ item: '30071', desc: 'Diagnostic Skin Biopsy (Immediate Billable)', immediate: true });
+                items.push({ item: '30071', desc: 'Diagnostic Skin Biopsy (Immediate Billable)', immediate: true, confirmed: true });
                 return items;
             } else if (procedure === 'Shave') {
-                items.push({ item: '30071', desc: 'Shave Biopsy / Diagnostic Excision', immediate: true });
+                items.push({ item: '30071', desc: 'Shave Biopsy / Diagnostic Excision', immediate: true, confirmed: true });
                 return items;
             }
 
-            // Excision items depend on histopathology confirmation
+            // Excision items require histology review before final code assignment
             if (procedure === 'Excision' || procedure === 'Wedge Excision' || procedure === 'Punch') {
                 if (region === 'Area1') {
-                    if (defect < 6) items.push({ item: '31356', desc: 'Malignant Excision Area 1 <6mm (Provisional)', immediate: false });
-                    else items.push({ item: '31358', desc: 'Malignant Excision Area 1 >=6mm (Provisional)', immediate: false });
+                    if (defect < 6) items.push({ item: '31356', desc: 'Malignant Excision Area 1 <6mm (Suggested)', immediate: false, confirmed: false });
+                    else items.push({ item: '31358', desc: 'Malignant Excision Area 1 >=6mm (Suggested)', immediate: false, confirmed: false });
                 } else if (region === 'Area2') {
-                    if (defect < 14) items.push({ item: '31361', desc: 'Malignant Excision Area 2 <14mm (Provisional)', immediate: false });
-                    else items.push({ item: '31363', desc: 'Malignant Excision Area 2 >=14mm (Provisional)', immediate: false });
+                    if (defect < 14) items.push({ item: '31361', desc: 'Malignant Excision Area 2 <14mm (Suggested)', immediate: false, confirmed: false });
+                    else items.push({ item: '31363', desc: 'Malignant Excision Area 2 >=14mm (Suggested)', immediate: false, confirmed: false });
                 } else {
-                    if (defect < 15) items.push({ item: '31365', desc: 'Malignant Excision Area 3 <15mm (Provisional)', immediate: false });
-                    else if (defect <= 30) items.push({ item: '31367', desc: 'Malignant Excision Area 3 15-30mm (Provisional)', immediate: false });
-                    else items.push({ item: '31369', desc: 'Malignant Excision Area 3 >30mm (Provisional)', immediate: false });
+                    if (defect < 15) items.push({ item: '31365', desc: 'Malignant Excision Area 3 <15mm (Suggested)', immediate: false, confirmed: false });
+                    else if (defect <= 30) items.push({ item: '31367', desc: 'Malignant Excision Area 3 15-30mm (Suggested)', immediate: false, confirmed: false });
+                    else items.push({ item: '31369', desc: 'Malignant Excision Area 3 >30mm (Suggested)', immediate: false, confirmed: false });
                 }
 
                 if (closure === 'Flap Repair' || closure === 'Graft + Flap') {
-                    items.push({ item: '45201', desc: 'Flap Repair (Single Defect)', immediate: false });
+                    items.push({ item: '45201', desc: 'Flap Repair (Single Defect)', immediate: false, confirmed: false });
                 }
                 if (closure === 'Graft Repair' || closure === 'Graft + Flap') {
-                    items.push({ item: '45451', desc: 'Full Thickness Skin Graft (FTSG)', immediate: false });
+                    items.push({ item: '45451', desc: 'Full Thickness Skin Graft (FTSG)', immediate: false, confirmed: false });
                 }
             }
 
@@ -911,31 +804,60 @@
             document.getElementById('billingAssignmentModal').classList.remove('hidden');
         }
 
-        function closeBillingAssignmentModal() {
-            document.getElementById('billingAssignmentModal').classList.add('hidden');
-            activeEditingProcedureId = null;
-        }
-
         function renderBillingAssignmentItems(billingItems) {
             const container = document.getElementById('billingItemsContainer');
             container.innerHTML = '';
 
+            const histoConfirmed = (document.getElementById('billingModalHistologyStatus').value === 'Confirmed');
+
             billingItems.forEach((item, index) => {
-                const isImmediate = item.immediate;
+                const isConfirmed = item.confirmed || item.immediate || histoConfirmed;
 
                 container.innerHTML += `
-                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-center justify-between gap-3 text-xs">
+                    <div class="bg-slate-50 p-3 rounded-lg border ${isConfirmed ? 'border-emerald-300 bg-emerald-50/30' : 'border-amber-200 bg-amber-50/20'} flex items-center justify-between gap-3 text-xs">
                         <div class="flex-1">
                             <div class="flex items-center space-x-2">
-                                <span class="font-mono font-bold text-blue-700">MBS ${item.item}</span>
-                                ${isImmediate ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Immediate Billable</span>' : '<span class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Requires Histology</span>'}
+                                <span class="font-mono font-bold ${isConfirmed ? 'text-emerald-700' : 'text-amber-800'}">MBS ${item.item}</span>
+                                ${item.immediate 
+                                    ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Immediate Billable</span>' 
+                                    : isConfirmed 
+                                    ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Confirmed Code</span>' 
+                                    : '<span class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Suggested (Pending Histology)</span>'
+                                }
                             </div>
                             <input type="text" value="${item.desc}" onchange="updateBillingItemDesc(${index}, this.value)" class="w-full text-xs bg-transparent border-b border-slate-300 focus:outline-none focus:border-blue-500 mt-1">
                         </div>
-                        <button onclick="removeBillingItem(${index})" class="text-rose-600 font-bold px-2 py-1 hover:bg-rose-50 rounded">✕ Remove</button>
+                        <div class="flex items-center space-x-2">
+                            ${!isConfirmed ? `<button onclick="confirmSingleCode(${index})" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded font-bold">Confirm Code</button>` : ''}
+                            <button onclick="removeBillingItem(${index})" class="text-rose-600 font-bold px-2 py-1 hover:bg-rose-50 rounded">✕</button>
+                        </div>
                     </div>
                 `;
             });
+        }
+
+        function confirmSingleCode(idx) {
+            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
+            if (entry && entry.assignedBilling[idx]) {
+                entry.assignedBilling[idx].confirmed = true;
+                entry.assignedBilling[idx].desc = entry.assignedBilling[idx].desc.replace(' (Suggested)', ' (Confirmed)');
+                renderBillingAssignmentItems(entry.assignedBilling);
+            }
+        }
+
+        function confirmAllSuggestedCodes() {
+            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
+            if (entry && entry.assignedBilling) {
+                entry.histologyStatus = 'Confirmed';
+                document.getElementById('billingModalHistologyStatus').value = 'Confirmed';
+                document.getElementById('billingModalStatus').value = 'Ready to Bill';
+                entry.assignedBilling.forEach(b => {
+                    b.confirmed = true;
+                    b.desc = b.desc.replace(' (Suggested)', ' (Confirmed)');
+                });
+                renderBillingAssignmentItems(entry.assignedBilling);
+                showToast('All suggested MBS codes confirmed & assigned!');
+            }
         }
 
         function toggleHistologyConfirmation(val) {
@@ -944,41 +866,14 @@
                 entry.histologyStatus = val;
                 if (val === 'Confirmed') {
                     document.getElementById('billingModalStatus').value = 'Ready to Bill';
+                    entry.assignedBilling.forEach(b => {
+                        b.confirmed = true;
+                        b.desc = b.desc.replace(' (Suggested)', ' (Confirmed)');
+                    });
                 } else {
                     document.getElementById('billingModalStatus').value = 'Pending Histology';
                 }
-            }
-        }
-
-        function updateBillingItemDesc(idx, val) {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry && entry.assignedBilling[idx]) entry.assignedBilling[idx].desc = val;
-        }
-
-        function removeBillingItem(idx) {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry) {
-                entry.assignedBilling.splice(idx, 1);
                 renderBillingAssignmentItems(entry.assignedBilling);
-            }
-        }
-
-        function addCustomBillingItem() {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry) {
-                entry.assignedBilling.push({ item: 'CUSTOM', desc: 'Custom Procedure Item', immediate: true });
-                renderBillingAssignmentItems(entry.assignedBilling);
-            }
-        }
-
-        function saveAssignedBilling() {
-            const entry = activeVaultData.entries.find(e => e.id === activeEditingProcedureId);
-            if (entry) {
-                entry.histologyStatus = document.getElementById('billingModalHistologyStatus').value;
-                entry.status = document.getElementById('billingModalStatus').value;
-                closeBillingAssignmentModal();
-                renderBillingTable();
-                showToast('MBS Item codes updated successfully!');
             }
         }
 
@@ -996,18 +891,23 @@
                     item.lesions.forEach(l => item.assignedBilling.push(...calculateSuggestedMBS(l)));
                 }
 
-                const codes = item.assignedBilling.map(b => b.item).join(', ') || 'None';
                 const histoStatus = item.histologyStatus || 'Pending';
+                const confirmedCodes = item.assignedBilling.filter(b => b.confirmed || b.immediate || histoStatus === 'Confirmed').map(b => b.item);
+                const suggestedCodes = item.assignedBilling.map(b => b.item);
+
+                const codesDisplay = histoStatus === 'Confirmed' || confirmedCodes.length
+                    ? `<span class="font-mono font-bold text-emerald-700">${confirmedCodes.join(', ')}</span>`
+                    : `<span class="font-mono text-amber-800 italic">${suggestedCodes.join(', ')} (Suggested)</span>`;
 
                 tbody.innerHTML += `
                     <tr>
                         <td class="p-3">${item.date}</td>
                         <td class="p-3 font-semibold">${item.patient}</td>
                         <td class="p-3">${item.lesions.length} Lesion(s)</td>
-                        <td class="p-3 font-mono text-blue-700 font-bold">${codes}</td>
+                        <td class="p-3">${codesDisplay}</td>
                         <td class="p-3">
                             <span class="px-2 py-0.5 rounded text-xs font-bold ${histoStatus === 'Confirmed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-                                ${histoStatus === 'Confirmed' ? 'Confirmed' : 'Pending Histology'}
+                                ${histoStatus === 'Confirmed' ? '✅ Confirmed' : '⏳ Pending Histology'}
                             </span>
                         </td>
                         <td class="p-3">
@@ -1017,7 +917,7 @@
                         </td>
                         <td class="p-3 no-print space-x-1">
                             <button onclick="openBillingAssignmentModal('${item.id}')" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2.5 py-1 rounded shadow">
-                                Assign / Confirm Codes
+                                ${histoStatus === 'Confirmed' ? 'Edit Codes' : 'Review Histology & Assign Codes'}
                             </button>
                             <button onclick="archiveAndDeidentify('${item.id}')" class="bg-slate-800 hover:bg-slate-700 text-white text-xs px-2.5 py-1 rounded">
                                 Archive & Audit
