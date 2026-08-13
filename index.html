@@ -38,6 +38,9 @@
                 <span id="vault-status-badge" class="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30">
                     Vault Active (Memory)
                 </span>
+                <span id="autosave-status-badge" class="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30 hidden">
+                    🟢 Auto-Saved
+                </span>
             </div>
 
             <!-- Doctor Selector & Controls -->
@@ -674,6 +677,10 @@
                 <button id="gatewayTabOpen" onclick="showGatewayTab('open')" class="flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent">
                     Open Existing File
                 </button>
+
+                <button id="gatewayTabRestore" onclick="showGatewayTab('restore')" class="flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent hidden">
+                    Restore Auto-Save
+                </button>
                 <button id="gatewayTabDemo" onclick="showGatewayTab('demo')" class="flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent">
                     Quick Demo Mode
                 </button>
@@ -706,6 +713,17 @@
                 </div>
                 <button onclick="unlockExistingVaultFile()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2.5 rounded shadow">
                     Decrypt & Unlock Vault
+                </button>
+            </div>
+
+            <div id="gatewaySectionRestore" class="space-y-4 hidden">
+                <p class="text-xs text-slate-600">An encrypted auto-save session was detected on this device. Enter your master passphrase to unlock and resume.</p>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Master Passphrase</label>
+                    <input type="password" id="restoreVaultPass" placeholder="Enter master passphrase..." class="w-full text-sm rounded border border-slate-300 p-2.5 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button onclick="unlockRestoreAutoSave()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2.5 rounded shadow">
+                    Restore Encrypted Session
                 </button>
             </div>
 
@@ -772,6 +790,7 @@
             populatePathologyModal();
             updateFormUI();
             setPrintHeader();
+            checkAutoSaveOnLoad();
             
             // Set today's date in procedure date picker
             document.getElementById('procedureDate').value = new Date().toISOString().slice(0, 10);
@@ -794,15 +813,23 @@
         // --- GATEWAY & PASSWORD SETUP ---
         function openStartGatewayModal() { document.getElementById('startGatewayModal').classList.remove('hidden'); }
         function showGatewayTab(tab) {
-            ['New', 'Open', 'Demo'].forEach(t => {
-                document.getElementById('gatewaySection' + t).classList.add('hidden');
-                document.getElementById('gatewayTab' + t).classList.replace('text-blue-600', 'text-slate-500');
-                document.getElementById('gatewayTab' + t).classList.replace('border-blue-600', 'border-transparent');
+            ['New', 'Open', 'Restore', 'Demo'].forEach(t => {
+                const sec = document.getElementById('gatewaySection' + t);
+                const btn = document.getElementById('gatewayTab' + t);
+                if (sec) sec.classList.add('hidden');
+                if (btn) {
+                    btn.classList.replace('text-blue-600', 'text-slate-500');
+                    btn.classList.replace('border-blue-600', 'border-transparent');
+                }
             });
             const capTab = tab.charAt(0).toUpperCase() + tab.slice(1);
-            document.getElementById('gatewaySection' + capTab).classList.remove('hidden');
-            document.getElementById('gatewayTab' + capTab).classList.replace('text-slate-500', 'text-blue-600');
-            document.getElementById('gatewayTab' + capTab).classList.replace('border-transparent', 'border-blue-600');
+            const activeSec = document.getElementById('gatewaySection' + capTab);
+            const activeBtn = document.getElementById('gatewayTab' + capTab);
+            if (activeSec) activeSec.classList.remove('hidden');
+            if (activeBtn) {
+                activeBtn.classList.replace('text-slate-500', 'text-blue-600');
+                activeBtn.classList.replace('border-transparent', 'border-blue-600');
+            }
         }
 
         function createNewVaultSession() {
@@ -814,7 +841,8 @@
             activePassphrase = pass1;
             activeVaultData = { entries: [], billing: [], audit: [] };
             document.getElementById('startGatewayModal').classList.add('hidden');
-            showToast("New Encrypted Vault Initialized in Memory.");
+            showToast("New Encrypted Vault Initialized.");
+            autoSaveVault();
             startAutoLockTimer();
         }
 
@@ -835,6 +863,7 @@
                     showToast("Vault File Decrypted & Unlocked!");
                     renderBillingTable();
                     renderAuditLog();
+                    autoSaveVault();
                     startAutoLockTimer();
                 } catch (err) {
                     showToast("Decryption failed. Incorrect passphrase or corrupted file.");
@@ -843,124 +872,53 @@
             reader.readAsText(file);
         }
 
-        function startDemoSession() {
-            activePassphrase = "demo-passphrase";
-            activeVaultData = {
-                entries: [
-                    {
-                        id: "PROC-829104",
-                        date: new Date().toLocaleDateString(),
-                        patient: "J.S. (MRN98214)",
-                        doctor: "Dr. M. Deuble",
-                        status: "Pending Histology",
-                        histologyConfirmed: false,
-                        lesions: [
-                            { id: 1, procedure: "Excision", closure: "Flap Repair", location: "Right Cheek", region: "Area2", pdx: "BCC", defectSize: 14.0, suggestedCode: "31363", repairCode: "45201" }
-                        ],
-                        items: [
-                            { code: "31363", desc: "Excision malignant lesion Area 2 >=14mm", confirmed: false },
-                            { code: "45201", desc: "Local cutaneous flap repair", confirmed: false }
-                        ]
-                    }
-                ],
-                audit: [
-                    { token: "AUD-9A82X", date: "Jul 2026", region: "Area2", procedure: "Excision", margin: "Clear (>2mm)", complication: "None" }
-                ]
-            };
-            document.getElementById('startGatewayModal').classList.add('hidden');
-            showToast("Demo Mode Active.");
-            renderBillingTable();
-            renderAuditLog();
+        // --- AUTO-SAVE VAULT ENCRYPTION ENGINE (INDEXEDDB) ---
+        async function autoSaveVault() {
+            if (!activePassphrase) return;
+            try {
+                const jsonStr = JSON.stringify(activeVaultData);
+                const encryptedCipher = await encryptData(jsonStr, activePassphrase);
+                localStorage.setItem('surgifile_encrypted_autosave', encryptedCipher);
+                
+                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const badge = document.getElementById('autosave-status-badge');
+                badge.textContent = `🟢 Auto-Saved ${timeStr}`;
+                badge.classList.remove('hidden');
+            } catch (err) {
+                console.error("Auto-save failed:", err);
+            }
         }
 
-        function startAutoLockTimer() {
-            clearInterval(autoLockTimer);
-            lockCountdownSeconds = 900;
-            document.getElementById('auto-lock-timer').classList.remove('hidden');
-            autoLockTimer = setInterval(() => {
-                lockCountdownSeconds--;
-                const m = Math.floor(lockCountdownSeconds / 60);
-                const s = lockCountdownSeconds % 60;
-                document.getElementById('auto-lock-timer').textContent = `Lock: ${m}:${s < 10 ? '0' : ''}${s}`;
-                if (lockCountdownSeconds <= 0) {
-                    clearInterval(autoLockTimer);
-                    activePassphrase = null;
-                    activeVaultData = { entries: [], billing: [], audit: [] };
-                    openStartGatewayModal();
-                    showToast("Vault auto-locked due to inactivity.");
+        function checkAutoSaveOnLoad() {
+            const autoSaveData = localStorage.getItem('surgifile_encrypted_autosave');
+            if (autoSaveData) {
+                const restoreTab = document.getElementById('gatewayTabRestore');
+                if (restoreTab) {
+                    restoreTab.classList.remove('hidden');
+                    showGatewayTab('restore');
                 }
-            }, 1000);
+            }
         }
 
-        // --- CRYPTO HELPER FUNCTIONS (AES-256-GCM + PBKDF2) ---
-        async function getKey(passphrase, salt) {
-            const enc = new TextEncoder();
-            const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
-            return crypto.subtle.deriveKey(
-                { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
-                keyMaterial,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
-        }
+        async function unlockRestoreAutoSave() {
+            const pass = document.getElementById('restoreVaultPass').value;
+            if (!pass) return showToast("Enter master passphrase.");
 
-        async function encryptData(plainText, passphrase) {
-            const salt = crypto.getRandomValues(new Uint8Array(16));
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const key = await getKey(passphrase, salt);
-            const enc = new TextEncoder();
-            const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, enc.encode(plainText));
-            return JSON.stringify({
-                salt: Array.from(salt),
-                iv: Array.from(iv),
-                ciphertext: Array.from(new Uint8Array(ciphertext))
-            });
-        }
+            const autoSaveCipher = localStorage.getItem('surgifile_encrypted_autosave');
+            if (!autoSaveCipher) return showToast("No auto-saved session found.");
 
-        async function decryptData(cipherJsonStr, passphrase) {
-            const data = JSON.parse(cipherJsonStr);
-            const salt = new Uint8Array(data.salt);
-            const iv = new Uint8Array(data.iv);
-            const ciphertext = new Uint8Array(data.ciphertext);
-            const key = await getKey(passphrase, salt);
-            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ciphertext);
-            return new TextDecoder().decode(decrypted);
-        }
-
-        async function saveVaultToDisk() {
-            if (!activePassphrase) return showToast("Vault is locked. Initialize passphrase first.");
-            const jsonStr = JSON.stringify(activeVaultData, null, 2);
-            const encryptedStr = await encryptData(jsonStr, activePassphrase);
-            const blob = new Blob([encryptedStr], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `surgifile_vault_${new Date().toISOString().slice(0,10)}.surgifile`;
-            a.click();
-            showToast("Encrypted Vault Exported Successfully!");
-        }
-
-        // --- TAB NAVIGATION ---
-        function switchTab(tab) {
-            ['entry-view', 'billing-view', 'audit-view', 'settings-view'].forEach(id => {
-                document.getElementById(id).classList.add('hidden');
-            });
-
-            isBillingOnlyMode = (tab === 'manual-billing');
-            if (tab === 'clinical-note' || tab === 'manual-billing') {
-                document.getElementById('entry-view').classList.remove('hidden');
-                document.getElementById('entry-view-header-title').textContent = isBillingOnlyMode ? "Manual Billing Entry" : "New Surgical Procedure Entry";
-                updateFormUI();
-            } else if (tab === 'billing') {
-                document.getElementById('billing-view').classList.remove('hidden');
+            try {
+                const decryptedText = await decryptData(autoSaveCipher, pass);
+                activeVaultData = JSON.parse(decryptedText);
+                activePassphrase = pass;
+                document.getElementById('startGatewayModal').classList.add('hidden');
+                showToast("Auto-Saved Vault Restored Successfully!");
                 renderBillingTable();
-            } else if (tab === 'audit') {
-                document.getElementById('audit-view').classList.remove('hidden');
                 renderAuditLog();
-            } else if (tab === 'settings') {
-                document.getElementById('settings-view').classList.remove('hidden');
-                document.getElementById('appSettingsEditor').value = JSON.stringify(appSettings, null, 2);
+                startAutoLockTimer();
+                autoSaveVault();
+            } catch (err) {
+                showToast("Decryption failed. Incorrect passphrase.");
             }
         }
 
@@ -1311,6 +1269,7 @@
             activeVaultData.entries.push(record);
             showToast("Procedure saved to Billing Queue (Pending Histology)!");
             resetAll();
+            autoSaveVault();
             switchTab('billing');
         }
 
@@ -1426,6 +1385,7 @@
                 entry.status = document.getElementById('billingModalStatus').value;
                 closeBillingAssignmentModal();
                 renderBillingTable();
+                autoSaveVault();
                 showToast("Billing assignment updated.");
             }
         }
@@ -1444,6 +1404,7 @@
                 });
                 renderBillingTable();
                 renderAuditLog();
+                autoSaveVault();
                 showToast("Case archived and de-identified into Quality Log.");
             }
         }
