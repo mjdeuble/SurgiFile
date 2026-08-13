@@ -36,7 +36,7 @@
                 <span class="text-2xl">🩺</span>
                 <h1 class="text-xl font-bold tracking-tight">SurgiFile</h1>
                 <span id="vault-status-badge" class="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30">
-                    Vault Active (Memory)
+                    Vault Locked
                 </span>
                 <span id="autosave-status-badge" class="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30 hidden">
                     🟢 Auto-Saved
@@ -100,8 +100,8 @@
             </button>
         </div>
 
-        <!-- Toast Notification Container -->
-        <div id="toast-msg" class="hidden fixed bottom-5 right-5 z-50 bg-slate-900 text-white text-xs px-4 py-3 rounded-lg shadow-xl border border-slate-700 flex justify-between items-center space-x-4">
+        <!-- Toast Notification Container (z-[100] ABOVE ALL MODALS) -->
+        <div id="toast-msg" class="hidden fixed bottom-5 right-5 z-[100] bg-slate-900 text-white text-xs px-4 py-3 rounded-lg shadow-2xl border border-slate-700 flex justify-between items-center space-x-4">
             <span id="toast-text">Notification message</span>
             <button onclick="document.getElementById('toast-msg').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold ml-2">✕</button>
         </div>
@@ -629,9 +629,6 @@
                         <button id="confirmAllSuggestedBtn" onclick="confirmAllSuggestedCodes()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded font-semibold shadow-sm">
                             ✅ Confirm & Assign All Codes
                         </button>
-                        <button onclick="addCustomBillingItem()" class="text-xs bg-slate-100 hover:bg-slate-200 text-blue-700 px-2.5 py-1 rounded font-semibold border border-slate-300">
-                            + Add Custom Code
-                        </button>
                     </div>
                 </div>
 
@@ -661,13 +658,20 @@
         </div>
     </div>
 
-    <!-- STARTUP VAULT GATEWAY MODAL -->
+    <!-- STARTUP VAULT GATEWAY MODAL (z-50) -->
     <div id="startGatewayModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4 relative">
+            <button onclick="closeStartGatewayModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700 font-bold text-lg focus:outline-none" title="Close Popup">✕</button>
+            
             <div class="text-center space-y-1">
                 <span class="text-3xl">🔐</span>
                 <h3 class="text-lg font-bold text-slate-800">SurgiFile Encrypted Vault</h3>
                 <p class="text-xs text-slate-500">AES-256 Client-Side Encryption Gateway</p>
+            </div>
+
+            <!-- In-Modal Direct Red Error Alert Banner -->
+            <div id="gatewayErrorMsg" class="hidden text-xs bg-red-50 border border-red-300 text-red-700 p-2.5 rounded-lg font-medium space-y-1">
+                <!-- Errors injected here -->
             </div>
 
             <div class="flex border-b border-slate-200 text-xs font-semibold">
@@ -677,7 +681,6 @@
                 <button id="gatewayTabOpen" onclick="showGatewayTab('open')" class="flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent">
                     Open Existing File
                 </button>
-
                 <button id="gatewayTabRestore" onclick="showGatewayTab('restore')" class="flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent hidden">
                     Restore Auto-Save
                 </button>
@@ -704,14 +707,14 @@
             <div id="gatewaySectionOpen" class="space-y-4 hidden">
                 <p class="text-xs text-slate-600">Select an existing `.surgifile` vault container and enter your passphrase to decrypt.</p>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Vault File (.surgifile)</label>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Vault File (.surgifile or .json)</label>
                     <input type="file" id="existingVaultFile" accept=".surgifile,.json" class="w-full text-xs text-slate-500 p-1">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 mb-1">Master Passphrase</label>
                     <input type="password" id="openVaultPass" placeholder="Enter passphrase for file..." class="w-full text-sm rounded border border-slate-300 p-2.5 focus:ring-2 focus:ring-blue-500">
                 </div>
-                <button onclick="unlockExistingVaultFile()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2.5 rounded shadow">
+                <button id="decryptFileBtn" onclick="unlockExistingVaultFile()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2.5 rounded shadow">
                     Decrypt & Unlock Vault
                 </button>
             </div>
@@ -748,7 +751,6 @@
         let isBillingOnlyMode = false;
         let activeBillingEntryId = null;
         let autoLockTimer = null;
-        let lockCountdownSeconds = 900; // 15 mins
 
         const pathologyOptions = {
             "BCC": "Basal Cell Carcinoma",
@@ -783,36 +785,111 @@
             }
         };
 
-        // --- INIT ON LOAD ---
-        window.addEventListener('DOMContentLoaded', () => {
-            loadAppSettings();
-            drawOrientationClock();
-            populatePathologyModal();
-            updateFormUI();
-            setPrintHeader();
-            checkAutoSaveOnLoad();
-            
-            // Set today's date in procedure date picker
-            document.getElementById('procedureDate').value = new Date().toISOString().slice(0, 10);
+        // --- WEB CRYPTO PRIMITIVES (PBKDF2 + AES-256-GCM) ---
+        async function getDerivedKey(passphrase, salt) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                "raw", enc.encode(passphrase), "PBKDF2", false, ["deriveKey"]
+            );
+            return crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+                keyMaterial,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
 
-            // Auto show gateway if no passphrase set
-            if (!activePassphrase) {
-                openStartGatewayModal();
+        function bytesToBase64(bytes) {
+            let bin = '';
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) bin += String.fromCharCode(bytes[i]);
+            return btoa(bin);
+        }
+
+        function base64ToBytes(base64) {
+            const bin = atob(base64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return bytes;
+        }
+
+        async function encryptData(dataStr, passphrase) {
+            const enc = new TextEncoder();
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const key = await getDerivedKey(passphrase, salt);
+            const encrypted = await crypto.subtle.encrypt(
+                { name: "AES-GCM", iv: iv }, key, enc.encode(dataStr)
+            );
+            const combined = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
+            combined.set(salt, 0);
+            combined.set(iv, salt.length);
+            combined.set(new Uint8Array(encrypted), salt.length + iv.length);
+            return bytesToBase64(combined);
+        }
+
+        async function decryptData(cipherBase64, passphrase) {
+            let trimmed = cipherBase64.trim();
+            if (trimmed.charCodeAt(0) === 0xFEFF) {
+                trimmed = trimmed.slice(1).trim();
             }
+            if (trimmed.startsWith('{') || trimmed.startsWith('[')) return trimmed; // Unencrypted plain JSON fallback
+            
+            const combined = base64ToBytes(trimmed);
+            if (combined.length < 28) throw new Error("Invalid vault container size.");
+            
+            const salt = combined.slice(0, 16);
+            const iv = combined.slice(16, 28);
+            const data = combined.slice(28);
+            const key = await getDerivedKey(passphrase, salt);
+            const decrypted = await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: iv }, key, data
+            );
+            return new TextDecoder().decode(decrypted);
+        }
 
-            // Bind input listeners for real-time document updating
-            ['lesionLocation', 'lesionLength', 'lesionWidth', 'margin', 'punchSize', 'flapGraftJustification', 'anestheticVolume', 'skinPrepSolution', 'localAnesthetic', 'excisionDepth', 'hemostasisMethod', 'dressingApplied', 'skinSutureType', 'skinSutureSize', 'deepSutureType', 'deepSutureSize'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.addEventListener('input', generateDocumentation);
-                    el.addEventListener('change', generateDocumentation);
-                }
-            });
-        });
+        function updateVaultStatusBadge(isUnlocked) {
+            const badge = document.getElementById('vault-status-badge');
+            if (!badge) return;
+            if (isUnlocked) {
+                badge.textContent = "Vault Active (AES-256)";
+                badge.className = "bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30";
+            } else {
+                badge.textContent = "Vault Locked";
+                badge.className = "bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30";
+            }
+        }
+
+        function closeStartGatewayModal() {
+            document.getElementById('startGatewayModal').classList.add('hidden');
+        }
 
         // --- GATEWAY & PASSWORD SETUP ---
-        function openStartGatewayModal() { document.getElementById('startGatewayModal').classList.remove('hidden'); }
+        function openStartGatewayModal() { 
+            clearGatewayError();
+            document.getElementById('startGatewayModal').classList.remove('hidden'); 
+        }
+
+        function clearGatewayError() {
+            const el = document.getElementById('gatewayErrorMsg');
+            if (el) {
+                el.textContent = '';
+                el.classList.add('hidden');
+            }
+        }
+
+        function showGatewayError(msg) {
+            const el = document.getElementById('gatewayErrorMsg');
+            if (el) {
+                el.textContent = msg;
+                el.classList.remove('hidden');
+            }
+            showToast(msg);
+        }
+
         function showGatewayTab(tab) {
+            clearGatewayError();
             ['New', 'Open', 'Restore', 'Demo'].forEach(t => {
                 const sec = document.getElementById('gatewaySection' + t);
                 const btn = document.getElementById('gatewayTab' + t);
@@ -833,46 +910,126 @@
         }
 
         function createNewVaultSession() {
+            clearGatewayError();
             const pass1 = document.getElementById('newVaultPass').value;
             const pass2 = document.getElementById('confirmVaultPass').value;
-            if (!pass1 || pass1.length < 6) return showToast("Passphrase must be at least 6 characters.");
-            if (pass1 !== pass2) return showToast("Passphrases do not match.");
+            if (!pass1 || pass1.length < 6) return showGatewayError("Passphrase must be at least 6 characters long.");
+            if (pass1 !== pass2) return showGatewayError("Passphrases do not match.");
 
             activePassphrase = pass1;
             activeVaultData = { entries: [], billing: [], audit: [] };
-            document.getElementById('startGatewayModal').classList.add('hidden');
+            updateVaultStatusBadge(true);
+            closeStartGatewayModal();
             showToast("New Encrypted Vault Initialized.");
             autoSaveVault();
             startAutoLockTimer();
         }
 
         async function unlockExistingVaultFile() {
+            clearGatewayError();
             const fileInput = document.getElementById('existingVaultFile');
             const pass = document.getElementById('openVaultPass').value;
-            if (!fileInput.files.length) return showToast("Select a .surgifile container first.");
-            if (!pass) return showToast("Enter master passphrase.");
+            const decryptBtn = document.getElementById('decryptFileBtn');
+
+            if (!fileInput.files || !fileInput.files.length) return showGatewayError("Select a .surgifile or .json container file first.");
+            if (!pass) return showGatewayError("Enter your master passphrase.");
+
+            if (decryptBtn) {
+                decryptBtn.disabled = true;
+                decryptBtn.textContent = "Decrypting Vault...";
+            }
 
             const file = fileInput.files[0];
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
                     const decryptedText = await decryptData(e.target.result, pass);
-                    activeVaultData = JSON.parse(decryptedText);
+                    const parsed = JSON.parse(decryptedText);
+
+                    if (Array.isArray(parsed)) {
+                        activeVaultData = { entries: parsed, billing: [], audit: [] };
+                    } else if (parsed && typeof parsed === 'object') {
+                        activeVaultData = {
+                            entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+                            billing: Array.isArray(parsed.billing) ? parsed.billing : [],
+                            audit: Array.isArray(parsed.audit) ? parsed.audit : []
+                        };
+                    } else {
+                        throw new Error("Unrecognized vault structure.");
+                    }
+
                     activePassphrase = pass;
-                    document.getElementById('startGatewayModal').classList.add('hidden');
+                    updateVaultStatusBadge(true);
+                    closeStartGatewayModal();
                     showToast("Vault File Decrypted & Unlocked!");
                     renderBillingTable();
                     renderAuditLog();
                     autoSaveVault();
                     startAutoLockTimer();
                 } catch (err) {
-                    showToast("Decryption failed. Incorrect passphrase or corrupted file.");
+                    console.error("Decryption error:", err);
+                    showGatewayError("Decryption failed. Incorrect passphrase or incompatible file format.");
+                } fontFinally: {
+                    if (decryptBtn) {
+                        decryptBtn.disabled = false;
+                        decryptBtn.textContent = "Decrypt & Unlock Vault";
+                    }
+                }
+            };
+            reader.onerror = () => {
+                showGatewayError("Error reading selected file.");
+                if (decryptBtn) {
+                    decryptBtn.disabled = false;
+                    decryptBtn.textContent = "Decrypt & Unlock Vault";
                 }
             };
             reader.readAsText(file);
         }
 
-        // --- AUTO-SAVE VAULT ENCRYPTION ENGINE (INDEXEDDB) ---
+        function startDemoSession() {
+            clearGatewayError();
+            activePassphrase = "demo-session-passphrase";
+            activeVaultData = {
+                entries: [
+                    {
+                        id: 'PROC-102938',
+                        date: new Date().toLocaleDateString(),
+                        patient: 'J.S. (MRN12345)',
+                        doctor: 'Dr. M. Deuble',
+                        status: 'Pending Histology',
+                        histologyConfirmed: false,
+                        lesions: [
+                            {
+                                id: 1,
+                                procedure: 'Excision',
+                                closure: 'Flap Repair',
+                                location: 'Right Forehead',
+                                region: 'Area1',
+                                pdx: 'BCC',
+                                defectSize: 12.0,
+                                suggestedCode: '31358',
+                                repairCode: '45201',
+                                justification: 'Skin tension prevents primary closure'
+                            }
+                        ],
+                        items: [
+                            { code: '31358', desc: 'Excision malignant lesion (Area 1) >=6mm', confirmed: false },
+                            { code: '45201', desc: 'Flap repair single defect', confirmed: false }
+                        ]
+                    }
+                ],
+                billing: [],
+                audit: []
+            };
+            updateVaultStatusBadge(true);
+            closeStartGatewayModal();
+            showToast("Demo Session Started (Sample Case Loaded)");
+            renderBillingTable();
+            renderAuditLog();
+            startAutoLockTimer();
+        }
+
+        // --- AUTO-SAVE ENCRYPTION ENGINE ---
         async function autoSaveVault() {
             if (!activePassphrase) return;
             try {
@@ -901,28 +1058,125 @@
         }
 
         async function unlockRestoreAutoSave() {
+            clearGatewayError();
             const pass = document.getElementById('restoreVaultPass').value;
-            if (!pass) return showToast("Enter master passphrase.");
+            if (!pass) return showGatewayError("Enter your master passphrase.");
 
             const autoSaveCipher = localStorage.getItem('surgifile_encrypted_autosave');
-            if (!autoSaveCipher) return showToast("No auto-saved session found.");
+            if (!autoSaveCipher) return showGatewayError("No auto-saved session found.");
 
             try {
                 const decryptedText = await decryptData(autoSaveCipher, pass);
-                activeVaultData = JSON.parse(decryptedText);
+                const parsed = JSON.parse(decryptedText);
+                activeVaultData = {
+                    entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+                    billing: Array.isArray(parsed.billing) ? parsed.billing : [],
+                    audit: Array.isArray(parsed.audit) ? parsed.audit : []
+                };
                 activePassphrase = pass;
-                document.getElementById('startGatewayModal').classList.add('hidden');
-                showToast("Auto-Saved Vault Restored Successfully!");
+                updateVaultStatusBadge(true);
+                closeStartGatewayModal();
+                showToast("Auto-Saved Session Restored Successfully!");
                 renderBillingTable();
                 renderAuditLog();
                 startAutoLockTimer();
-                autoSaveVault();
             } catch (err) {
-                showToast("Decryption failed. Incorrect passphrase.");
+                showGatewayError("Decryption failed. Incorrect passphrase.");
             }
         }
 
-        // --- DYNAMIC FORM UI & DEFECT CALCULATOR ---
+        async function saveVaultToDisk() {
+            if (!activePassphrase) {
+                showToast("No active passphrase set.");
+                openStartGatewayModal();
+                return;
+            }
+            try {
+                const jsonStr = JSON.stringify(activeVaultData, null, 2);
+                const encryptedCipher = await encryptData(jsonStr, activePassphrase);
+                const blob = new Blob([encryptedCipher], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `surgifile_vault_${new Date().toISOString().slice(0, 10)}.surgifile`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast("Vault File Encrypted & Exported!");
+            } catch (err) {
+                showToast("Export failed: " + err.message);
+            }
+        }
+
+        function startAutoLockTimer() {
+            if (autoLockTimer) clearInterval(autoLockTimer);
+            let seconds = 900; // 15 mins
+            const timerEl = document.getElementById('auto-lock-timer');
+            timerEl.classList.remove('hidden');
+            
+            autoLockTimer = setInterval(() => {
+                seconds--;
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                timerEl.textContent = `Lock: ${mins}:${secs < 10 ? '0' : ''}${secs}`;
+                if (seconds <= 0) {
+                    clearInterval(autoLockTimer);
+                    activePassphrase = null;
+                    activeVaultData = { entries: [], billing: [], audit: [] };
+                    updateVaultStatusBadge(false);
+                    showToast("Vault Locked due to inactivity.");
+                    openStartGatewayModal();
+                }
+            }, 1000);
+        }
+
+        // --- INIT & LISTENERS ---
+        window.addEventListener('DOMContentLoaded', () => {
+            loadAppSettings();
+            drawOrientationClock();
+            populatePathologyModal();
+            updateFormUI();
+            setPrintHeader();
+            checkAutoSaveOnLoad();
+            
+            document.getElementById('procedureDate').value = new Date().toISOString().slice(0, 10);
+
+            if (!activePassphrase) {
+                openStartGatewayModal();
+            }
+
+            ['lesionLocation', 'lesionLength', 'lesionWidth', 'margin', 'punchSize', 'flapGraftJustification', 'anestheticVolume', 'skinPrepSolution', 'localAnesthetic', 'excisionDepth', 'hemostasisMethod', 'dressingApplied', 'skinSutureType', 'skinSutureSize', 'deepSutureType', 'deepSutureSize'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', generateDocumentation);
+                    el.addEventListener('change', generateDocumentation);
+                }
+            });
+        });
+
+        // --- TAB NAVIGATION ---
+        function switchTab(tab) {
+            ['entry-view', 'billing-view', 'audit-view', 'settings-view'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+
+            isBillingOnlyMode = (tab === 'manual-billing');
+            if (tab === 'clinical-note' || tab === 'manual-billing') {
+                document.getElementById('entry-view').classList.remove('hidden');
+                document.getElementById('entry-view-header-title').textContent = isBillingOnlyMode ? "Manual Billing Entry" : "New Surgical Procedure Entry";
+                updateFormUI();
+            } else if (tab === 'billing') {
+                document.getElementById('billing-view').classList.remove('hidden');
+                renderBillingTable();
+            } else if (tab === 'audit') {
+                document.getElementById('audit-view').classList.remove('hidden');
+                renderAuditLog();
+            } else if (tab === 'settings') {
+                document.getElementById('settings-view').classList.remove('hidden');
+                document.getElementById('appSettingsEditor').value = JSON.stringify(appSettings, null, 2);
+            }
+        }
+
+        // --- FORM UI & DEFECT CALCULATOR ---
         function updateFormUI() {
             const procedure = document.getElementById('procedureType').value;
             const closure = document.getElementById('excisionClosureType').value;
@@ -939,7 +1193,6 @@
             generateDocumentation();
         }
 
-        // Formula: ((Length + 2*Margin) + (Width + 2*Margin)) / 2
         function calculateDefectSize() {
             const length = parseFloat(document.getElementById('lesionLength').value) || 0;
             const width = parseFloat(document.getElementById('lesionWidth').value) || 0;
@@ -950,10 +1203,6 @@
                 document.getElementById('finalDefectSize').value = defect.toFixed(1);
             }
         }
-
-        ['lesionLength', 'lesionWidth', 'margin'].forEach(id => {
-            document.getElementById(id).addEventListener('input', calculateDefectSize);
-        });
 
         // --- SUTURES & REMOVAL DAYS ---
         function toggleSutureUI() {
@@ -1096,7 +1345,6 @@
                 sutureRemovalDays: document.getElementById('removalOfSkinSutures').value
             };
 
-            // Calculate auto-suggested MBS item
             lesion.suggestedCode = calculateSuggestedMBSItem(lesion);
             if (lesion.closure === 'Flap Repair') lesion.repairCode = '45201';
             if (lesion.closure === 'Graft Repair') lesion.repairCode = '45451';
@@ -1248,7 +1496,6 @@
             const patient = document.getElementById('patientName').value;
             if (!patient || !lesions.length) return showToast("Enter patient identifier and at least one lesion.");
 
-            // Build claim items
             const items = [];
             lesions.forEach(l => {
                 items.push({ code: l.suggestedCode, desc: `Excision lesion (${l.region})`, confirmed: false });
