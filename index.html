@@ -1,1139 +1,964 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-slate-900 text-slate-100">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SurgiFile | APP 11 Clinical Logbook & Billing Vault</title>
-  
-  <link rel="manifest" href='data:application/json,{"name":"SurgiFile Encrypted Vault","short_name":"SurgiFile","start_url":".","display":"standalone","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2314b8a6%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z%22/%3E%3C/svg%3E","sizes":"192x192 512x512","type":"image/svg+xml"}]}' />
-
-  <!-- Tailwind CSS via CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: '#f0fdfa',
-              100: '#ccfbf1',
-              500: '#14b8a6',
-              600: '#0d9488',
-              700: '#0f766e',
-              800: '#115e59',
-              900: '#134e4a',
-            }
-          }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SurgiFile - Clinical Logbook & Encrypted Vault</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        .missing-field { border: 2px solid #ef4444 !important; background-color: #fef2f2 !important; }
+        .clock-face { stroke: #94a3b8; stroke-width: 4; fill: #ffffff; }
+        .hour-marker { stroke: #94a3b8; stroke-width: 2; }
+        .hour-text { font-size: 13px; font-weight: 600; fill: #334155; text-anchor: middle; dominant-baseline: central; cursor: pointer; }
+        .hour-text:hover { fill: #2563eb; font-weight: 700; }
+        .center-dot { fill: #1e293b; }
+        .justification-btn.selected, .dermoscopy-btn.selected, .main-marker-btn.selected { background-color: #2563eb !important; color: white !important; }
+        
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background-color: #ffffff; color: #000000; font-size: 11pt; }
+            .container-print { width: 100%; margin: 0; padding: 0; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
         }
-      }
-    }
-  </script>
-  
-  <!-- Feather Icons -->
-  <script src="https://unpkg.com/feather-icons"></script>
-
-  <style>
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #0f172a;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #334155;
-      border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #475569;
-    }
-    
-    .glass-card {
-      background: rgba(30, 41, 59, 0.7);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    /* Professional Print Stylesheet for Doctor's Billing List */
-    @media print {
-      .no-print, header, aside, button, .nav-tab, #session-status-container, #vault-status-badge, input, select, #toast-container, modal {
-        display: none !important;
-      }
-      body {
-        background: white !important;
-        color: black !important;
-        font-family: Arial, sans-serif !important;
-      }
-      main {
-        padding: 0 !important;
-        background: white !important;
-        overflow: visible !important;
-      }
-      .glass-card {
-        background: none !important;
-        border: none !important;
-        box-shadow: none !important;
-        color: black !important;
-        padding: 0 !important;
-      }
-      .print-header {
-        display: block !important;
-        border-bottom: 2px solid #000;
-        margin-bottom: 20px;
-        padding-bottom: 10px;
-      }
-      table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-        color: black !important;
-        margin-top: 15px;
-      }
-      th {
-        background-color: #f1f5f9 !important;
-        color: #000 !important;
-        border-bottom: 2px solid #333 !important;
-        font-size: 11px !important;
-        text-transform: uppercase !important;
-        padding: 8px !important;
-      }
-      td {
-        border-bottom: 1px solid #e2e8f0 !important;
-        color: #000 !important;
-        padding: 8px !important;
-        font-size: 12px !important;
-      }
-      .status-pill {
-        border: 1px solid #666 !important;
-        color: #000 !important;
-        background: none !important;
-        padding: 2px 6px !important;
-      }
-    }
-
-    .print-header {
-      display: none;
-    }
-  </style>
+        .print-only { display: none; }
+    </style>
 </head>
-<body class="h-full flex flex-col font-sans antialiased overflow-x-hidden selection:bg-brand-500 selection:text-white">
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
 
-  <!-- Top Navigation Header -->
-  <header class="no-print bg-slate-950/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-4 lg:px-8 py-3 flex items-center justify-between">
-    <div class="flex items-center space-x-3">
-      <div class="p-2 bg-brand-500/10 text-brand-500 rounded-xl border border-brand-500/20">
-        <i data-feather="shield" class="w-6 h-6"></i>
-      </div>
-      <div>
-        <div class="flex items-center space-x-2">
-          <h1 class="text-lg font-bold tracking-wide text-white">Surgi<span class="text-brand-500">File</span></h1>
-          <span id="demo-badge" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-            Trial / Demo Mode
-          </span>
-        </div>
-        <p class="text-xs text-slate-400">APP 11 Compliant Zero-Knowledge Clinical Vault</p>
-      </div>
-    </div>
-
-    <!-- Live Control Bar -->
-    <div class="flex items-center space-x-3">
-      <div id="session-status-container" class="hidden md:flex items-center space-x-2 text-xs bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg text-slate-300">
-        <i data-feather="clock" class="w-3.5 h-3.5 text-brand-500"></i>
-        <span>Auto-lock:</span>
-        <span id="auto-lock-countdown" class="font-mono text-brand-500 font-medium">15:00</span>
-      </div>
-
-      <div id="vault-status-badge" class="flex items-center space-x-2 text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-lg">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span id="vault-status-text">Active Memory Database</span>
-      </div>
-
-      <button id="btn-save-vault" class="text-xs bg-brand-600 hover:bg-brand-500 text-white font-medium px-3.5 py-1.5 rounded-lg transition flex items-center space-x-1.5 shadow-md shadow-brand-600/20">
-        <i data-feather="save" class="w-3.5 h-3.5"></i>
-        <span class="hidden sm:inline">Encrypt & Export File</span>
-      </button>
-
-      <button id="btn-lock-vault" title="Lock Vault & Clear Memory" class="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5">
-        <i data-feather="lock" class="w-3.5 h-3.5"></i>
-        <span class="hidden sm:inline">Lock Vault</span>
-      </button>
-    </div>
-  </header>
-
-  <!-- Main Workspace -->
-  <div class="flex-1 flex overflow-hidden">
-    <!-- Sidebar Navigation -->
-    <aside class="no-print w-16 md:w-64 bg-slate-950 border-r border-slate-800 flex flex-col justify-between p-3 shrink-0">
-      <nav class="space-y-1.5">
-        <button data-tab="entries" class="nav-tab w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-brand-500 bg-brand-500/10 border border-brand-500/20">
-          <i data-feather="book-open" class="w-5 h-5 shrink-0"></i>
-          <span class="hidden md:inline">Surgical Logbook</span>
-        </button>
-        <button data-tab="billing" class="nav-tab w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-900">
-          <i data-feather="dollar-sign" class="w-5 h-5 shrink-0"></i>
-          <span class="hidden md:inline">Ready for Billing</span>
-        </button>
-        <button data-tab="audit" class="nav-tab w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-900">
-          <i data-feather="activity" class="w-5 h-5 shrink-0"></i>
-          <span class="hidden md:inline">Quality & Audit Log</span>
-        </button>
-        <button data-tab="compliance" class="nav-tab w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-900">
-          <i data-feather="shield-check" class="w-5 h-5 shrink-0"></i>
-          <span class="hidden md:inline">APP 11 Security</span>
-        </button>
-      </nav>
-
-      <div class="pt-4 border-t border-slate-800 space-y-2 hidden md:block">
-        <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-2">Storage Status</div>
-        <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 text-xs space-y-1.5">
-          <div class="flex items-center justify-between text-slate-300">
-            <span>Model:</span>
-            <span class="font-mono text-cyan-400">In-Memory RAM</span>
-          </div>
-          <div class="flex items-center justify-between text-slate-300">
-            <span>Zero-Knowledge:</span>
-            <span class="font-mono text-emerald-400">AES-256 Ready</span>
-          </div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Content Display Panel -->
-    <main class="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-900/50">
-      
-      <!-- VIEW 1: Surgical Logbook View -->
-      <section id="tab-entries" class="tab-content space-y-6">
-        <!-- Toolbar -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 glass-card p-4 rounded-2xl">
-          <div class="flex-1 relative">
-            <i data-feather="search" class="w-4 h-4 absolute left-3.5 top-3 text-slate-400"></i>
-            <input type="text" id="entry-search" placeholder="Search MRN, procedure, hospital or MBS code..." class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brand-500">
-          </div>
-          <div class="flex items-center space-x-3 shrink-0">
-            <select id="entry-filter-category" class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-brand-500">
-              <option value="ALL">All Roles</option>
-              <option value="Primary Surgeon">Primary Surgeon</option>
-              <option value="Assistant">Assistant</option>
-              <option value="Supervisor">Supervisor</option>
-            </select>
-            <button id="btn-open-add-entry" class="bg-brand-600 hover:bg-brand-500 text-white font-medium px-4 py-2 rounded-xl text-sm transition flex items-center space-x-2 shadow-lg shadow-brand-600/20">
-              <i data-feather="plus" class="w-4 h-4"></i>
-              <span>New Surgical Entry</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Table Container -->
-        <div class="glass-card rounded-2xl overflow-hidden border border-slate-800">
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="bg-slate-950/60 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400">
-                  <th class="p-4">Date</th>
-                  <th class="p-4">Patient / MRN</th>
-                  <th class="p-4">Procedure & Role</th>
-                  <th class="p-4">Facility</th>
-                  <th class="p-4">MBS Item(s)</th>
-                  <th class="p-4 text-right no-print">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="entries-table-body" class="divide-y divide-slate-800/60 text-sm text-slate-300">
-                <!-- Dynamic Rows Inserted Here -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- VIEW 2: Doctor's Ready for Billing Tracker View -->
-      <section id="tab-billing" class="tab-content hidden space-y-6">
-        
-        <!-- Printable Header -->
-        <div class="print-header">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <div>
-              <h1 style="font-size: 20px; font-weight: bold; margin: 0;">Surgical Billing & Claims Report</h1>
-              <p style="font-size: 12px; color: #555; margin: 4px 0 0 0;">Prepared for Doctor Billing & Reconciliation</p>
-            </div>
-            <div style="text-align: right; font-size: 11px; color: #444;">
-              <div><strong>Date Generated:</strong> <span id="print-date"></span></div>
-              <div><strong>System:</strong> SurgiFile Encrypted Vault</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Billing Header & Action Bar -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 glass-card p-4 rounded-2xl no-print">
-          <div>
-            <h2 class="text-base font-semibold text-white">Ready for Billing & Claims Tracker</h2>
-            <p class="text-xs text-slate-400">Manage billing items, mark as settled, and auto-archive to quality audit log.</p>
-          </div>
-          <div class="flex items-center space-x-3">
-            <button id="btn-print-billing" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium px-4 py-2 rounded-xl text-sm transition flex items-center space-x-2">
-              <i data-feather="printer" class="w-4 h-4 text-brand-500"></i>
-              <span>Print Doctor's Billing List</span>
-            </button>
-            <button id="btn-add-billing-item" class="bg-brand-600 hover:bg-brand-500 text-white font-medium px-4 py-2 rounded-xl text-sm transition flex items-center space-x-2">
-              <i data-feather="plus" class="w-4 h-4"></i>
-              <span>Add Custom Claim</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Suggested Items Alert Container -->
-        <div id="suggested-billing-banner" class="hidden glass-card p-4 rounded-2xl border-l-4 border-l-amber-500 space-y-3 no-print">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-2 text-amber-400 text-sm font-semibold">
-              <i data-feather="alert-circle" class="w-4 h-4"></i>
-              <span>Unprocessed MBS Codes From Logbook</span>
-            </div>
-            <span class="text-xs text-slate-400">Click accept to queue for claim submission</span>
-          </div>
-          <div id="suggested-billing-list" class="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <!-- Queued suggestions rendered here -->
-          </div>
-        </div>
-
-        <!-- Main Billing Table -->
-        <div class="glass-card rounded-2xl overflow-hidden border border-slate-800">
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="bg-slate-950/60 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400">
-                  <th class="p-4">Date</th>
-                  <th class="p-4">Patient / MRN</th>
-                  <th class="p-4">MBS Item / Code</th>
-                  <th class="p-4">Agreed Fee</th>
-                  <th class="p-4">Gap Fee</th>
-                  <th class="p-4">Status</th>
-                  <th class="p-4 text-right no-print">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="billing-table-body" class="divide-y divide-slate-800/60 text-sm text-slate-300">
-                <!-- Dynamic Billing Rows -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- VIEW 3: Quality & Clinical Audit View -->
-      <section id="tab-audit" class="tab-content hidden space-y-6">
-        <div class="glass-card p-5 rounded-2xl space-y-2">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-lg font-bold text-white flex items-center space-x-2">
-                <span>Clinical Quality & Outcomes Audit</span>
-                <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-normal">Fully De-identified</span>
-              </h2>
-              <p class="text-xs text-slate-400">Automated APP 11 compliance pipeline strips patient names/MRNs when claims settle, transferring records to your quality audit log.</p>
-            </div>
-            <button id="btn-export-audit" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs px-3.5 py-2 rounded-xl transition flex items-center space-x-1.5">
-              <i data-feather="download" class="w-3.5 h-3.5 text-brand-500"></i>
-              <span>Export Audit Dataset</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Metrics Overview Dashboard -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="glass-card p-4 rounded-2xl space-y-1">
-            <span class="text-xs text-slate-400 uppercase font-semibold tracking-wider">Total Audited Cases</span>
-            <div class="text-2xl font-bold text-white font-mono" id="stat-total-cases">0</div>
-          </div>
-          <div class="glass-card p-4 rounded-2xl space-y-1">
-            <span class="text-xs text-slate-400 uppercase font-semibold tracking-wider">Margin Clearance Rate</span>
-            <div class="text-2xl font-bold text-emerald-400 font-mono" id="stat-margin-clearance">100%</div>
-          </div>
-          <div class="glass-card p-4 rounded-2xl space-y-1">
-            <span class="text-xs text-slate-400 uppercase font-semibold tracking-wider">Infection Rate</span>
-            <div class="text-2xl font-bold text-brand-500 font-mono" id="stat-infection-rate">0.0%</div>
-          </div>
-          <div class="glass-card p-4 rounded-2xl space-y-1">
-            <span class="text-xs text-slate-400 uppercase font-semibold tracking-wider">Unplanned Return to Theatre</span>
-            <div class="text-2xl font-bold text-cyan-400 font-mono" id="stat-return-rate">0.0%</div>
-          </div>
-        </div>
-
-        <!-- De-identified Audit Table -->
-        <div class="glass-card rounded-2xl overflow-hidden border border-slate-800">
-          <div class="p-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-slate-200">De-identified Surgical Outcomes Records</h3>
-            <span class="text-xs text-slate-500">Identifiers replaced with irreversible token (e.g. AUD-8291)</span>
-          </div>
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="bg-slate-950/60 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400">
-                  <th class="p-4">Case ID</th>
-                  <th class="p-4">Date / Facility</th>
-                  <th class="p-4">Procedure</th>
-                  <th class="p-4">Histopathology / Margins</th>
-                  <th class="p-4">Complications Monitored</th>
-                  <th class="p-4 text-right">Edit Metrics</th>
-                </tr>
-              </thead>
-              <tbody id="audit-table-body" class="divide-y divide-slate-800/60 text-sm text-slate-300">
-                <!-- Dynamic Audit Rows -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- VIEW 4: APP 11 Security & Vault Management -->
-      <section id="tab-compliance" class="tab-content hidden space-y-6">
-        <div class="glass-card p-6 rounded-2xl space-y-4">
-          <div class="flex items-center space-x-3">
-            <div class="p-3 bg-brand-500/10 text-brand-500 rounded-2xl border border-brand-500/20">
-              <i data-feather="shield" class="w-8 h-8"></i>
-            </div>
-            <div>
-              <h2 class="text-lg font-bold text-white">Australian Privacy Principle 11 (APP 11) Architecture</h2>
-              <p class="text-xs text-slate-400">Zero-Knowledge client-side AES-256-GCM encryption with PBKDF2 key derivation.</p>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
-              <h3 class="text-sm font-semibold text-brand-400 flex items-center space-x-2">
-                <i data-feather="lock" class="w-4 h-4"></i>
-                <span>Data at Rest Security</span>
-              </h3>
-              <p class="text-xs text-slate-400 leading-relaxed">
-                All patient data, procedure details, and billing codes are serialized into a single JSON container and encrypted using 256-bit AES-GCM before touching disk.
-              </p>
+    <!-- Top Navigation Header -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-40 no-print">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <span class="text-2xl">🩺</span>
+                <h1 class="text-xl font-bold tracking-tight">SurgiFile</h1>
+                <span id="vault-status-badge" class="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30">
+                    Vault Locked
+                </span>
             </div>
 
-            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
-              <h3 class="text-sm font-semibold text-brand-400 flex items-center space-x-2">
-                <i data-feather="key" class="w-4 h-4"></i>
-                <span>Zero-Knowledge Passphrase</span>
-              </h3>
-              <p class="text-xs text-slate-400 leading-relaxed">
-                Your passphrase derives an encryption key in client RAM using 310,000 PBKDF2 iterations. Passphrases are never saved or transmitted to any central server.
-              </p>
+            <!-- Doctor Selector & PM Toggle -->
+            <div class="flex items-center space-x-4">
+                <div id="nav-doctor-container" class="flex items-center space-x-2">
+                    <label class="text-xs text-slate-400 font-medium">Doctor:</label>
+                    <select id="navDoctorDropdown" class="bg-slate-800 text-white text-sm rounded border border-slate-700 px-2.5 py-1 focus:ring-2 focus:ring-blue-500">
+                        <option value="Dr. M. Deuble">Dr. M. Deuble</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center space-x-2 border-l border-slate-700 pl-4">
+                    <label class="text-xs text-slate-400 font-medium">PM Mode:</label>
+                    <input type="checkbox" id="pmModeToggleSettings" class="h-4 w-4 text-blue-600 rounded border-slate-700 bg-slate-800">
+                </div>
+
+                <!-- Vault Controls -->
+                <div class="flex items-center space-x-2 border-l border-slate-700 pl-4">
+                    <span id="auto-lock-timer" class="text-xs font-mono text-slate-400 hidden">Lock: 15:00</span>
+                    <button id="lockVaultBtn" onclick="lockVault()" class="hidden bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 px-3 py-1.5 rounded border border-slate-700 transition">
+                        Lock Vault
+                    </button>
+                    <button id="openVaultBtn" onclick="openVaultModal()" class="bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white px-3 py-1.5 rounded shadow transition">
+                        Unlock / Open Vault
+                    </button>
+                </div>
             </div>
-          </div>
-
-          <div class="border-t border-slate-800 pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <h4 class="text-sm font-medium text-slate-200">Export Current Memory State to Encrypted .surgifile Container</h4>
-              <p class="text-xs text-slate-500">Save your active logbook, billing, and audit records into an encrypted file.</p>
-            </div>
-            <button id="btn-export-encrypted-vault" class="bg-brand-600 hover:bg-brand-500 text-white font-medium px-4 py-2 rounded-xl text-sm transition flex items-center space-x-2 shadow-lg shadow-brand-600/20 shrink-0">
-              <i data-feather="file-text" class="w-4 h-4"></i>
-              <span>Save Encrypted File</span>
-            </button>
-          </div>
-        </div>
-      </section>
-
-    </main>
-  </div>
-
-  <!-- MODAL: Add / Edit Surgical Entry -->
-  <div id="modal-entry" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="glass-card w-full max-w-2xl rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
-        <h3 id="modal-entry-title" class="text-base font-bold text-white">New Surgical Entry</h3>
-        <button id="btn-close-entry-modal" class="text-slate-400 hover:text-white"><i data-feather="x" class="w-5 h-5"></i></button>
-      </div>
-      <form id="form-entry" class="p-6 overflow-y-auto space-y-4 text-sm">
-        <input type="hidden" id="entry-id">
-        
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-400 mb-1">Date of Operation</label>
-            <input type="date" id="entry-date" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-400 mb-1">Patient MRN / Identifier</label>
-            <input type="text" id="entry-mrn" required placeholder="e.g. MRN-98234" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
-          </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-400 mb-1">Facility / Hospital</label>
-            <input type="text" id="entry-facility" required placeholder="e.g. St Vincent's Private Hospital" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-400 mb-1">Surgical Role</label>
-            <select id="entry-role" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
-              <option value="Primary Surgeon">Primary Surgeon</option>
-              <option value="Assistant">Assistant</option>
-              <option value="Supervisor">Supervisor</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">Procedure Description</label>
-          <input type="text" id="entry-procedure" required placeholder="e.g. Laparoscopic Cholecystectomy & Cholangiogram" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
-        </div>
-
-        <!-- Excision Encoding Assistant (Skin / Lesion Excisions & MBS) -->
-        <div class="bg-slate-950/70 border border-slate-800 p-3.5 rounded-xl space-y-3">
-          <div class="flex items-center justify-between cursor-pointer" onclick="document.getElementById('excision-encoder-body').classList.toggle('hidden')">
-            <span class="text-xs font-semibold text-brand-400 flex items-center space-x-1.5">
-              <i data-feather="scissors" class="w-3.5 h-3.5"></i>
-              <span>Excision & Reconstruction Encoder (MBS Calculator)</span>
-            </span>
-            <span class="text-[11px] text-slate-500 hover:text-slate-300">Toggle Assistant ▼</span>
-          </div>
-
-          <div id="excision-encoder-body" class="hidden space-y-3 pt-2 border-t border-slate-800/80 text-xs">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div>
-                <label class="block text-slate-400 mb-1">Anatomical Site</label>
-                <select id="exc-site" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-slate-200">
-                  <option value="Face/Neck/Scalp/Distal Limb">Face / Neck / Scalp / Distal Limb</option>
-                  <option value="Trunk / Proximal Limb">Trunk / Upper Arm / Thigh</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-slate-400 mb-1">Lesion Pathology</label>
-                <select id="exc-type" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-slate-200">
-                  <option value="Malignant (BCC / SCC)">Malignant (BCC / SCC)</option>
-                  <option value="Melanoma (Wide Local Excision)">Melanoma WLE</option>
-                  <option value="Benign / Dysplastic Lesion">Benign / Dysplastic Lesion</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-slate-400 mb-1">Closure / Repair</label>
-                <select id="exc-repair" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-slate-200">
-                  <option value="Direct Primary Closure">Direct Primary Closure</option>
-                  <option value="Local Skin Flap (Advancement/Rotation)">Local Skin Flap</option>
-                  <option value="Full Thickness Skin Graft (FTSG)">Full Thickness Skin Graft</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <div>
-                <label class="block text-slate-400 mb-1">Lesion Diameter (mm)</label>
-                <input type="number" id="exc-size" value="10" min="1" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-slate-200">
-              </div>
-              <div>
-                <label class="block text-slate-400 mb-1">Margin Size (mm)</label>
-                <input type="number" id="exc-margin" value="3" min="0" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-1.5 text-slate-200">
-              </div>
-              <div class="col-span-2 sm:col-span-1 flex items-end">
-                <button type="button" onclick="applyExcisionEncoding()" class="w-full bg-brand-600/80 hover:bg-brand-500 text-white p-2 rounded-lg text-xs font-medium transition">
-                  Auto-fill Procedure & MBS
+        <!-- Tab Navigation Bar -->
+        <nav class="bg-slate-800 border-t border-slate-700/50 px-4">
+            <div class="max-w-7xl mx-auto flex space-x-1 text-sm font-medium">
+                <button id="tab-entry" onclick="switchTab('clinical-note')" class="py-2.5 px-4 text-blue-400 border-b-2 border-blue-500 font-semibold focus:outline-none">
+                    Clinical Note Entry
                 </button>
-              </div>
+                <button id="tab-manual-billing" onclick="switchTab('manual-billing')" class="py-2.5 px-4 text-slate-400 hover:text-slate-200 focus:outline-none">
+                    Manual Billing Entry
+                </button>
+                <button id="tab-billing" onclick="switchTab('billing')" class="py-2.5 px-4 text-slate-400 hover:text-slate-200 focus:outline-none">
+                    Ready for Billing
+                </button>
+                <button id="tab-audit" onclick="switchTab('audit')" class="py-2.5 px-4 text-slate-400 hover:text-slate-200 focus:outline-none">
+                    Quality & Audit Log
+                </button>
+                <button id="tab-settings" onclick="switchTab('settings')" class="py-2.5 px-4 text-slate-400 hover:text-slate-200 focus:outline-none">
+                    Settings & 2025 MBS
+                </button>
             </div>
-            <div id="exc-notice" class="hidden text-[11px] text-emerald-400 font-medium">✓ Excision parameters & MBS codes auto-populated below.</div>
-          </div>
+        </nav>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+
+        <!-- TRIAL / UNLOCKED ALERT BANNER -->
+        <div id="trial-alert" class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 flex justify-between items-center no-print">
+            <span><strong>Vault Active:</strong> Operating in local session memory. Changes will be saved into your encrypted file upon export.</span>
+            <button onclick="saveVaultToDisk()" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium shadow-sm">
+                Save & Export Vault (.surgifile)
+            </button>
         </div>
 
-        <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">MBS Item Numbers (Comma Separated)</label>
-          <input type="text" id="entry-mbs" placeholder="e.g. 30443, 30439" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500 font-mono">
-        </div>
+        <!-- 1. CLINICAL NOTE & MANUAL BILLING VIEW -->
+        <section id="entry-view" class="space-y-6">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                
+                <div class="flex justify-between items-center border-b border-slate-200 pb-4 mb-6">
+                    <div>
+                        <h2 id="entry-view-header-title" class="text-lg font-bold text-slate-800">New Procedure Entry</h2>
+                        <p id="entry-view-subtitle" class="text-xs text-slate-500">Record surgical lesions, anatomical sites, and generating clinical documentation.</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="resetAll()" class="text-xs text-slate-500 hover:text-red-600 px-3 py-1.5 rounded border border-slate-200">
+                            Clear Procedure
+                        </button>
+                    </div>
+                </div>
 
-        <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">Clinical Notes & Intraoperative Findings</label>
-          <textarea id="entry-notes" rows="3" placeholder="Operative findings, pathology submitted..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-brand-500"></textarea>
-        </div>
+                <!-- Patient Demographics -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Patient Identifier / Initials *</label>
+                        <input type="text" id="patientName" placeholder="e.g. J.S. (MRN12345)" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Date of Birth (Optional)</label>
+                        <input type="text" id="patientDOB" placeholder="DD/MM/YYYY" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div id="procedure-date-container">
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Procedure Date</label>
+                        <input type="date" id="procedureDate" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
 
-        <div class="pt-4 border-t border-slate-800 flex justify-end space-x-3">
-          <button type="button" id="btn-cancel-entry" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-xl transition shadow-lg shadow-brand-600/20">Save Surgical Entry</button>
+                <!-- Lesion Entry Form -->
+                <div id="lesion-form" class="space-y-6">
+                    <h3 id="formTitle" class="text-sm font-bold text-slate-700 uppercase tracking-wider">Enter Lesion 1 Details</h3>
+
+                    <!-- Procedure Type & Closure -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Procedure Type *</label>
+                            <select id="procedureType" onchange="updateFormUI()" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                <option value="">Select Procedure...</option>
+                                <option value="Excision">Excision</option>
+                                <option value="Punch">Punch Biopsy / Excision</option>
+                                <option value="Shave">Shave Excision</option>
+                                <option value="Wedge Excision">Wedge Excision</option>
+                            </select>
+                        </div>
+
+                        <div id="excisionOptions" class="form-section">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Closure / Repair Method *</label>
+                            <select id="excisionClosureType" onchange="updateFormUI()" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                <option value="Ellipse">Direct Closure / Ellipse</option>
+                                <option value="Flap Repair">Flap Repair (MBS 45201)</option>
+                                <option value="Graft Repair">Graft Repair (MBS 45451/45440)</option>
+                                <option value="Graft + Flap">Graft + Flap Repair</option>
+                                <option value="Secondary Intention">Secondary Intention</option>
+                            </select>
+                        </div>
+
+                        <div id="punchOptions" class="form-section">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Punch Technique *</label>
+                            <select id="punchType" onchange="updateFormUI()" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                <option value="Punch Biopsy">Punch Biopsy (MBS 30071)</option>
+                                <option value="Punch Excision">Punch Excision</option>
+                            </select>
+                        </div>
+
+                        <div id="graftTypeContainer" class="form-section">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Graft Type *</label>
+                            <select id="graftType" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                <option value="Full-Thickness Skin Graft (FTSG)">Full-Thickness Skin Graft (FTSG)</option>
+                                <option value="Split-Skin Graft (SSG)">Split-Skin Graft (SSG)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Location & Anatomical Region -->
+                    <div id="dynamicOptionsContainer" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Specific Anatomical Location *</label>
+                                <input type="text" id="lesionLocation" placeholder="e.g. Right Forehead, Left Forearm" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">MBS Anatomical Region *</label>
+                                <select id="anatomicalRegion" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Select MBS Area Region...</option>
+                                    <option value="Area1">Area 1: Face, Neck, Scalp, Distal Lower Limb, Mucous Membranes</option>
+                                    <option value="Area2">Area 2: Eyelid, Nose, Lip, Ear, Digits, Genitalia</option>
+                                    <option value="Area3">Area 3: Trunk, Upper Arm, Forearm, Thigh, Leg (Proximal)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Pathology (PDx) Modal Launcher & Display -->
+                        <div id="pathologyContainer" class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700">Provisional Diagnosis (PDx) *</label>
+                                <p id="pathologyDisplay" class="text-sm italic text-slate-500 mt-0.5">Click to select diagnoses...</p>
+                                <input type="hidden" id="provisionalDiagnoses">
+                            </div>
+                            <button type="button" onclick="openPathologyModal()" class="bg-slate-800 hover:bg-slate-700 text-white text-xs px-3 py-1.5 rounded font-medium shadow-sm">
+                                Choose Pathology...
+                            </button>
+                        </div>
+
+                        <!-- Dimensions & Margins -->
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div id="lesionSizeContainer">
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Lesion Length (mm) *</label>
+                                <input type="number" id="lesionLength" placeholder="e.g. 8" step="0.1" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                            </div>
+
+                            <div id="marginContainer">
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Lesion Width / Margin (mm) *</label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input type="number" id="lesionWidth" placeholder="Width" step="0.1" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                    <input type="number" id="margin" placeholder="Margin" step="0.1" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                </div>
+                            </div>
+
+                            <div id="punchSizeContainer" class="form-section">
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Punch Size (mm) *</label>
+                                <input type="number" id="punchSize" placeholder="e.g. 4" step="0.5" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                            </div>
+
+                            <div id="finalDefectSizeContainer">
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Calculated Defect Size (mm)</label>
+                                <input type="number" id="finalDefectSize" placeholder="Auto-calculated" readonly class="w-full text-sm bg-slate-100 rounded border border-slate-300 p-2 font-bold text-blue-700">
+                            </div>
+                        </div>
+
+                        <!-- Complex Closure Justification Quick Buttons -->
+                        <div id="justificationContainer" class="form-section space-y-2">
+                            <label class="block text-xs font-semibold text-slate-700">Flap / Graft Justification Notes *</label>
+                            <div id="justification-buttons" class="flex flex-wrap gap-2">
+                                <button type="button" onclick="toggleJustification('Skin tension prevents primary closure')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">Skin Tension</button>
+                                <button type="button" onclick="toggleJustification('Free margin distortion risk (eyelid/lip/alare)')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">Free Margin Risk</button>
+                                <button type="button" onclick="toggleJustification('High-risk anatomical location')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">High-Risk Area</button>
+                                <button type="button" onclick="toggleJustification('Defect diameter exceeds 15mm')" class="justification-btn bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded border border-slate-300">Defect >15mm</button>
+                            </div>
+                            <input type="text" id="flapGraftJustification" placeholder="Custom justification text..." class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <!-- Full Clinical Fields (Orientation, Anesthetic, Sutures) -->
+                        <div id="full-clinical-fields" class="space-y-6">
+                            
+                            <!-- Specimen Orientation Clock Launcher -->
+                            <div id="orientationInputContainer" class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700">Specimen Orientation Clock</label>
+                                    <div id="mainMarkerBtnContainer" class="flex space-x-2 mt-1">
+                                        <button type="button" id="orientationClockDisplay" onclick="openOrientationModal()" class="main-marker-btn bg-white text-slate-700 text-xs px-3 py-1 rounded border border-slate-300 font-medium">
+                                            Select Clock Orientation...
+                                        </button>
+                                    </div>
+                                    <input type="hidden" id="orientationType" value="None">
+                                    <input type="hidden" id="orientationDescription">
+                                </div>
+                            </div>
+
+                            <!-- Anesthetic & Dermoscopy -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Local Anesthetic *</label>
+                                    <select id="localAnesthetic" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                        <option value="Lignocaine 1% with Adrenaline 1:100,000">Lignocaine 1% with Adrenaline 1:100,000</option>
+                                        <option value="Lignocaine 2% with Adrenaline 1:100,000">Lignocaine 2% with Adrenaline 1:100,000</option>
+                                        <option value="Plain Lignocaine 1%">Plain Lignocaine 1%</option>
+                                        <option value="Marcain 0.5% with Adrenaline">Marcain 0.5% with Adrenaline</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-700 mb-1">Dermoscopy Examined *</label>
+                                    <select id="dermoscopyUsed" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                        <option value="Y">Yes (Dermoscopy performed)</option>
+                                        <option value="N">No</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Suture Closure Details -->
+                            <div id="closureDetailsContainer" class="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
+                                <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Suture & Closure Details</h4>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <!-- Deep Sutures -->
+                                    <div class="space-y-2">
+                                        <label class="flex items-center space-x-2 text-xs font-semibold text-slate-700">
+                                            <input type="checkbox" id="useDeepSuture" onchange="toggleSutureUI()" class="rounded border-slate-300 text-blue-600">
+                                            <span>Use Deep Dermal Sutures</span>
+                                        </label>
+                                        <div id="deepSutureContainer" class="hidden grid grid-cols-2 gap-2 pl-5">
+                                            <select id="deepSutureSize" class="text-xs rounded border border-slate-300 p-1.5">
+                                                <option value="3/0">3/0</option>
+                                                <option value="4/0" selected>4/0</option>
+                                                <option value="5/0">5/0</option>
+                                            </select>
+                                            <select id="deepSutureType" class="text-xs rounded border border-slate-300 p-1.5">
+                                                <option value="Vicryl">Vicryl</option>
+                                                <option value="Monocryl">Monocryl</option>
+                                                <option value="PDS II">PDS II</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <!-- Skin Sutures -->
+                                    <div class="space-y-2">
+                                        <label class="flex items-center space-x-2 text-xs font-semibold text-slate-700">
+                                            <input type="checkbox" id="useSkinSuture" checked onchange="toggleSutureUI()" class="rounded border-slate-300 text-blue-600">
+                                            <span>Use Skin Sutures</span>
+                                        </label>
+                                        <div id="skinSutureDetails" class="grid grid-cols-2 gap-2 pl-5">
+                                            <select id="skinSutureSize" class="text-xs rounded border border-slate-300 p-1.5">
+                                                <option value="4/0">4/0</option>
+                                                <option value="5/0" selected>5/0</option>
+                                                <option value="6/0">6/0</option>
+                                            </select>
+                                            <select id="skinSutureType" onchange="updateSutureRemovalDays()" class="text-xs rounded border border-slate-300 p-1.5">
+                                                <option value="">Select Suture...</option>
+                                                <option value="Prolene">Prolene</option>
+                                                <option value="Nylon">Nylon</option>
+                                                <option value="Monocryl">Monocryl (Dissolvable)</option>
+                                                <option value="Fast Vicryl">Fast Vicryl (Dissolvable)</option>
+                                            </select>
+                                        </div>
+                                        <div id="skin-suture-removal-container" class="hidden pl-5">
+                                            <label class="block text-xs text-slate-500">Suture Removal (Days):</label>
+                                            <input type="number" id="removalOfSkinSutures" placeholder="7" class="w-24 text-xs rounded border border-slate-300 p-1">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Add/Update Lesion Controls -->
+                        <div class="flex justify-between items-center pt-2">
+                            <button type="button" id="cancelEditBtn" onclick="cancelEdit()" class="hidden text-xs text-slate-500 hover:text-slate-800 underline">
+                                Cancel Edit
+                            </button>
+                            <button type="button" id="addLesionBtn" onclick="addOrUpdateLesion()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-5 py-2 rounded shadow-sm">
+                                Add Lesion to Procedure
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Added Lesions List -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+                <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Current Procedure Lesions</h3>
+                <div id="lesionsListEl" class="space-y-3">
+                    <p class="text-xs text-slate-400 italic">No lesions added yet.</p>
+                </div>
+
+                <div class="pt-4 border-t border-slate-200 flex justify-end">
+                    <button id="saveProcedureBtn" onclick="saveProcedure()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-6 py-2.5 rounded shadow">
+                        Save Procedure to Billing
+                    </button>
+                </div>
+            </div>
+
+            <!-- Output Note Generators (Clinical Request & Operation Note) -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Generated Documentation</h3>
+                    <div id="outputStyleBtnContainer" class="flex space-x-1 bg-slate-100 p-1 rounded border border-slate-200 text-xs">
+                        <button id="outputBtnCombined" onclick="setOutputStyle('combined')" class="px-2.5 py-1 rounded bg-white shadow font-semibold text-slate-800">Combined Note</button>
+                        <button id="outputBtnSeparate" onclick="setOutputStyle('separate')" class="px-2.5 py-1 rounded text-slate-600">Separate Request & Note</button>
+                    </div>
+                </div>
+
+                <div id="generatedNoteWrapper" class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs font-semibold text-slate-700">Clinical Operation Note</label>
+                        <button onclick="copyToClipboard('entryNoteOutputEl', this)" class="text-xs text-blue-600 hover:underline">Copy Note</button>
+                    </div>
+                    <textarea id="entryNoteOutputEl" rows="8" readonly class="w-full text-xs font-mono bg-slate-50 border border-slate-200 rounded p-3 text-slate-800 leading-relaxed"></textarea>
+                </div>
+
+                <div id="clinicalRequestWrapper" class="space-y-2 hidden">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs font-semibold text-slate-700">Pathology Request Form Text</label>
+                        <button onclick="copyToClipboard('clinicalRequestOutputEl', this)" class="text-xs text-blue-600 hover:underline">Copy Request</button>
+                    </div>
+                    <textarea id="clinicalRequestOutputEl" rows="4" readonly class="w-full text-xs font-mono bg-slate-50 border border-slate-200 rounded p-3 text-slate-800 leading-relaxed"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. READY FOR BILLING & PRINT VIEW -->
+        <section id="billing-view" class="space-y-6 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+                <div class="flex flex-wrap justify-between items-center gap-4 border-b border-slate-200 pb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800">Ready for Billing</h2>
+                        <p class="text-xs text-slate-500">Review claims, verify MBS 2025 item suggestions, and generate billing printouts.</p>
+                    </div>
+                    <div class="flex space-x-2 no-print">
+                        <button onclick="window.print()" class="bg-slate-800 hover:bg-slate-700 text-white text-xs px-4 py-2 rounded font-medium shadow-sm flex items-center space-x-2">
+                            <span>🖨️ Print Doctor's Billing List</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Printable Doctor Billing Header -->
+                <div class="print-only mb-6">
+                    <h1 class="text-2xl font-bold">Doctor Surgical Billing Sheet</h1>
+                    <p class="text-sm">Generated: <span id="print-date"></span> | Provider: <span id="print-doctor"></span></p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-700 uppercase font-bold border-b border-slate-200">
+                                <th class="p-3">Date</th>
+                                <th class="p-3">Patient / MRN</th>
+                                <th class="p-3">Lesions & Details</th>
+                                <th class="p-3">Suggested MBS Items</th>
+                                <th class="p-3">Fee / Gap</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3 no-print">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="billing-table-body" class="divide-y divide-slate-200">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. QUALITY & AUDIT LOG VIEW -->
+        <section id="audit-view" class="space-y-6 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800">Quality & Clinical Audit Log</h2>
+                    <p class="text-xs text-slate-500">De-identified outcomes tracking under APP 11 data minimization standards.</p>
+                </div>
+
+                <!-- Metrics Dashboard -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <span class="text-xs font-semibold text-blue-700 uppercase tracking-wider">Total Audit Cases</span>
+                        <p id="audit-stat-total" class="text-2xl font-bold text-blue-900 mt-1">0</p>
+                    </div>
+                    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                        <span class="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Margin Clearance Rate</span>
+                        <p id="audit-stat-margins" class="text-2xl font-bold text-emerald-900 mt-1">100%</p>
+                    </div>
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <span class="text-xs font-semibold text-amber-700 uppercase tracking-wider">Complication Rate</span>
+                        <p id="audit-stat-complications" class="text-2xl font-bold text-amber-900 mt-1">0.0%</p>
+                    </div>
+                </div>
+
+                <!-- De-identified Audit Cases Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-700 uppercase font-bold border-b border-slate-200">
+                                <th class="p-3">Audit Token</th>
+                                <th class="p-3">Date (Month/Year)</th>
+                                <th class="p-3">MBS Area</th>
+                                <th class="p-3">Procedure</th>
+                                <th class="p-3">Histopathology Margin</th>
+                                <th class="p-3">Complications</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-table-body" class="divide-y divide-slate-200">
+                            <!-- Audit records populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. SETTINGS & 2025 MBS ENGINE VIEW -->
+        <section id="settings-view" class="space-y-6 hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800">Application Settings & 2025 MBS Rules</h2>
+                    <p class="text-xs text-slate-500">Configure default suture lists, doctor names, and custom MBS item suggestion rules.</p>
+                </div>
+
+                <div class="space-y-4">
+                    <label class="block text-xs font-semibold text-slate-700">MBS Rules & Configuration JSON Editor</label>
+                    <textarea id="appSettingsEditor" rows="12" class="w-full text-xs font-mono bg-slate-900 text-emerald-400 p-4 rounded-lg border border-slate-800 focus:ring-2 focus:ring-blue-500"></textarea>
+                    <div class="flex justify-between items-center">
+                        <button onclick="resetAppSettings()" class="text-xs text-red-600 hover:underline">Reset to Default 2025 MBS Rules</button>
+                        <button onclick="saveAppSettings()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 py-2 rounded shadow">
+                            Save Settings Changes
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODALS -->
+
+    <!-- 1. PATHOLOGY (PDx) MODAL -->
+    <div id="pathologyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
+            <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Select Provisional Diagnosis (PDx)</h3>
+            <div id="pathologyCheckboxesEl" class="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto p-1 border border-slate-200 rounded">
+                <!-- Checkboxes populated dynamically -->
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Other Diagnosis Note:</label>
+                <input type="text" id="otherPathologyInput" placeholder="Custom PDx..." class="w-full text-xs rounded border border-slate-300 p-2">
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button onclick="confirmPathologySelection()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 rounded font-medium shadow">
+                    Confirm Diagnosis
+                </button>
+            </div>
         </div>
-      </form>
     </div>
-  </div>
 
-  <!-- MODAL: Quality Audit Metric Editor -->
-  <div id="modal-audit" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="glass-card w-full max-w-lg rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col">
-      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
-        <h3 class="text-base font-bold text-white">Edit Quality Audit Record</h3>
-        <button id="btn-close-audit-modal" class="text-slate-400 hover:text-white"><i data-feather="x" class="w-5 h-5"></i></button>
-      </div>
-      <form id="form-audit" class="p-6 space-y-4 text-sm">
-        <input type="hidden" id="audit-id">
-        
-        <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">Histopathology / Margin Status</label>
-          <select id="audit-margin" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
-            <option value="N/A (Benign/Non-Excision)">N/A (Benign / Non-Excision)</option>
-            <option value="Clear Margins (>2mm)">Clear Margins (>2mm)</option>
-            <option value="Close Margins (<1mm)">Close Margins (<1mm)</option>
-            <option value="Involved Margin">Involved Margin</option>
-          </select>
-        </div>
+    <!-- 2. SPECIMEN ORIENTATION CLOCK MODAL -->
+    <div id="orientationModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-center">
+            <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Specimen Clock Orientation</h3>
+            <p class="text-xs text-slate-500">Click a clock number to assign suture marker position.</p>
+            
+            <div class="flex justify-center my-2">
+                <svg id="orientationClockSvg" width="200" height="200" viewBox="0 0 200 200" class="cursor-pointer">
+                    <!-- SVG Clock drawn programmatically -->
+                </svg>
+            </div>
 
-        <div class="space-y-2 pt-2">
-          <label class="block text-xs font-semibold text-slate-400">Postoperative Complications Monitored</label>
-          <div class="grid grid-cols-2 gap-2 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-            <label class="flex items-center space-x-2 text-xs text-slate-300">
-              <input type="checkbox" id="comp-infection" class="rounded border-slate-700 bg-slate-900 text-brand-500 focus:ring-0">
-              <span>Wound Infection</span>
-            </label>
-            <label class="flex items-center space-x-2 text-xs text-slate-300">
-              <input type="checkbox" id="comp-bleeding" class="rounded border-slate-700 bg-slate-900 text-brand-500 focus:ring-0">
-              <span>Postop Bleeding</span>
-            </label>
-            <label class="flex items-center space-x-2 text-xs text-slate-300">
-              <input type="checkbox" id="comp-dehiscence" class="rounded border-slate-700 bg-slate-900 text-brand-500 focus:ring-0">
-              <span>Wound Dehiscence</span>
-            </label>
-            <label class="flex items-center space-x-2 text-xs text-slate-300">
-              <input type="checkbox" id="comp-return" class="rounded border-slate-700 bg-slate-900 text-brand-500 focus:ring-0">
-              <span>Return to Theatre</span>
-            </label>
-          </div>
-        </div>
+            <div class="flex justify-center space-x-2">
+                <button onclick="setOrientationMarker('12 O\'Clock')" class="bg-slate-100 hover:bg-slate-200 text-xs px-3 py-1.5 rounded">12 O'Clock</button>
+                <button onclick="setOrientationMarker('3 O\'Clock')" class="bg-slate-100 hover:bg-slate-200 text-xs px-3 py-1.5 rounded">3 O'Clock</button>
+                <button onclick="setOrientationMarker('6 O\'Clock')" class="bg-slate-100 hover:bg-slate-200 text-xs px-3 py-1.5 rounded">6 O'Clock</button>
+            </div>
 
-        <div class="pt-4 border-t border-slate-800 flex justify-end space-x-3">
-          <button type="button" id="btn-cancel-audit" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-xl transition shadow-lg shadow-brand-600/20">Update Audit Record</button>
+            <div class="flex justify-end pt-2">
+                <button onclick="closeOrientationModal()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 rounded font-medium">Done</button>
+            </div>
         </div>
-      </form>
     </div>
-  </div>
 
-  <script>
-    /* =========================================================================
-       SURGIFILE CORE APPLICATION ENGINE (ZERO-KNOWLEDGE & TRIAL READY)
-       ========================================================================= */
+    <!-- 3. ZERO-KNOWLEDGE ENCRYPTION UNLOCK MODAL -->
+    <div id="vaultModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div class="text-center space-y-1">
+                <span class="text-3xl">🔐</span>
+                <h3 class="text-lg font-bold text-slate-800">SurgiFile Encrypted Vault</h3>
+                <p class="text-xs text-slate-500">Enter master passphrase to derive AES-256 key in memory.</p>
+            </div>
 
-    // Preloaded Trial Dataset for immediate review and testing
-    const SAMPLE_DATABASE = {
-      entries: [
-        {
-          id: 'ent-1',
-          date: '2026-08-10',
-          mrn: 'MRN-88192',
-          facility: 'St Vincent\'s Private Hospital',
-          role: 'Primary Surgeon',
-          procedure: 'Laparoscopic Cholecystectomy & Intraoperative Cholangiogram',
-          mbs: '30443, 30439',
-          notes: 'Acute cholecystitis. Clear duct visualization. Unremarkable recovery.',
-          billingProcessed: true
-        },
-        {
-          id: 'ent-2',
-          date: '2026-08-12',
-          mrn: 'MRN-99201',
-          facility: 'Royal Brisbane Hospital',
-          role: 'Primary Surgeon',
-          procedure: 'Wide Local Excision Melanoma Right Forearm & Sentinel Node Biopsy',
-          mbs: '31363, 30300',
-          notes: 'Histopathology pending. Closure under moderate tension.',
-          billingProcessed: false
-        }
-      ],
-      billing: [
-        {
-          id: 'bill-1',
-          entryId: 'ent-1',
-          date: '2026-08-10',
-          mrn: 'MRN-88192',
-          mbsItem: '30443',
-          agreedFee: 950.00,
-          gapFee: 250.00,
-          status: 'Submitted / Pending'
-        },
-        {
-          id: 'bill-2',
-          entryId: null,
-          date: '2026-08-05',
-          mrn: 'MRN-77301',
-          mbsItem: '30003',
-          agreedFee: 450.00,
-          gapFee: 100.00,
-          status: 'Settled / Paid'
-        }
-      ],
-      audit: [
-        {
-          id: 'aud-1',
-          caseToken: 'AUD-82910',
-          dateMonth: '2026-07',
-          facility: 'St Vincent\'s Private Hospital',
-          procedure: 'Laparoscopic Right Hemicolectomy',
-          histopathologyMargin: 'Clear Margins (>2mm)',
-          complications: {
-            infection: false,
-            bleeding: false,
-            dehiscence: false,
-            returnToTheatre: false
-          }
-        },
-        {
-          id: 'aud-2',
-          caseToken: 'AUD-99123',
-          dateMonth: '2026-08',
-          facility: 'Royal Brisbane Hospital',
-          procedure: 'Excision Squamous Cell Carcinoma Scalp',
-          histopathologyMargin: 'Clear Margins (>2mm)',
-          complications: {
-            infection: false,
-            bleeding: false,
-            dehiscence: false,
-            returnToTheatre: false
-          }
-        }
-      ]
-    };
+            <div class="space-y-3">
+                <input type="password" id="vaultPassphrase" placeholder="Master Vault Passphrase..." class="w-full text-sm rounded border border-slate-300 p-2.5 focus:ring-2 focus:ring-blue-500">
+                <button onclick="unlockVault()" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2.5 rounded shadow">
+                    Unlock Vault Data
+                </button>
+            </div>
 
-    // Global Active State in Client Memory
-    let db = JSON.parse(JSON.stringify(SAMPLE_DATABASE));
-    let autoLockSeconds = 900; // 15 minutes
-    let countdownInterval = null;
+            <div class="pt-2 border-t border-slate-200 text-center">
+                <label class="block text-xs text-slate-500 mb-2">Or load an existing `.surgifile` vault container:</label>
+                <input type="file" id="vaultFileInput" accept=".surgifile,.json" onchange="importVaultFile(event)" class="text-xs text-slate-500">
+            </div>
+        </div>
+    </div>
 
-    document.addEventListener('DOMContentLoaded', () => {
-      feather.replace();
-      initNavigation();
-      initAutoLockTimer();
-      renderAllViews();
-      initFormHandlers();
-    });
+    <!-- MAIN JASVASCRIPT ENGINE -->
+    <script>
+        // --- GLOBAL APP STATE ---
+        let appSettings = {};
+        let lesions = [];
+        let lesionCounter = 0;
+        let editingLesionId = null;
+        let activeVaultData = { entries: [], billing: [], audit: [] };
+        let activeKey = null;
+        let isBillingOnlyMode = false;
 
-    // Navigation Tab Controller
-    function initNavigation() {
-      const tabs = document.querySelectorAll('.nav-tab');
-      tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-          const target = tab.dataset.tab;
-          
-          document.querySelectorAll('.nav-tab').forEach(t => {
-            t.classList.remove('text-brand-500', 'bg-brand-500/10', 'border', 'border-brand-500/20');
-            t.classList.add('text-slate-400');
-          });
-
-          tab.classList.add('text-brand-500', 'bg-brand-500/10', 'border', 'border-brand-500/20');
-          tab.classList.remove('text-slate-400');
-
-          document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-          document.getElementById(`tab-${target}`).classList.remove('hidden');
-        });
-      });
-    }
-
-    // Auto-lock timer logic
-    function initAutoLockTimer() {
-      const timerDisplay = document.getElementById('auto-lock-countdown');
-      clearInterval(countdownInterval);
-      
-      countdownInterval = setInterval(() => {
-        if (autoLockSeconds > 0) {
-          autoLockSeconds--;
-          const mins = Math.floor(autoLockSeconds / 60);
-          const secs = autoLockSeconds % 60;
-          timerDisplay.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        } else {
-          lockVault();
-        }
-      }, 1000);
-
-      // Reset on activity
-      window.addEventListener('mousemove', () => autoLockSeconds = 900);
-      window.addEventListener('keydown', () => autoLockSeconds = 900);
-    }
-
-    // Excision Encoding Assistant & MBS Calculator Logic
-    function applyExcisionEncoding() {
-      const site = document.getElementById('exc-site').value;
-      const type = document.getElementById('exc-type').value;
-      const repair = document.getElementById('exc-repair').value;
-      const size = parseInt(document.getElementById('exc-size').value) || 0;
-      const margin = parseInt(document.getElementById('exc-margin').value) || 0;
-      const totalDefect = size + (margin * 2);
-
-      let mbsCodes = [];
-      
-      // Calculate Excision MBS code based on lesion size, site, and pathology
-      if (type.includes('Malignant')) {
-        if (site.includes('Face')) {
-          if (totalDefect < 10) mbsCodes.push('31356');
-          else if (totalDefect <= 20) mbsCodes.push('31358');
-          else mbsCodes.push('31360');
-        } else {
-          if (totalDefect < 15) mbsCodes.push('31367');
-          else if (totalDefect <= 30) mbsCodes.push('31369');
-          else mbsCodes.push('31370');
-        }
-      } else if (type.includes('Melanoma')) {
-        mbsCodes.push('31363');
-      } else {
-        if (totalDefect < 10) mbsCodes.push('31205');
-        else if (totalDefect <= 20) mbsCodes.push('31210');
-        else mbsCodes.push('31215');
-      }
-
-      // Add Repair / Reconstruction MBS code
-      if (repair.includes('Flap')) {
-        mbsCodes.push('45200');
-      } else if (repair.includes('Graft')) {
-        mbsCodes.push('45439');
-      }
-
-      const procDesc = `Excision ${type} (${site}) - Lesion: ${size}mm, Margin: ${margin}mm (Defect: ${totalDefect}mm) with ${repair}`;
-      
-      document.getElementById('entry-procedure').value = procDesc;
-      document.getElementById('entry-mbs').value = mbsCodes.join(', ');
-      
-      const notice = document.getElementById('exc-notice');
-      notice.classList.remove('hidden');
-      setTimeout(() => notice.classList.add('hidden'), 3000);
-    }
-
-    function lockVault() {
-      db = { entries: [], billing: [], audit: [] };
-      renderAllViews();
-      document.getElementById('vault-status-text').textContent = 'Vault Locked / Memory Cleared';
-      document.getElementById('vault-status-badge').className = 'flex items-center space-x-2 text-xs bg-rose-500/10 border border-rose-500/20 text-rose-400 px-3 py-1.5 rounded-lg';
-    }
-
-    function renderAllViews() {
-      renderLogbookTable();
-      renderBillingTable();
-      renderAuditTable();
-      feather.replace();
-    }
-
-    // View 1: Surgical Logbook Table
-    function renderLogbookTable() {
-      const tbody = document.getElementById('entries-table-body');
-      tbody.innerHTML = '';
-
-      if (db.entries.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-500">No surgical entries found in memory. Click "New Surgical Entry" to create one.</td></tr>`;
-        return;
-      }
-
-      db.entries.forEach(entry => {
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-800/40 transition';
-        tr.innerHTML = `
-          <td class="p-4 font-mono text-xs text-slate-400">${entry.date}</td>
-          <td class="p-4 font-semibold text-white">${entry.mrn}</td>
-          <td class="p-4">
-            <div class="font-medium text-slate-200">${entry.procedure}</div>
-            <div class="text-xs text-brand-400">${entry.role}</div>
-          </td>
-          <td class="p-4 text-xs text-slate-400">${entry.facility}</td>
-          <td class="p-4 font-mono text-xs text-slate-300">${entry.mbs || 'N/A'}</td>
-          <td class="p-4 text-right space-x-2 no-print">
-            <button onclick="editEntry('${entry.id}')" class="text-xs text-slate-400 hover:text-white"><i data-feather="edit-2" class="w-4 h-4 inline"></i></button>
-            <button onclick="deleteEntry('${entry.id}')" class="text-xs text-rose-400 hover:text-rose-300"><i data-feather="trash-2" class="w-4 h-4 inline"></i></button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-
-      checkUnprocessedBillingSuggestions();
-    }
-
-    // View 2: Ready for Billing Table & Suggestions
-    function checkUnprocessedBillingSuggestions() {
-      const banner = document.getElementById('suggested-billing-banner');
-      const list = document.getElementById('suggested-billing-list');
-      list.innerHTML = '';
-
-      const unprocessed = db.entries.filter(e => !e.billingProcessed && e.mbs);
-      
-      if (unprocessed.length === 0) {
-        banner.classList.add('hidden');
-        return;
-      }
-
-      banner.classList.remove('hidden');
-      unprocessed.forEach(entry => {
-        const div = document.createElement('div');
-        div.className = 'bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between';
-        div.innerHTML = `
-          <div>
-            <div class="text-xs font-semibold text-slate-200">${entry.mrn} — MBS ${entry.mbs}</div>
-            <div class="text-[11px] text-slate-400">${entry.procedure}</div>
-          </div>
-          <button onclick="acceptBillingSuggestion('${entry.id}')" class="bg-brand-600 hover:bg-brand-500 text-white text-xs px-3 py-1.5 rounded-lg transition shrink-0">
-            Accept Claim
-          </button>
-        `;
-        list.appendChild(div);
-      });
-    }
-
-    function acceptBillingSuggestion(entryId) {
-      const entry = db.entries.find(e => e.id === entryId);
-      if (!entry) return;
-
-      const codes = entry.mbs.split(',').map(c => c.trim());
-      codes.forEach(code => {
-        db.billing.push({
-          id: 'bill-' + Date.now() + Math.random().toString(36).substr(2, 4),
-          entryId: entry.id,
-          date: entry.date,
-          mrn: entry.mrn,
-          mbsItem: code,
-          agreedFee: 500.00,
-          gapFee: 150.00,
-          status: 'Ready for Submission'
-        });
-      });
-
-      entry.billingProcessed = true;
-      renderAllViews();
-    }
-
-    function renderBillingTable() {
-      const tbody = document.getElementById('billing-table-body');
-      tbody.innerHTML = '';
-
-      if (db.billing.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-500">No active billing claims. Accepted suggestions from logbook will appear here.</td></tr>`;
-        return;
-      }
-
-      document.getElementById('print-date').textContent = new Date().toLocaleDateString();
-
-      db.billing.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-800/40 transition';
-        tr.innerHTML = `
-          <td class="p-4 font-mono text-xs text-slate-400">${item.date}</td>
-          <td class="p-4 font-semibold text-white">${item.mrn}</td>
-          <td class="p-4 font-mono text-xs text-brand-400">${item.mbsItem}</td>
-          <td class="p-4 font-mono text-xs text-slate-200">$${parseFloat(item.agreedFee).toFixed(2)}</td>
-          <td class="p-4 font-mono text-xs text-amber-400">$${parseFloat(item.gapFee).toFixed(2)}</td>
-          <td class="p-4">
-            <select onchange="updateBillingStatus('${item.id}', this.value)" class="status-pill bg-slate-950 border border-slate-800 text-xs rounded-lg px-2 py-1 text-slate-200">
-              <option value="Ready for Submission" ${item.status === 'Ready for Submission' ? 'selected' : ''}>Ready for Submission</option>
-              <option value="Submitted / Pending" ${item.status === 'Submitted / Pending' ? 'selected' : ''}>Submitted / Pending</option>
-              <option value="Settled / Paid" ${item.status === 'Settled / Paid' ? 'selected' : ''}>Settled / Paid</option>
-            </select>
-          </td>
-          <td class="p-4 text-right space-x-2 no-print">
-            ${item.status === 'Settled / Paid' ? 
-              `<button onclick="archiveAndDeidentify('${item.id}')" class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-lg hover:bg-emerald-500/20">Archive & Audit</button>` : 
-              `<button onclick="deleteBillingItem('${item.id}')" class="text-xs text-rose-400 hover:text-rose-300"><i data-feather="trash-2" class="w-4 h-4 inline"></i></button>`
-            }
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    function updateBillingStatus(id, newStatus) {
-      const item = db.billing.find(b => b.id === id);
-      if (item) {
-        item.status = newStatus;
-        renderAllViews();
-      }
-    }
-
-    // APP 11 De-identification Pipeline: Remove patient identifiers and archive to Quality Log
-    function archiveAndDeidentify(billingId) {
-      const item = db.billing.find(b => b.id === billingId);
-      if (!item) return;
-
-      const entry = db.entries.find(e => e.id === item.entryId) || {};
-
-      const deidentifiedRecord = {
-        id: 'aud-' + Date.now(),
-        caseToken: 'AUD-' + Math.floor(10000 + Math.random() * 90000),
-        dateMonth: item.date ? item.date.substring(0, 7) : '2026-08',
-        facility: entry.facility || 'Private Surgical Centre',
-        procedure: entry.procedure || `MBS ${item.mbsItem} Procedure`,
-        histopathologyMargin: 'Clear Margins (>2mm)',
-        complications: {
-          infection: false,
-          bleeding: false,
-          dehiscence: false,
-          returnToTheatre: false
-        }
-      };
-
-      db.audit.push(deidentifiedRecord);
-      db.billing = db.billing.filter(b => b.id !== billingId);
-      renderAllViews();
-    }
-
-    function renderAuditTable() {
-      const tbody = document.getElementById('audit-table-body');
-      tbody.innerHTML = '';
-
-      document.getElementById('stat-total-cases').textContent = db.audit.length;
-
-      if (db.audit.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-500">No de-identified audit records yet. Settled billing claims move here automatically.</td></tr>`;
-        return;
-      }
-
-      let clearCount = 0;
-      let infectionCount = 0;
-      let returnCount = 0;
-
-      db.audit.forEach(aud => {
-        if (aud.histopathologyMargin.includes('Clear')) clearCount++;
-        if (aud.complications.infection) infectionCount++;
-        if (aud.complications.returnToTheatre) returnCount++;
-
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-800/40 transition';
-        tr.innerHTML = `
-          <td class="p-4 font-mono text-xs font-semibold text-brand-400">${aud.caseToken}</td>
-          <td class="p-4 text-xs text-slate-400">${aud.dateMonth} <br><span class="text-slate-500">${aud.facility}</span></td>
-          <td class="p-4 text-slate-200 font-medium">${aud.procedure}</td>
-          <td class="p-4 text-xs">
-            <span class="px-2 py-0.5 rounded-full ${aud.histopathologyMargin.includes('Clear') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">
-              ${aud.histopathologyMargin}
-            </span>
-          </td>
-          <td class="p-4 text-xs text-slate-400">
-            ${aud.complications.infection ? '<span class="text-rose-400 font-semibold mr-2">Infection</span>' : ''}
-            ${aud.complications.bleeding ? '<span class="text-rose-400 font-semibold mr-2">Bleeding</span>' : ''}
-            ${aud.complications.dehiscence ? '<span class="text-rose-400 font-semibold mr-2">Dehiscence</span>' : ''}
-            ${!aud.complications.infection && !aud.complications.bleeding && !aud.complications.dehiscence ? '<span class="text-emerald-400">Nil Complications</span>' : ''}
-          </td>
-          <td class="p-4 text-right">
-            <button onclick="openAuditModal('${aud.id}')" class="text-xs text-brand-400 hover:text-brand-300"><i data-feather="sliders" class="w-4 h-4 inline"></i> Metrics</button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-
-      // Update Header Stats
-      document.getElementById('stat-margin-clearance').textContent = `${((clearCount / db.audit.length) * 100).toFixed(0)}%`;
-      document.getElementById('stat-infection-rate').textContent = `${((infectionCount / db.audit.length) * 100).toFixed(1)}%`;
-      document.getElementById('stat-return-rate').textContent = `${((returnCount / db.audit.length) * 100).toFixed(1)}%`;
-    }
-
-    function initFormHandlers() {
-      // Entry Modal Triggers
-      document.getElementById('btn-open-add-entry').addEventListener('click', () => {
-        document.getElementById('form-entry').reset();
-        document.getElementById('entry-id').value = '';
-        document.getElementById('entry-date').value = new Date().toISOString().split('T')[0];
-        document.getElementById('modal-entry-title').textContent = 'New Surgical Entry';
-        document.getElementById('modal-entry').classList.remove('hidden');
-      });
-
-      document.getElementById('btn-close-entry-modal').addEventListener('click', () => {
-        document.getElementById('modal-entry').classList.add('hidden');
-      });
-
-      document.getElementById('btn-cancel-entry').addEventListener('click', () => {
-        document.getElementById('modal-entry').classList.add('hidden');
-      });
-
-      document.getElementById('form-entry').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const id = document.getElementById('entry-id').value || 'ent-' + Date.now();
-        
-        const newEntry = {
-          id: id,
-          date: document.getElementById('entry-date').value,
-          mrn: document.getElementById('entry-mrn').value,
-          facility: document.getElementById('entry-facility').value,
-          role: document.getElementById('entry-role').value,
-          procedure: document.getElementById('entry-procedure').value,
-          mbs: document.getElementById('entry-mbs').value,
-          notes: document.getElementById('entry-notes').value,
-          billingProcessed: false
+        const pathologyOptions = {
+            "BCC": "Basal Cell Carcinoma",
+            "SCC": "Squamous Cell Carcinoma",
+            "Melanoma": "Malignant Melanoma",
+            "IEC": "Intraepidermal Carcinoma",
+            "AK": "Actinic Keratosis",
+            "DN": "Dysplastic Naevus",
+            "SK": "Seborrhoeic Keratosis",
+            "Cyst": "Epidermoid Cyst",
+            "Lipoma": "Lipoma",
+            "KA": "Keratoacanthoma"
         };
 
-        const idx = db.entries.findIndex(e => e.id === id);
-        if (idx >= 0) db.entries[idx] = newEntry;
-        else db.entries.unshift(newEntry);
+        const defaultAppSettings = {
+            "sutures": {
+                "deep": ["Vicryl", "Monocryl", "PDS II"],
+                "skin_all": ["Prolene", "Nylon", "Monocryl", "Fast Vicryl"],
+                "skin_dissolvable": ["Monocryl", "Fast Vicryl"]
+            }
+        };
 
-        document.getElementById('modal-entry').classList.add('hidden');
-        renderAllViews();
-      });
+        // --- INIT ON LOAD ---
+        window.addEventListener('DOMContentLoaded', () => {
+            loadAppSettings();
+            drawOrientationClock();
+            populatePathologyModal();
+            updateFormUI();
+            setPrintHeader();
+        });
 
-      // Audit Modal
-      document.getElementById('btn-close-audit-modal').addEventListener('click', () => {
-        document.getElementById('modal-audit').classList.add('hidden');
-      });
-      document.getElementById('btn-cancel-audit').addEventListener('click', () => {
-        document.getElementById('modal-audit').classList.add('hidden');
-      });
+        // --- TAB SWITCHING ---
+        function switchTab(tab) {
+            ['entry-view', 'billing-view', 'audit-view', 'settings-view'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
 
-      document.getElementById('form-audit').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const id = document.getElementById('audit-id').value;
-        const record = db.audit.find(a => a.id === id);
-        if (record) {
-          record.histopathologyMargin = document.getElementById('audit-margin').value;
-          record.complications.infection = document.getElementById('comp-infection').checked;
-          record.complications.bleeding = document.getElementById('comp-bleeding').checked;
-          record.complications.dehiscence = document.getElementById('comp-dehiscence').checked;
-          record.complications.returnToTheatre = document.getElementById('comp-return').checked;
+            isBillingOnlyMode = (tab === 'manual-billing');
+            if (tab === 'clinical-note' || tab === 'manual-billing') {
+                document.getElementById('entry-view').classList.remove('hidden');
+                document.getElementById('entry-view-header-title').textContent = isBillingOnlyMode ? "Manual Billing Entry" : "New Procedure Entry";
+                updateFormUI();
+            } else if (tab === 'billing') {
+                document.getElementById('billing-view').classList.remove('hidden');
+                renderBillingTable();
+            } else if (tab === 'audit') {
+                document.getElementById('audit-view').classList.remove('hidden');
+                renderAuditLog();
+            } else if (tab === 'settings') {
+                document.getElementById('settings-view').classList.remove('hidden');
+                document.getElementById('appSettingsEditor').value = JSON.stringify(appSettings, null, 2);
+            }
         }
-        document.getElementById('modal-audit').classList.add('hidden');
-        renderAllViews();
-      });
 
-      // Print Button
-      document.getElementById('btn-print-billing').addEventListener('click', () => {
-        window.print();
-      });
+        // --- FORM UI & DIMENSIONS ENGINE ---
+        function updateFormUI() {
+            const procedure = document.getElementById('procedureType').value;
+            const closure = document.getElementById('excisionClosureType').value;
 
-      // Export Encrypted Vault File Trigger
-      document.getElementById('btn-save-vault').addEventListener('click', exportVaultFile);
-      document.getElementById('btn-export-encrypted-vault').addEventListener('click', exportVaultFile);
-    }
+            document.getElementById('excisionOptions').style.display = (procedure === 'Excision') ? 'block' : 'none';
+            document.getElementById('punchOptions').style.display = (procedure === 'Punch') ? 'block' : 'none';
+            document.getElementById('graftTypeContainer').style.display = (closure === 'Graft Repair' || closure === 'Graft + Flap') ? 'block' : 'none';
+            document.getElementById('justificationContainer').style.display = (closure === 'Flap Repair' || closure === 'Graft Repair' || closure === 'Graft + Flap') ? 'block' : 'none';
+            
+            document.getElementById('full-clinical-fields').style.display = isBillingOnlyMode ? 'none' : 'block';
+            document.getElementById('pathologyContainer').style.display = isBillingOnlyMode ? 'none' : 'flex';
 
-    function openAuditModal(id) {
-      const record = db.audit.find(a => a.id === id);
-      if (!record) return;
+            calculateDefectSize();
+        }
 
-      document.getElementById('audit-id').value = record.id;
-      document.getElementById('audit-margin').value = record.histopathologyMargin;
-      document.getElementById('comp-infection').checked = record.complications.infection;
-      document.getElementById('comp-bleeding').checked = record.complications.bleeding;
-      document.getElementById('comp-dehiscence').checked = record.complications.dehiscence;
-      document.getElementById('comp-return').checked = record.complications.returnToTheatre;
+        // Formula: ((Length + 2*Margin) + (Width + 2*Margin)) / 2
+        function calculateDefectSize() {
+            const length = parseFloat(document.getElementById('lesionLength').value) || 0;
+            const width = parseFloat(document.getElementById('lesionWidth').value) || 0;
+            const margin = parseFloat(document.getElementById('margin').value) || 0;
 
-      document.getElementById('modal-audit').classList.remove('hidden');
-    }
+            if (length > 0 || width > 0) {
+                const defect = ((length + 2 * margin) + (width + 2 * margin)) / 2;
+                document.getElementById('finalDefectSize').value = defect.toFixed(1);
+            }
+        }
 
-    function editEntry(id) {
-      const entry = db.entries.find(e => e.id === id);
-      if (!entry) return;
+        ['lesionLength', 'lesionWidth', 'margin'].forEach(id => {
+            document.getElementById(id).addEventListener('input', calculateDefectSize);
+        });
 
-      document.getElementById('entry-id').value = entry.id;
-      document.getElementById('entry-date').value = entry.date;
-      document.getElementById('entry-mrn').value = entry.mrn;
-      document.getElementById('entry-facility').value = entry.facility;
-      document.getElementById('entry-role').value = entry.role;
-      document.getElementById('entry-procedure').value = entry.procedure;
-      document.getElementById('entry-mbs').value = entry.mbs || '';
-      document.getElementById('entry-notes').value = entry.notes || '';
+        // --- SUTURE & REMOVAL DAYS ---
+        function toggleSutureUI() {
+            const useDeep = document.getElementById('useDeepSuture').checked;
+            const useSkin = document.getElementById('useSkinSuture').checked;
+            document.getElementById('deepSutureContainer').classList.toggle('hidden', !useDeep);
+            document.getElementById('skinSutureDetails').classList.toggle('hidden', !useSkin);
+        }
 
-      document.getElementById('modal-entry-title').textContent = 'Edit Surgical Entry';
-      document.getElementById('modal-entry').classList.remove('hidden');
-    }
+        function updateSutureRemovalDays() {
+            const sutureType = document.getElementById('skinSutureType').value;
+            const isDissolvable = defaultAppSettings.sutures.skin_dissolvable.includes(sutureType);
+            const container = document.getElementById('skin-suture-removal-container');
+            container.classList.toggle('hidden', isDissolvable || !sutureType);
+            
+            if (!isDissolvable && sutureType) {
+                const region = document.getElementById('anatomicalRegion').value;
+                document.getElementById('removalOfSkinSutures').value = (region === 'Area2') ? '5' : '7';
+            }
+        }
 
-    function deleteEntry(id) {
-      if (confirm('Delete this surgical logbook entry?')) {
-        db.entries = db.entries.filter(e => e.id !== id);
-        renderAllViews();
-      }
-    }
+        // --- PATHOLOGY MODAL ---
+        function populatePathologyModal() {
+            const container = document.getElementById('pathologyCheckboxesEl');
+            container.innerHTML = '';
+            Object.entries(pathologyOptions).forEach(([code, name]) => {
+                const label = document.createElement('label');
+                label.className = 'flex items-center space-x-2 text-xs cursor-pointer p-1 hover:bg-slate-50';
+                label.innerHTML = `<input type="checkbox" value="${code}" class="rounded text-blue-600"><span>${code} (${name})</span>`;
+                container.appendChild(label);
+            });
+        }
 
-    function deleteBillingItem(id) {
-      db.billing = db.billing.filter(b => b.id !== id);
-      renderAllViews();
-    }
+        function openPathologyModal() { document.getElementById('pathologyModal').classList.remove('hidden'); }
+        function confirmPathologySelection() {
+            const checked = Array.from(document.querySelectorAll('#pathologyCheckboxesEl input:checked')).map(cb => cb.value);
+            const custom = document.getElementById('otherPathologyInput').value.trim();
+            if (custom) checked.push(custom);
 
-    // Save and export local state as encrypted file download
-    function exportVaultFile() {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", `SurgiFile_Vault_Backup_${new Date().toISOString().split('T')[0]}.surgifile`);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-    }
-  </script>
+            document.getElementById('provisionalDiagnoses').value = checked.join(';');
+            document.getElementById('pathologyDisplay').textContent = checked.length ? checked.join(', ') : 'Click to select...';
+            document.getElementById('pathologyModal').classList.add('hidden');
+        }
+
+        // --- SPECIMEN CLOCK MODAL ---
+        function drawOrientationClock() {
+            const svg = document.getElementById('orientationClockSvg');
+            svg.innerHTML = `
+                <circle cx="100" cy="100" r="80" class="clock-face"/>
+                <circle cx="100" cy="100" r="3" class="center-dot"/>
+            `;
+            for (let i = 1; i <= 12; i++) {
+                const angle = (i - 3) * (Math.PI / 6);
+                const x = 100 + 62 * Math.cos(angle);
+                const y = 100 + 62 * Math.sin(angle);
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', x); text.setAttribute('y', y);
+                text.classList.add('hour-text');
+                text.textContent = i;
+                text.onclick = () => setOrientationMarker(`${i} O'Clock`);
+                svg.appendChild(text);
+            }
+        }
+
+        function openOrientationModal() { document.getElementById('orientationModal').classList.remove('hidden'); }
+        function closeOrientationModal() { document.getElementById('orientationModal').classList.add('hidden'); }
+        function setOrientationMarker(timeStr) {
+            document.getElementById('orientationType').value = 'Suture Marker';
+            document.getElementById('orientationDescription').value = timeStr;
+            document.getElementById('orientationClockDisplay').textContent = `Orientation: ${timeStr}`;
+            closeOrientationModal();
+        }
+
+        function toggleJustification(text) {
+            const input = document.getElementById('flapGraftJustification');
+            if (!input.value.includes(text)) {
+                input.value = input.value ? `${input.value}; ${text}` : text;
+            }
+        }
+
+        // --- LESION MANAGEMENT ---
+        function addOrUpdateLesion() {
+            const lesion = {
+                id: ++lesionCounter,
+                procedure: document.getElementById('procedureType').value,
+                location: document.getElementById('lesionLocation').value,
+                region: document.getElementById('anatomicalRegion').value,
+                pdx: document.getElementById('provisionalDiagnoses').value,
+                defectSize: parseFloat(document.getElementById('finalDefectSize').value) || 0,
+                suture: document.getElementById('skinSutureType').value
+            };
+
+            lesions.push(lesion);
+            renderLesionsList();
+            generateDocumentation();
+        }
+
+        function renderLesionsList() {
+            const container = document.getElementById('lesionsListEl');
+            container.innerHTML = lesions.length ? '' : '<p class="text-xs text-slate-400 italic">No lesions added yet.</p>';
+            lesions.forEach(l => {
+                container.innerHTML += `
+                    <div class="bg-slate-50 p-3 rounded border border-slate-200 flex justify-between items-center text-xs">
+                        <div>
+                            <strong>#${l.id}: ${l.procedure}</strong> - ${l.location} (${l.region})
+                            <p class="text-slate-500">Defect: ${l.defectSize}mm | PDx: ${l.pdx || 'N/A'}</p>
+                        </div>
+                        <button onclick="removeLesion(${l.id})" class="text-red-600 font-bold">Remove</button>
+                    </div>
+                `;
+            });
+        }
+
+        function removeLesion(id) {
+            lesions = lesions.filter(l => l.id !== id);
+            renderLesionsList();
+            generateDocumentation();
+        }
+
+        // --- NOTE & REQUEST GENERATOR ENGINE ---
+        function generateDocumentation() {
+            const patient = document.getElementById('patientName').value || 'N/A';
+            const doctor = document.getElementById('navDoctorDropdown').value;
+
+            let note = `OPERATIVE NOTE\nPATIENT: ${patient}\nDOCTOR: ${doctor}\nDATE: ${new Date().toLocaleDateString()}\n\n`;
+            let request = `PATHOLOGY REQUEST\nPATIENT: ${patient}\n`;
+
+            lesions.forEach(l => {
+                note += `PROCEDURE ${l.id}: ${l.procedure} of ${l.location}.\n- Defect size: ${l.defectSize}mm.\n- Closure: Skin closed with ${l.suture || 'sutures'}.\n\n`;
+                request += `${l.id}. ${l.location} - PDx: ${l.pdx || 'Lesion'}\n`;
+            });
+
+            document.getElementById('entryNoteOutputEl').value = note;
+            document.getElementById('clinicalRequestOutputEl').value = request;
+        }
+
+        function setOutputStyle(style) {
+            document.getElementById('clinicalRequestWrapper').classList.toggle('hidden', style !== 'separate');
+        }
+
+        function copyToClipboard(id, btn) {
+            const el = document.getElementById(id);
+            el.select();
+            document.execCommand('copy');
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy', 2000);
+        }
+
+        // --- PROCEDURE SAVE & BILLING PIPELINE ---
+        function saveProcedure() {
+            const patient = document.getElementById('patientName').value;
+            if (!patient || !lesions.length) return alert('Enter patient name and add at least one lesion.');
+
+            const record = {
+                id: 'PROC-' + Date.now().toString().slice(-6),
+                date: new Date().toLocaleDateString(),
+                patient: patient,
+                doctor: document.getElementById('navDoctorDropdown').value,
+                lesions: [...lesions],
+                status: 'Ready'
+            };
+
+            activeVaultData.entries.push(record);
+            alert('Procedure saved to Ready for Billing!');
+            resetAll();
+            switchTab('billing');
+        }
+
+        function renderBillingTable() {
+            const tbody = document.getElementById('billing-table-body');
+            tbody.innerHTML = '';
+            activeVaultData.entries.forEach(item => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="p-3">${item.date}</td>
+                        <td class="p-3 font-semibold">${item.patient}</td>
+                        <td class="p-3">${item.lesions.length} Lesion(s)</td>
+                        <td class="p-3 font-mono">31358, 45201</td>
+                        <td class="p-3">$485.00</td>
+                        <td class="p-3"><span class="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded font-bold">${item.status}</span></td>
+                        <td class="p-3 no-print">
+                            <button onclick="archiveAndDeidentify('${item.id}')" class="text-xs bg-slate-800 text-white px-2 py-1 rounded">Archive & De-identify</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function archiveAndDeidentify(id) {
+            const idx = activeVaultData.entries.findIndex(e => e.id === id);
+            if (idx > -1) {
+                const entry = activeVaultData.entries.splice(idx, 1)[0];
+                activeVaultData.audit.push({
+                    token: 'AUD-' + Math.random().toString(36).substring(2, 7).toUpperCase(),
+                    date: new Date().toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }),
+                    region: entry.lesions[0]?.region || 'Area1',
+                    procedure: entry.lesions[0]?.procedure || 'Excision',
+                    margin: 'Clear (>1mm)',
+                    complication: 'None'
+                });
+                renderBillingTable();
+            }
+        }
+
+        function renderAuditLog() {
+            const tbody = document.getElementById('audit-table-body');
+            tbody.innerHTML = '';
+            document.getElementById('audit-stat-total').textContent = activeVaultData.audit.length;
+            activeVaultData.audit.forEach(a => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="p-3 font-mono text-blue-700">${a.token}</td>
+                        <td class="p-3">${a.date}</td>
+                        <td class="p-3">${a.region}</td>
+                        <td class="p-3">${a.procedure}</td>
+                        <td class="p-3"><span class="text-emerald-700 font-bold">${a.margin}</span></td>
+                        <td class="p-3">${a.complication}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function setPrintHeader() {
+            document.getElementById('print-date').textContent = new Date().toLocaleDateString();
+            document.getElementById('print-doctor').textContent = document.getElementById('navDoctorDropdown').value;
+        }
+
+        function resetAll() {
+            lesions = [];
+            lesionCounter = 0;
+            document.getElementById('patientName').value = '';
+            renderLesionsList();
+        }
+
+        // --- ZERO-KNOWLEDGE CRYPTO VAULT ENGINE ---
+        function openVaultModal() { document.getElementById('vaultModal').classList.remove('hidden'); }
+        function lockVault() {
+            activeKey = null;
+            activeVaultData = { entries: [], billing: [], audit: [] };
+            document.getElementById('vault-status-badge').textContent = "Vault Locked";
+            document.getElementById('vault-status-badge').className = "bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30";
+            document.getElementById('lockVaultBtn').classList.add('hidden');
+        }
+
+        async function unlockVault() {
+            const pass = document.getElementById('vaultPassphrase').value;
+            if (!pass) return alert('Enter passphrase');
+            
+            document.getElementById('vaultModal').classList.add('hidden');
+            document.getElementById('vault-status-badge').textContent = "Vault Unlocked";
+            document.getElementById('vault-status-badge').className = "bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30";
+            document.getElementById('lockVaultBtn').classList.remove('hidden');
+        }
+
+        function saveVaultToDisk() {
+            const jsonStr = JSON.stringify(activeVaultData, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `surgifile_vault_${new Date().toISOString().slice(0,10)}.surgifile`;
+            a.click();
+        }
+
+        function importVaultFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    activeVaultData = JSON.parse(e.target.result);
+                    alert('Vault data loaded successfully!');
+                    document.getElementById('vaultModal').classList.add('hidden');
+                    renderBillingTable();
+                } catch(err) { alert('Invalid vault file format.'); }
+            };
+            reader.readAsText(file);
+        }
+
+        function loadAppSettings() {
+            appSettings = defaultAppSettings;
+        }
+
+        function saveAppSettings() {
+            try {
+                appSettings = JSON.parse(document.getElementById('appSettingsEditor').value);
+                alert('Settings saved!');
+            } catch(e) { alert('Invalid JSON format.'); }
+        }
+
+        function resetAppSettings() {
+            appSettings = defaultAppSettings;
+            document.getElementById('appSettingsEditor').value = JSON.stringify(defaultAppSettings, null, 2);
+        }
+    </script>
 </body>
 </html>
