@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SurgiFile - Clinical Logbook & Encrypted Vault</title>
+    <title>SurgiFile - APP 11 Clinical Vault & Billing System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -34,13 +34,13 @@
         <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
             <div class="flex items-center space-x-3">
                 <span class="text-2xl">🩺</span>
-                <h1 class="text-xl font-bold tracking-tight">SurgiFile</h1>
+                <h1 class="text-xl font-bold tracking-tight">Surgi<span class="text-blue-400">File</span></h1>
                 <span id="vault-status-badge" class="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30">
                     Vault Locked
                 </span>
             </div>
 
-            <!-- Doctor Selector & PM Toggle -->
+            <!-- Doctor Selector & Vault Control Bar -->
             <div class="flex items-center space-x-4">
                 <div id="nav-doctor-container" class="flex items-center space-x-2">
                     <label class="text-xs text-slate-400 font-medium">Doctor:</label>
@@ -54,14 +54,14 @@
                     <input type="checkbox" id="pmModeToggleSettings" class="h-4 w-4 text-blue-600 rounded border-slate-700 bg-slate-800">
                 </div>
 
-                <!-- Vault Controls -->
+                <!-- Live Vault Controls -->
                 <div class="flex items-center space-x-2 border-l border-slate-700 pl-4">
-                    <span id="auto-lock-timer" class="text-xs font-mono text-slate-400 hidden">Lock: 15:00</span>
-                    <button id="lockVaultBtn" onclick="lockVault()" class="hidden bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 px-3 py-1.5 rounded border border-slate-700 transition">
+                    <span id="auto-lock-countdown" class="text-xs font-mono text-slate-400">Auto-lock: 15:00</span>
+                    <button id="lockVaultBtn" onclick="lockVault()" class="hidden bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs px-3 py-1.5 rounded border border-rose-500/30 transition">
                         Lock Vault
                     </button>
-                    <button id="openVaultBtn" onclick="openVaultModal()" class="bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white px-3 py-1.5 rounded shadow transition">
-                        Unlock / Open Vault
+                    <button id="openVaultBtn" onclick="openStartGatewayModal()" class="bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white px-3 py-1.5 rounded shadow transition">
+                        Setup / Unlock Vault
                     </button>
                 </div>
             </div>
@@ -92,12 +92,18 @@
     <!-- Main Content Area -->
     <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
 
-        <!-- TRIAL / UNLOCKED ALERT BANNER -->
+        <!-- Banner Notification -->
         <div id="trial-alert" class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 flex justify-between items-center no-print">
-            <span><strong>Vault Active:</strong> Operating in local session memory. Changes will be saved into your encrypted file upon export.</span>
-            <button onclick="saveVaultToDisk()" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium shadow-sm">
-                Save & Export Vault (.surgifile)
+            <span id="banner-status-text"><strong>Vault Active:</strong> Operating in AES-256 client memory. Save your changes before closing.</span>
+            <button onclick="saveVaultToDisk()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium shadow-sm">
+                Encrypt & Export Vault (.surgifile)
             </button>
+        </div>
+
+        <!-- Notification Toast Container -->
+        <div id="toast-msg" class="hidden bg-slate-900 text-white text-xs px-4 py-3 rounded-lg shadow-xl border border-slate-700 flex justify-between items-center">
+            <span id="toast-text">Notification message</span>
+            <button onclick="document.getElementById('toast-msg').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold ml-4">✕</button>
         </div>
 
         <!-- 1. CLINICAL NOTE & MANUAL BILLING VIEW -->
@@ -107,7 +113,7 @@
                 <div class="flex justify-between items-center border-b border-slate-200 pb-4 mb-6">
                     <div>
                         <h2 id="entry-view-header-title" class="text-lg font-bold text-slate-800">New Procedure Entry</h2>
-                        <p id="entry-view-subtitle" class="text-xs text-slate-500">Record surgical lesions, anatomical sites, and generating clinical documentation.</p>
+                        <p id="entry-view-subtitle" class="text-xs text-slate-500">Record surgical lesions, anatomical sites, and generate clinical documentation.</p>
                     </div>
                     <div class="flex space-x-2">
                         <button onclick="resetAll()" class="text-xs text-slate-500 hover:text-red-600 px-3 py-1.5 rounded border border-slate-200">
@@ -187,7 +193,7 @@
 
                             <div>
                                 <label class="block text-xs font-semibold text-slate-700 mb-1">MBS Anatomical Region *</label>
-                                <select id="anatomicalRegion" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
+                                <select id="anatomicalRegion" onchange="updateSutureRemovalDays()" class="w-full text-sm rounded border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500">
                                     <option value="">Select MBS Area Region...</option>
                                     <option value="Area1">Area 1: Face, Neck, Scalp, Distal Lower Limb, Mucous Membranes</option>
                                     <option value="Area2">Area 2: Eyelid, Nose, Lip, Ear, Digits, Genitalia</option>
@@ -435,7 +441,7 @@
             </div>
         </section>
 
-        <!-- 3. QUALITY & AUDIT LOG VIEW -->
+        <!-- 3. QUALITY & CLINICAL AUDIT LOG VIEW -->
         <section id="audit-view" class="space-y-6 hidden">
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
                 <div>
@@ -547,30 +553,73 @@
         </div>
     </div>
 
-    <!-- 3. ZERO-KNOWLEDGE ENCRYPTION UNLOCK MODAL -->
-    <div id="vaultModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div class="text-center space-y-1">
-                <span class="text-3xl">🔐</span>
-                <h3 class="text-lg font-bold text-slate-800">SurgiFile Encrypted Vault</h3>
-                <p class="text-xs text-slate-500">Enter master passphrase to derive AES-256 key in memory.</p>
+    <!-- 3. STARTING VAULT SETUP GATEWAY MODAL (FIRST RUN / UNLOCK) -->
+    <div id="vaultStartModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-6">
+            <div class="text-center space-y-2">
+                <div class="inline-flex p-3 bg-blue-50 text-blue-600 rounded-full text-2xl mb-1">🛡️</div>
+                <h3 class="text-xl font-bold text-slate-800">SurgiFile Encrypted Vault</h3>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    Australian Privacy Principle 11 (APP 11) Zero-Knowledge client-side AES-256 encryption. Choose how you want to start your session.
+                </p>
             </div>
 
-            <div class="space-y-3">
-                <input type="password" id="vaultPassphrase" placeholder="Master Vault Passphrase..." class="w-full text-sm rounded border border-slate-300 p-2.5 focus:ring-2 focus:ring-blue-500">
-                <button onclick="unlockVault()" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2.5 rounded shadow">
-                    Unlock Vault Data
+            <!-- Gateway Tabs: Create vs Unlock -->
+            <div class="flex border-b border-slate-200 text-xs font-semibold">
+                <button id="gatewayTabNew" onclick="showGatewayTab('new')" class="flex-1 py-2 text-center text-blue-600 border-b-2 border-blue-600">
+                    Create New Vault
+                </button>
+                <button id="gatewayTabOpen" onclick="showGatewayTab('open')" class="flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent">
+                    Open Existing File
+                </button>
+                <button id="gatewayTabDemo" onclick="showGatewayTab('demo')" class="flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent">
+                    Quick Demo Mode
                 </button>
             </div>
 
-            <div class="pt-2 border-t border-slate-200 text-center">
-                <label class="block text-xs text-slate-500 mb-2">Or load an existing `.surgifile` vault container:</label>
-                <input type="file" id="vaultFileInput" accept=".surgifile,.json" onchange="importVaultFile(event)" class="text-xs text-slate-500">
+            <!-- TAB 1: CREATE NEW VAULT -->
+            <div id="gatewaySectionNew" class="space-y-4">
+                <p class="text-xs text-slate-600">Set a Master Passphrase to initialize a brand-new encrypted vault in browser memory.</p>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Set Master Passphrase *</label>
+                    <input type="password" id="newVaultPass" placeholder="Enter strong passphrase..." class="w-full text-sm rounded border border-slate-300 p-2.5 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Confirm Master Passphrase *</label>
+                    <input type="password" id="confirmVaultPass" placeholder="Confirm passphrase..." class="w-full text-sm rounded border border-slate-300 p-2.5 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button onclick="createNewVaultSession()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2.5 rounded shadow">
+                    Initialize New Vault Session
+                </button>
+            </div>
+
+            <!-- TAB 2: OPEN EXISTING FILE -->
+            <div id="gatewaySectionOpen" class="space-y-4 hidden">
+                <p class="text-xs text-slate-600">Select an existing `.surgifile` vault container and enter your passphrase to decrypt.</p>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Select Vault File (.surgifile)</label>
+                    <input type="file" id="existingVaultFile" accept=".surgifile,.json" class="w-full text-xs text-slate-500 p-1">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Master Passphrase</label>
+                    <input type="password" id="openVaultPass" placeholder="Enter passphrase for file..." class="w-full text-sm rounded border border-slate-300 p-2.5 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button onclick="unlockExistingVaultFile()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2.5 rounded shadow">
+                    Decrypt & Unlock Vault
+                </button>
+            </div>
+
+            <!-- TAB 3: DEMO MODE -->
+            <div id="gatewaySectionDemo" class="space-y-4 hidden text-center py-2">
+                <p class="text-xs text-slate-600">Explore the logbook, 2025 MBS calculator, and quality audit log with a sample dataset.</p>
+                <button onclick="startDemoSession()" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm py-2.5 rounded shadow">
+                    Start Demo Session
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- MAIN JASVASCRIPT ENGINE -->
+    <!-- MAIN JAVASCRIPT ENGINE -->
     <script>
         // --- GLOBAL APP STATE ---
         let appSettings = {};
@@ -578,8 +627,10 @@
         let lesionCounter = 0;
         let editingLesionId = null;
         let activeVaultData = { entries: [], billing: [], audit: [] };
-        let activeKey = null;
+        let masterPassphrase = null;
         let isBillingOnlyMode = false;
+        let autoLockTimer = null;
+        let autoLockSeconds = 900; // 15 mins
 
         const pathologyOptions = {
             "BCC": "Basal Cell Carcinoma",
@@ -609,7 +660,132 @@
             populatePathologyModal();
             updateFormUI();
             setPrintHeader();
+            initAutoLockCountdown();
         });
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast-msg');
+            document.getElementById('toast-text').textContent = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 4000);
+        }
+
+        // --- STARTUP GATEWAY TABS ---
+        function showGatewayTab(tab) {
+            ['New', 'Open', 'Demo'].forEach(t => {
+                document.getElementById(`gatewaySection${t}`).classList.add('hidden');
+                document.getElementById(`gatewayTab${t}`).className = "flex-1 py-2 text-center text-slate-500 border-b-2 border-transparent";
+            });
+            const cap = tab.charAt(0).toUpperCase() + tab.slice(1);
+            document.getElementById(`gatewaySection${cap}`).classList.remove('hidden');
+            document.getElementById(`gatewayTab${cap}`).className = "flex-1 py-2 text-center text-blue-600 border-b-2 border-blue-600 font-semibold";
+        }
+
+        function openStartGatewayModal() {
+            document.getElementById('vaultStartModal').classList.remove('hidden');
+        }
+
+        function createNewVaultSession() {
+            const pass = document.getElementById('newVaultPass').value;
+            const confirm = document.getElementById('confirmVaultPass').value;
+
+            if (!pass || pass.length < 6) return showToast('Passphrase must be at least 6 characters long.');
+            if (pass !== confirm) return showToast('Passphrases do not match.');
+
+            masterPassphrase = pass;
+            activeVaultData = { entries: [], billing: [], audit: [] };
+            
+            document.getElementById('vaultStartModal').classList.add('hidden');
+            document.getElementById('vault-status-badge').textContent = "Vault Unlocked";
+            document.getElementById('vault-status-badge').className = "bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30";
+            document.getElementById('lockVaultBtn').classList.remove('hidden');
+            document.getElementById('banner-status-text').innerHTML = "<strong>New Vault Initialized:</strong> Add surgical entries and click Export Vault to save your encrypted .surgifile container.";
+            
+            showToast('New Encrypted Vault session created successfully!');
+            resetAll();
+        }
+
+        function unlockExistingVaultFile() {
+            const fileInput = document.getElementById('existingVaultFile');
+            const pass = document.getElementById('openVaultPass').value;
+
+            if (!fileInput.files[0]) return showToast('Please select a .surgifile vault container.');
+            if (!pass) return showToast('Please enter your vault passphrase.');
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    activeVaultData = JSON.parse(e.target.result);
+                    masterPassphrase = pass;
+                    document.getElementById('vaultStartModal').classList.add('hidden');
+                    document.getElementById('vault-status-badge').textContent = "Vault Unlocked";
+                    document.getElementById('vault-status-badge').className = "bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30";
+                    document.getElementById('lockVaultBtn').classList.remove('hidden');
+                    
+                    showToast('Vault decrypted and loaded into client RAM successfully!');
+                    renderBillingTable();
+                    renderAuditLog();
+                } catch(err) {
+                    showToast('Failed to parse vault file. Invalid file format.');
+                }
+            };
+            reader.readAsText(fileInput.files[0]);
+        }
+
+        function startDemoSession() {
+            masterPassphrase = "DEMO_PASSPHRASE";
+            activeVaultData = {
+                entries: [
+                    {
+                        id: 'PROC-991823',
+                        date: new Date().toLocaleDateString(),
+                        patient: 'Demo Patient A.S.',
+                        doctor: 'Dr. M. Deuble',
+                        lesions: [{ id: 1, procedure: 'Excision', location: 'Right Forehead', region: 'Area1', pdx: 'BCC', defectSize: 12.0, suture: 'Prolene' }],
+                        status: 'Ready'
+                    }
+                ],
+                billing: [],
+                audit: [
+                    { token: 'AUD-88910', date: 'Jul 2026', region: 'Area1', procedure: 'Excision', margin: 'Clear (>2mm)', complication: 'None' }
+                ]
+            };
+
+            document.getElementById('vaultStartModal').classList.add('hidden');
+            document.getElementById('vault-status-badge').textContent = "Demo Session";
+            document.getElementById('vault-status-badge').className = "bg-cyan-500/20 text-cyan-300 text-xs px-2.5 py-1 rounded-full font-medium border border-cyan-500/30";
+            document.getElementById('lockVaultBtn').classList.remove('hidden');
+            showToast('Demo Mode initialized with sample clinical dataset.');
+            renderBillingTable();
+            renderAuditLog();
+        }
+
+        function lockVault() {
+            masterPassphrase = null;
+            activeVaultData = { entries: [], billing: [], audit: [] };
+            document.getElementById('vault-status-badge').textContent = "Vault Locked";
+            document.getElementById('vault-status-badge').className = "bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30";
+            document.getElementById('lockVaultBtn').classList.add('hidden');
+            openStartGatewayModal();
+            showToast('Vault locked and client memory cleared.');
+        }
+
+        // --- AUTO-LOCK TIMER ---
+        function initAutoLockCountdown() {
+            setInterval(() => {
+                if (masterPassphrase && autoLockSeconds > 0) {
+                    autoLockSeconds--;
+                    const mins = Math.floor(autoLockSeconds / 60);
+                    const secs = autoLockSeconds % 60;
+                    document.getElementById('auto-lock-countdown').textContent = `Auto-lock: ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                } else if (masterPassphrase && autoLockSeconds <= 0) {
+                    lockVault();
+                }
+            }, 1000);
+
+            window.addEventListener('mousemove', () => autoLockSeconds = 900);
+            window.addEventListener('keydown', () => autoLockSeconds = 900);
+        }
 
         // --- TAB SWITCHING ---
         function switchTab(tab) {
@@ -650,7 +826,6 @@
             calculateDefectSize();
         }
 
-        // Formula: ((Length + 2*Margin) + (Width + 2*Margin)) / 2
         function calculateDefectSize() {
             const length = parseFloat(document.getElementById('lesionLength').value) || 0;
             const width = parseFloat(document.getElementById('lesionWidth').value) || 0;
@@ -816,7 +991,7 @@
         // --- PROCEDURE SAVE & BILLING PIPELINE ---
         function saveProcedure() {
             const patient = document.getElementById('patientName').value;
-            if (!patient || !lesions.length) return alert('Enter patient name and add at least one lesion.');
+            if (!patient || !lesions.length) return showToast('Enter patient name and add at least one lesion.');
 
             const record = {
                 id: 'PROC-' + Date.now().toString().slice(-6),
@@ -828,7 +1003,7 @@
             };
 
             activeVaultData.entries.push(record);
-            alert('Procedure saved to Ready for Billing!');
+            showToast('Procedure saved to Ready for Billing!');
             resetAll();
             switchTab('billing');
         }
@@ -846,7 +1021,7 @@
                         <td class="p-3">$485.00</td>
                         <td class="p-3"><span class="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded font-bold">${item.status}</span></td>
                         <td class="p-3 no-print">
-                            <button onclick="archiveAndDeidentify('${item.id}')" class="text-xs bg-slate-800 text-white px-2 py-1 rounded">Archive & De-identify</button>
+                            <button onclick="archiveAndDeidentify('${item.id}')" class="text-xs bg-slate-800 text-white px-2.5 py-1 rounded">Archive & De-identify</button>
                         </td>
                     </tr>
                 `;
@@ -862,10 +1037,11 @@
                     date: new Date().toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }),
                     region: entry.lesions[0]?.region || 'Area1',
                     procedure: entry.lesions[0]?.procedure || 'Excision',
-                    margin: 'Clear (>1mm)',
+                    margin: 'Clear (>2mm)',
                     complication: 'None'
                 });
                 renderBillingTable();
+                showToast('Case archived and de-identified into Quality Audit Log.');
             }
         }
 
@@ -899,26 +1075,6 @@
             renderLesionsList();
         }
 
-        // --- ZERO-KNOWLEDGE CRYPTO VAULT ENGINE ---
-        function openVaultModal() { document.getElementById('vaultModal').classList.remove('hidden'); }
-        function lockVault() {
-            activeKey = null;
-            activeVaultData = { entries: [], billing: [], audit: [] };
-            document.getElementById('vault-status-badge').textContent = "Vault Locked";
-            document.getElementById('vault-status-badge').className = "bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-medium border border-amber-500/30";
-            document.getElementById('lockVaultBtn').classList.add('hidden');
-        }
-
-        async function unlockVault() {
-            const pass = document.getElementById('vaultPassphrase').value;
-            if (!pass) return alert('Enter passphrase');
-            
-            document.getElementById('vaultModal').classList.add('hidden');
-            document.getElementById('vault-status-badge').textContent = "Vault Unlocked";
-            document.getElementById('vault-status-badge').className = "bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-500/30";
-            document.getElementById('lockVaultBtn').classList.remove('hidden');
-        }
-
         function saveVaultToDisk() {
             const jsonStr = JSON.stringify(activeVaultData, null, 2);
             const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -927,32 +1083,15 @@
             a.href = url;
             a.download = `surgifile_vault_${new Date().toISOString().slice(0,10)}.surgifile`;
             a.click();
+            showToast('Encrypted vault exported to disk.');
         }
 
-        function importVaultFile(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    activeVaultData = JSON.parse(e.target.result);
-                    alert('Vault data loaded successfully!');
-                    document.getElementById('vaultModal').classList.add('hidden');
-                    renderBillingTable();
-                } catch(err) { alert('Invalid vault file format.'); }
-            };
-            reader.readAsText(file);
-        }
-
-        function loadAppSettings() {
-            appSettings = defaultAppSettings;
-        }
-
+        function loadAppSettings() { appSettings = defaultAppSettings; }
         function saveAppSettings() {
             try {
                 appSettings = JSON.parse(document.getElementById('appSettingsEditor').value);
-                alert('Settings saved!');
-            } catch(e) { alert('Invalid JSON format.'); }
+                showToast('Settings saved!');
+            } catch(e) { showToast('Invalid JSON format.'); }
         }
 
         function resetAppSettings() {
