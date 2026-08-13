@@ -1194,15 +1194,36 @@
         }
 
         function calculateDefectSize() {
+            const proc = document.getElementById('procedureType') ? document.getElementById('procedureType').value : '';
+            const punchType = document.getElementById('punchType') ? document.getElementById('punchType').value : '';
             const length = parseFloat(document.getElementById('lesionLength').value) || 0;
             const width = parseFloat(document.getElementById('lesionWidth').value) || 0;
             const margin = parseFloat(document.getElementById('margin').value) || 0;
+            const punchSize = parseFloat(document.getElementById('punchSize').value) || 0;
 
-            if (length > 0 || width > 0) {
-                const defect = ((length + 2 * margin) + (width + 2 * margin)) / 2;
-                document.getElementById('finalDefectSize').value = defect.toFixed(1);
+            let defect = 0;
+            if (proc === 'Punch' && punchType === 'Punch Biopsy') {
+                defect = punchSize;
+            } else if (length > 0 || width > 0) {
+                // Formula: Average diameter = ((Length + 2*Margin) + (Width + 2*Margin)) / 2
+                defect = ((length + (2 * margin)) + (width + (2 * margin))) / 2;
             }
+
+            const defectEl = document.getElementById('finalDefectSize');
+            if (defectEl) {
+                defectEl.value = defect > 0 ? defect.toFixed(1) : '';
+            }
+            return defect;
         }
+
+        // Attach event listeners for real-time defect size calculation
+        ['lesionLength', 'lesionWidth', 'margin', 'punchSize', 'procedureType', 'punchType', 'excisionClosureType'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', () => { calculateDefectSize(); generateDocumentation(); });
+                el.addEventListener('change', () => { calculateDefectSize(); generateDocumentation(); });
+            }
+        });
 
         // --- SUTURES & REMOVAL DAYS ---
         function toggleSutureUI() {
@@ -1288,20 +1309,57 @@
         }
 
         // --- LESION MANAGEMENT & MBS CALCULATOR ---
-        function calculateSuggestedMBSItem(lesion) {
-            const isMalignant = (lesion.pdx.includes("BCC") || lesion.pdx.includes("SCC") || lesion.pdx.includes("Melanoma"));
-            const category = isMalignant ? "Malignant" : "Non-Malignant";
-            const region = lesion.region || "Area1";
-            const defect = lesion.defectSize || 0;
+        function addOrUpdateLesion() {
+            const proc = document.getElementById('procedureType').value;
+            const location = document.getElementById('lesionLocation').value;
+            if (!proc || !location) return showToast("Select procedure type and anatomical location.");
 
-            let code = "31358";
-            try {
-                const rules = defaultAppSettings.excisions[category][region];
-                for (const r of rules) {
-                    if ((r.minSize === undefined || defect >= r.minSize) && (r.maxSize === undefined || defect <= r.maxSize)) {
-                        code = r.item;
-                        break;
-                    }
+            // Calculate defect size directly to guarantee non-zero value
+            const computedDefect = calculateDefectSize();
+            const defectSizeVal = parseFloat(document.getElementById('finalDefectSize').value) || computedDefect || 0;
+
+            const lesion = {
+                id: ++lesionCounter,
+                procedure: proc,
+                closure: document.getElementById('excisionClosureType').value,
+                punchType: document.getElementById('punchType').value,
+                graftType: document.getElementById('graftType').value,
+                location: location,
+                region: document.getElementById('anatomicalRegion').value,
+                pdx: document.getElementById('provisionalDiagnoses').value || 'Skin Lesion',
+                length: document.getElementById('lesionLength').value,
+                width: document.getElementById('lesionWidth').value,
+                margin: document.getElementById('margin').value,
+                punchSize: document.getElementById('punchSize').value,
+                defectSize: defectSizeVal,
+                justification: document.getElementById('flapGraftJustification').value,
+                prep: document.getElementById('skinPrepSolution').value,
+                anesthetic: document.getElementById('localAnesthetic').value,
+                anestheticVol: document.getElementById('anestheticVolume').value,
+                depth: document.getElementById('excisionDepth').value,
+                hemostasis: document.getElementById('hemostasisMethod').value,
+                dermoscopy: document.getElementById('dermoscopyUsed').value,
+                dressing: document.getElementById('dressingApplied').value,
+                orientationType: document.getElementById('orientationType').value,
+                orientationDescription: document.getElementById('orientationDescription').value,
+                useDeep: document.getElementById('useDeepSuture').checked,
+                deepSize: document.getElementById('deepSutureSize').value,
+                deepType: document.getElementById('deepSutureType').value,
+                useSkin: document.getElementById('useSkinSuture').checked,
+                skinSize: document.getElementById('skinSutureSize').value,
+                skinType: document.getElementById('skinSutureType').value,
+                sutureRemovalDays: document.getElementById('removalOfSkinSutures').value
+            };
+
+            lesion.suggestedCode = calculateSuggestedMBSItem(lesion);
+            if (lesion.closure === 'Flap Repair') lesion.repairCode = '45201';
+            if (lesion.closure === 'Graft Repair') lesion.repairCode = '45451';
+
+            lesions.push(lesion);
+            renderLesionsList();
+            generateDocumentation();
+            showToast(`Lesion #${lesion.id} added (${lesion.defectSize}mm defect).`);
+        }
                 }
             } catch (e) { code = "31358"; }
             return code;
