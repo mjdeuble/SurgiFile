@@ -100,7 +100,7 @@
             </button>
         </div>
 
-        <!-- Toast Notification Container (z-[100] ABOVE ALL MODALS) -->
+        <!-- Toast Notification Container -->
         <div id="toast-msg" class="hidden fixed bottom-5 right-5 z-[100] bg-slate-900 text-white text-xs px-4 py-3 rounded-lg shadow-2xl border border-slate-700 flex justify-between items-center space-x-4">
             <span id="toast-text">Notification message</span>
             <button onclick="document.getElementById('toast-msg').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold ml-2">✕</button>
@@ -629,6 +629,9 @@
                         <button id="confirmAllSuggestedBtn" onclick="confirmAllSuggestedCodes()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded font-semibold shadow-sm">
                             ✅ Confirm & Assign All Codes
                         </button>
+                        <button onclick="addCustomBillingItem()" class="text-xs bg-slate-100 hover:bg-slate-200 text-blue-700 px-2.5 py-1 rounded font-semibold border border-slate-300">
+                            + Add Custom Code
+                        </button>
                     </div>
                 </div>
 
@@ -658,7 +661,7 @@
         </div>
     </div>
 
-    <!-- STARTUP VAULT GATEWAY MODAL (z-50) -->
+    <!-- STARTUP VAULT GATEWAY MODAL -->
     <div id="startGatewayModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4 relative">
             <button onclick="closeStartGatewayModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700 font-bold text-lg focus:outline-none" title="Close Popup">✕</button>
@@ -865,7 +868,6 @@
             document.getElementById('startGatewayModal').classList.add('hidden');
         }
 
-        // --- GATEWAY & PASSWORD SETUP ---
         function openStartGatewayModal() { 
             clearGatewayError();
             document.getElementById('startGatewayModal').classList.remove('hidden'); 
@@ -969,7 +971,7 @@
                 } catch (err) {
                     console.error("Decryption error:", err);
                     showGatewayError("Decryption failed. Incorrect passphrase or incompatible file format.");
-                } fontFinally: {
+                } finally {
                     if (decryptBtn) {
                         decryptBtn.disabled = false;
                         decryptBtn.textContent = "Decrypt & Unlock Vault";
@@ -1029,7 +1031,6 @@
             startAutoLockTimer();
         }
 
-        // --- AUTO-SAVE ENCRYPTION ENGINE ---
         async function autoSaveVault() {
             if (!activePassphrase) return;
             try {
@@ -1039,8 +1040,10 @@
                 
                 const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 const badge = document.getElementById('autosave-status-badge');
-                badge.textContent = `🟢 Auto-Saved ${timeStr}`;
-                badge.classList.remove('hidden');
+                if (badge) {
+                    badge.textContent = `🟢 Auto-Saved ${timeStr}`;
+                    badge.classList.remove('hidden');
+                }
             } catch (err) {
                 console.error("Auto-save failed:", err);
             }
@@ -1111,13 +1114,13 @@
             if (autoLockTimer) clearInterval(autoLockTimer);
             let seconds = 900; // 15 mins
             const timerEl = document.getElementById('auto-lock-timer');
-            timerEl.classList.remove('hidden');
+            if (timerEl) timerEl.classList.remove('hidden');
             
             autoLockTimer = setInterval(() => {
                 seconds--;
                 const mins = Math.floor(seconds / 60);
                 const secs = seconds % 60;
-                timerEl.textContent = `Lock: ${mins}:${secs < 10 ? '0' : ''}${secs}`;
+                if (timerEl) timerEl.textContent = `Lock: ${mins}:${secs < 10 ? '0' : ''}${secs}`;
                 if (seconds <= 0) {
                     clearInterval(autoLockTimer);
                     activePassphrase = null;
@@ -1129,7 +1132,6 @@
             }, 1000);
         }
 
-        // --- INIT & LISTENERS ---
         window.addEventListener('DOMContentLoaded', () => {
             loadAppSettings();
             drawOrientationClock();
@@ -1138,7 +1140,8 @@
             setPrintHeader();
             checkAutoSaveOnLoad();
             
-            document.getElementById('procedureDate').value = new Date().toISOString().slice(0, 10);
+            const dateEl = document.getElementById('procedureDate');
+            if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
 
             if (!activePassphrase) {
                 openStartGatewayModal();
@@ -1147,16 +1150,16 @@
             ['lesionLocation', 'lesionLength', 'lesionWidth', 'margin', 'punchSize', 'flapGraftJustification', 'anestheticVolume', 'skinPrepSolution', 'localAnesthetic', 'excisionDepth', 'hemostasisMethod', 'dressingApplied', 'skinSutureType', 'skinSutureSize', 'deepSutureType', 'deepSutureSize'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
-                    el.addEventListener('input', generateDocumentation);
-                    el.addEventListener('change', generateDocumentation);
+                    el.addEventListener('input', () => { calculateDefectSize(); generateDocumentation(); });
+                    el.addEventListener('change', () => { calculateDefectSize(); generateDocumentation(); });
                 }
             });
         });
 
-        // --- TAB NAVIGATION ---
         function switchTab(tab) {
             ['entry-view', 'billing-view', 'audit-view', 'settings-view'].forEach(id => {
-                document.getElementById(id).classList.add('hidden');
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
             });
 
             isBillingOnlyMode = (tab === 'manual-billing');
@@ -1176,7 +1179,6 @@
             }
         }
 
-        // --- FORM UI & DEFECT CALCULATOR ---
         function updateFormUI() {
             const procedure = document.getElementById('procedureType').value;
             const closure = document.getElementById('excisionClosureType').value;
@@ -1216,16 +1218,6 @@
             return defect;
         }
 
-        // Attach event listeners for real-time defect size calculation
-        ['lesionLength', 'lesionWidth', 'margin', 'punchSize', 'procedureType', 'punchType', 'excisionClosureType'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('input', () => { calculateDefectSize(); generateDocumentation(); });
-                el.addEventListener('change', () => { calculateDefectSize(); generateDocumentation(); });
-            }
-        });
-
-        // --- SUTURES & REMOVAL DAYS ---
         function toggleSutureUI() {
             const useDeep = document.getElementById('useDeepSuture').checked;
             const useSkin = document.getElementById('useSkinSuture').checked;
@@ -1247,7 +1239,6 @@
             generateDocumentation();
         }
 
-        // --- PATHOLOGY & CLOCK MODALS ---
         function populatePathologyModal() {
             const container = document.getElementById('pathologyCheckboxesEl');
             container.innerHTML = '';
@@ -1308,13 +1299,30 @@
             generateDocumentation();
         }
 
-        // --- LESION MANAGEMENT & MBS CALCULATOR ---
+        function calculateSuggestedMBSItem(lesion) {
+            const isMalignant = (lesion.pdx.includes("BCC") || lesion.pdx.includes("SCC") || lesion.pdx.includes("Melanoma"));
+            const category = isMalignant ? "Malignant" : "Non-Malignant";
+            const region = lesion.region || "Area1";
+            const defect = lesion.defectSize || 0;
+
+            let code = "31358";
+            try {
+                const rules = defaultAppSettings.excisions[category][region];
+                for (const r of rules) {
+                    if ((r.minSize === undefined || defect >= r.minSize) && (r.maxSize === undefined || defect <= r.maxSize)) {
+                        code = r.item;
+                        break;
+                    }
+                }
+            } catch (e) { code = "31358"; }
+            return code;
+        }
+
         function addOrUpdateLesion() {
             const proc = document.getElementById('procedureType').value;
             const location = document.getElementById('lesionLocation').value;
             if (!proc || !location) return showToast("Select procedure type and anatomical location.");
 
-            // Calculate defect size directly to guarantee non-zero value
             const computedDefect = calculateDefectSize();
             const defectSizeVal = parseFloat(document.getElementById('finalDefectSize').value) || computedDefect || 0;
 
@@ -1360,58 +1368,6 @@
             generateDocumentation();
             showToast(`Lesion #${lesion.id} added (${lesion.defectSize}mm defect).`);
         }
-                }
-            } catch (e) { code = "31358"; }
-            return code;
-        }
-
-        function addOrUpdateLesion() {
-            const proc = document.getElementById('procedureType').value;
-            const location = document.getElementById('lesionLocation').value;
-            if (!proc || !location) return showToast("Select procedure type and anatomical location.");
-
-            const lesion = {
-                id: ++lesionCounter,
-                procedure: proc,
-                closure: document.getElementById('excisionClosureType').value,
-                punchType: document.getElementById('punchType').value,
-                graftType: document.getElementById('graftType').value,
-                location: location,
-                region: document.getElementById('anatomicalRegion').value,
-                pdx: document.getElementById('provisionalDiagnoses').value || 'Skin Lesion',
-                length: document.getElementById('lesionLength').value,
-                width: document.getElementById('lesionWidth').value,
-                margin: document.getElementById('margin').value,
-                punchSize: document.getElementById('punchSize').value,
-                defectSize: parseFloat(document.getElementById('finalDefectSize').value) || 0,
-                justification: document.getElementById('flapGraftJustification').value,
-                prep: document.getElementById('skinPrepSolution').value,
-                anesthetic: document.getElementById('localAnesthetic').value,
-                anestheticVol: document.getElementById('anestheticVolume').value,
-                depth: document.getElementById('excisionDepth').value,
-                hemostasis: document.getElementById('hemostasisMethod').value,
-                dermoscopy: document.getElementById('dermoscopyUsed').value,
-                dressing: document.getElementById('dressingApplied').value,
-                orientationType: document.getElementById('orientationType').value,
-                orientationDescription: document.getElementById('orientationDescription').value,
-                useDeep: document.getElementById('useDeepSuture').checked,
-                deepSize: document.getElementById('deepSutureSize').value,
-                deepType: document.getElementById('deepSutureType').value,
-                useSkin: document.getElementById('useSkinSuture').checked,
-                skinSize: document.getElementById('skinSutureSize').value,
-                skinType: document.getElementById('skinSutureType').value,
-                sutureRemovalDays: document.getElementById('removalOfSkinSutures').value
-            };
-
-            lesion.suggestedCode = calculateSuggestedMBSItem(lesion);
-            if (lesion.closure === 'Flap Repair') lesion.repairCode = '45201';
-            if (lesion.closure === 'Graft Repair') lesion.repairCode = '45451';
-
-            lesions.push(lesion);
-            renderLesionsList();
-            generateDocumentation();
-            showToast(`Lesion #${lesion.id} added.`);
-        }
 
         function renderLesionsList() {
             const container = document.getElementById('lesionsListEl');
@@ -1435,7 +1391,6 @@
             generateDocumentation();
         }
 
-        // --- FULL MEDICOLEGAL DOCUMENTATION GENERATOR ---
         function generateDocumentation() {
             const patient = document.getElementById('patientName').value || 'J.S. (MRN12345)';
             const dob = document.getElementById('patientDOB').value;
@@ -1549,7 +1504,6 @@
             setTimeout(() => document.getElementById('toast-msg').classList.add('hidden'), 3500);
         }
 
-        // --- BILLING & HISTOLOGY CONFIRMATION ---
         function saveProcedure() {
             const patient = document.getElementById('patientName').value;
             if (!patient || !lesions.length) return showToast("Enter patient identifier and at least one lesion.");
@@ -1650,6 +1604,36 @@
                     </div>
                 `;
             });
+        }
+
+        function updateModalItemCode(idx, newCode) {
+            const entry = activeVaultData.entries.find(e => e.id === activeBillingEntryId);
+            if (entry && entry.items[idx]) {
+                entry.items[idx].code = newCode;
+            }
+        }
+
+        function updateModalItemDesc(idx, newDesc) {
+            const entry = activeVaultData.entries.find(e => e.id === activeBillingEntryId);
+            if (entry && entry.items[idx]) {
+                entry.items[idx].desc = newDesc;
+            }
+        }
+
+        function removeModalItem(idx) {
+            const entry = activeVaultData.entries.find(e => e.id === activeBillingEntryId);
+            if (entry && entry.items[idx]) {
+                entry.items.splice(idx, 1);
+                renderBillingModalItems(entry);
+            }
+        }
+
+        function addCustomBillingItem() {
+            const entry = activeVaultData.entries.find(e => e.id === activeBillingEntryId);
+            if (entry) {
+                entry.items.push({ code: '30000', desc: 'Custom MBS item', confirmed: true });
+                renderBillingModalItems(entry);
+            }
         }
 
         function toggleItemConfirmation(idx) {
