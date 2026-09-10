@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dermrecord-v47';
+const CACHE_NAME = 'dermrecord-v54';
 
 const APP_SHELL = [
     './',

@@ -14,7 +14,7 @@
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=47">
+    <link rel="stylesheet" href="css/app.css?v=54">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -313,6 +313,19 @@
                                 <option value="More than 5 years ago">More than 5 years ago</option>
                                 <option value="Unknown / Unsure">Unknown / Unsure</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <div id="examSmsResultsField" class="exam-required-field is-incomplete p-3 rounded-lg border border-slate-200 bg-slate-50/60">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <label class="block text-xs font-semibold uppercase tracking-wider">Happy to receive normal results by text? *</label>
+                                <p class="text-xs text-slate-500 mt-0.5">Ask once for this patient. Saved on the chart until you change it. No default.</p>
+                            </div>
+                            <div class="flex gap-1 shrink-0">
+                                <button type="button" id="smsResultsNo" onclick="setSmsNormalResultsConsent('no')" class="px-3 py-1 rounded text-xs font-bold transition-all bg-slate-200 text-slate-700 hover:bg-slate-300 cursor-pointer">NO</button>
+                                <button type="button" id="smsResultsYes" onclick="setSmsNormalResultsConsent('yes')" class="px-3 py-1 rounded text-xs font-bold transition-all bg-slate-200 text-slate-700 hover:bg-slate-300 cursor-pointer">YES</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -650,7 +663,7 @@
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h2 class="text-xl font-bold text-slate-800">Procedure</h2>
-                <p id="procSessionHint" class="text-xs text-slate-500 mt-0.5">Tick the lesions for this procedure. Untick any selected by mistake. Orange means details are incomplete; green means ready.</p>
+                <p id="procSessionHint" class="text-xs text-slate-500 mt-0.5">Tick the lesions for this procedure. Planned punch, shave, and excision start selected; untick any you are not doing now.</p>
             </div>
             <button type="button" id="btnToggleProcedure" onclick="toggleProcedureSession()" disabled class="px-4 py-2 bg-slate-300 text-slate-500 text-xs font-bold rounded-lg cursor-not-allowed">Start procedure</button>
         </div>
@@ -940,7 +953,7 @@
                     <button type="button" onclick="requestClosePatientChart()" id="btnMgmtCloseChart" class="px-3 py-1.5 text-xs font-bold rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 cursor-pointer hidden">Close chart</button>
                     <button type="button" data-mgmt-filter="open" onclick="setMgmtFilter('open')" class="mgmt-filter-btn is-active">Open lesions</button>
                     <button type="button" data-mgmt-filter="awaiting_histology" onclick="setMgmtFilter('awaiting_histology')" class="mgmt-filter-btn">Awaiting results</button>
-                    <button type="button" data-mgmt-filter="planned_excision" onclick="setMgmtFilter('planned_excision')" class="mgmt-filter-btn">Assigned excision</button>
+                    <button type="button" data-mgmt-filter="planned_procedure" onclick="setMgmtFilter('planned_procedure')" class="mgmt-filter-btn">Planned procedure</button>
                     <button type="button" data-mgmt-filter="billing" onclick="setMgmtFilter('billing')" class="mgmt-filter-btn">Billing</button>
                     <button type="button" data-mgmt-filter="notes" onclick="setMgmtFilter('notes')" class="mgmt-filter-btn">Saved notes</button>
                 </div>
@@ -988,6 +1001,11 @@
                 <button type="button" onclick="closeProcedureCompleteModal()" class="text-slate-400 hover:text-white font-bold text-base cursor-pointer" aria-label="Close">&times;</button>
             </div>
             <div class="p-5 overflow-y-auto flex-1 space-y-4 bg-slate-50">
+                <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Lesions in this procedure</p>
+                    <p class="text-xs text-slate-500">If a lesion cannot be completed, click it to send it back to planned procedure. It will not be billed or sent for histology.</p>
+                    <div id="procAbortList" class="space-y-2"></div>
+                </div>
                 <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
                     <p class="text-xs font-bold uppercase tracking-wider text-amber-900">Complications</p>
                     <div class="flex flex-wrap gap-3 text-sm">
@@ -1185,6 +1203,58 @@
         </div>
     </div>
 
+    <div id="lesionCommsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+            <div class="bg-slate-900 p-4 text-white">
+                <h3 class="font-bold text-base">Lesion communication</h3>
+                <p id="lesionCommsSummary" class="text-xs text-slate-300 mt-0.5"></p>
+            </div>
+            <div class="p-5 space-y-4 text-sm overflow-y-auto">
+                <input type="hidden" id="lesionCommsLesionId">
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Current plan</p>
+                    <p id="lesionCommsCurrentPlan" class="text-sm text-slate-800 mt-0.5">No current plan recorded.</p>
+                </div>
+                <ul id="lesionCommsTimeline" class="lesion-timeline"></ul>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="lesionCommsChannel">Channel</label>
+                        <select id="lesionCommsChannel" onchange="updateLesionCommsOutcomeVisibility()" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-sm">
+                            <option value="call_attempt">Call</option>
+                            <option value="voicemail">Voicemail</option>
+                            <option value="sms">SMS</option>
+                            <option value="spoke">Spoke / in person</option>
+                            <option value="result_advised">Result advised</option>
+                            <option value="plan">Plan</option>
+                        </select>
+                    </div>
+                    <div id="lesionCommsOutcomeWrap">
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="lesionCommsOutcome">Call outcome</label>
+                        <select id="lesionCommsOutcome" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-sm">
+                            <option value="no answer">No answer</option>
+                            <option value="voicemail">Voicemail</option>
+                            <option value="spoke">Spoke</option>
+                            <option value="declined">Declined</option>
+                            <option value="booked">Booked</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="lesionCommsNote">Note</label>
+                    <textarea id="lesionCommsNote" rows="2" class="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="e.g. Left voicemail, will try after 4pm"></textarea>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="lesionCommsNewPlan">New plan (optional)</label>
+                    <input type="text" id="lesionCommsNewPlan" class="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="e.g. Book excision Thursday">
+                </div>
+            </div>
+            <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+                <button type="button" onclick="closeLesionCommsModal()" class="px-3 py-1.5 text-xs font-semibold text-slate-600 cursor-pointer">Cancel</button>
+                <button type="button" onclick="submitLesionCommsModal()" class="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg cursor-pointer">Save contact</button>
+            </div>
+        </div>
+    </div>
+
     <div id="histologyModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
             <div class="bg-blue-900 p-4 text-white">
@@ -1307,10 +1377,6 @@
                         <option value="Split-Skin Graft (SSG)">Split-skin (SSG)</option>
                     </select>
                 </div>
-                <label class="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                    <input type="checkbox" id="assignExcisionSms" checked class="rounded text-purple-600">
-                    <span>Happy to receive normal results by SMS</span>
-                </label>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="assignExcisionNote">Note (optional)</label>
                     <textarea id="assignExcisionNote" rows="2" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="e.g. Prefers Thursday afternoon"></textarea>
@@ -1467,13 +1533,6 @@
                         <input type="number" id="examPunchSize" placeholder="e.g. 3" class="w-full p-2 border border-blue-200 rounded bg-white text-xs">
                     </div>
 
-                    <div class="p-2.5 bg-white rounded-lg border border-blue-200">
-                        <label class="flex items-center text-xs font-semibold text-blue-950 cursor-pointer">
-                            <input type="checkbox" id="biopsySmsConsent" checked class="rounded text-blue-600 mr-2">
-                            <span>Patient happy to receive normal histology results via SMS text message</span>
-                        </label>
-                    </div>
-
                     <div id="examShaveSafetyPrompt" class="p-3 bg-amber-50 border border-amber-300 rounded-lg space-y-1.5 text-xs text-amber-950">
                         <span class="font-bold flex items-center gap-1 text-amber-900">Shave / Saucerisation Safety Prompt:</span>
                         <ul class="list-disc ml-4 space-y-0.5 text-[11px] text-amber-900">
@@ -1508,13 +1567,6 @@
                             <option value="Full-Thickness Skin Graft (FTSG)">Full-thickness (FTSG)</option>
                             <option value="Split-Skin Graft (SSG)">Split-skin (SSG)</option>
                         </select>
-                    </div>
-
-                    <div class="p-2.5 bg-white rounded-lg border border-purple-200">
-                        <label class="flex items-center text-xs font-semibold text-purple-950 cursor-pointer">
-                            <input type="checkbox" id="excisionSmsConsent" checked class="rounded text-purple-600 mr-2">
-                            <span>Patient happy to receive normal histology results via SMS text message</span>
-                        </label>
                     </div>
                 </div>
 
@@ -1654,7 +1706,13 @@
                     </label>
                 </div>
                 <button onclick="confirmShaveConsent()" class="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors cursor-pointer">
-                    Confirm Consent & Proceed
+                    Confirm Verbal Consent
+                </button>
+                <button onclick="skipShaveVerbalConsent()" class="w-full py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold rounded-lg border border-slate-300 transition-colors cursor-pointer">
+                    No verbal consent — include on written form
+                </button>
+                <button onclick="cancelShaveConsent()" class="w-full py-2 text-slate-500 hover:text-slate-700 font-semibold cursor-pointer">
+                    Cancel
                 </button>
             </div>
         </div>
@@ -1702,7 +1760,7 @@
                     <div class="flex justify-between items-center">
                         <div>
                             <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700">2. Planned Surgical Procedures & Reconstruction</h4>
-                            <p class="text-[10px] text-slate-500">Multiple procedures will be consolidated into a single legal consent document</p>
+                            <p class="text-[10px] text-slate-500">Excisions, plus shave biopsies that were not verbally consented. Output is a numbered list for BP Premier (not a table).</p>
                         </div>
                         <button onclick="importExcisionLesions()" class="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold rounded border border-purple-300 text-[11px] transition-colors cursor-pointer">
                             Import chart lesions
@@ -1715,6 +1773,7 @@
                             <thead>
                                 <tr class="bg-purple-100/70 text-purple-900 font-bold border-b border-purple-200 uppercase text-[10px] tracking-wider">
                                     <th class="p-2">#</th>
+                                    <th class="p-2">Type</th>
                                     <th class="p-2">Location</th>
                                     <th class="p-2">Diagnosis</th>
                                     <th class="p-2">Margin</th>
@@ -1731,7 +1790,11 @@
                     <!-- Add Procedure Form Row -->
                     <div class="p-3 bg-purple-50/50 border border-purple-200 rounded-lg space-y-2">
                         <span class="block font-bold text-[11px] uppercase tracking-wider text-purple-900">+ Add Additional Procedure To Consent:</span>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 text-xs">
+                            <select id="addConsentKind" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
+                                <option value="excision">Excision</option>
+                                <option value="shave">Shave biopsy</option>
+                            </select>
                             <input type="text" id="addConsentLoc" oninput="updateConsentRiskPreview()" placeholder="Anatomical Location *" class="p-2 border border-slate-300 rounded bg-white">
                             <select id="addConsentDx" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
                                 <option value="Basal Cell Carcinoma (BCC)">Basal Cell Carcinoma (BCC)</option>
@@ -1865,13 +1928,14 @@
                 </div>
             </div>
 
-            <div class="px-6 py-4 bg-slate-100 border-t border-slate-200 flex justify-between items-center shrink-0">
-                <span class="text-[11px] text-slate-500">Generates clear, patient-friendly A4 PDF with dual patient & practitioner signature blocks.</span>
-                <div class="flex gap-2">
+            <div class="px-6 py-4 bg-slate-100 border-t border-slate-200 flex justify-between items-center shrink-0 gap-3">
+                <span class="text-[11px] text-slate-500">Copies a numbered list (not a table) for BP Premier. Listed lesions are marked consented.</span>
+                <div class="flex gap-2 shrink-0">
                     <button onclick="closeExcisionConsentModal()" class="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-200 font-semibold text-xs rounded-lg transition-colors cursor-pointer">Cancel</button>
-                    <button onclick="printExcisionConsentPDF()" class="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-lg shadow-md transition-colors flex items-center gap-1.5 cursor-pointer">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                        <span>Generate & Print Consent PDF</span>
+                    <button onclick="printExcisionConsentPDF()" class="px-4 py-2 border border-purple-300 text-purple-800 hover:bg-purple-50 font-semibold text-xs rounded-lg transition-colors cursor-pointer">Print</button>
+                    <button onclick="generateExcisionConsent()" class="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-lg shadow-md transition-colors flex items-center gap-1.5 cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                        <span>Generate &amp; Copy Consent</span>
                     </button>
                 </div>
             </div>
@@ -1980,25 +2044,25 @@
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=47"></script>
-    <script src="js/crypto.js?v=47"></script>
-    <script src="js/vault.js?v=47"></script>
-    <script src="js/ui.js?v=47"></script>
-    <script src="js/topical.js?v=47"></script>
-    <script src="js/billing.js?v=47"></script>
-    <script src="js/skin-check.js?v=47"></script>
-    <script src="js/consent.js?v=47"></script>
-    <script src="js/aftercare.js?v=47"></script>
-    <script src="js/outputs.js?v=47"></script>
-    <script src="js/excision.js?v=47"></script>
-    <script src="js/lesion-vault.js?v=47"></script>
-    <script src="js/billing-vault.js?v=47"></script>
-    <script src="js/chart-vault.js?v=47"></script>
-    <script src="js/note-vault.js?v=47"></script>
-    <script src="js/auth.js?v=47"></script>
-    <script src="js/management.js?v=47"></script>
-    <script src="js/chart.js?v=47"></script>
-    <script src="js/procedure-session.js?v=47"></script>
-    <script src="js/app.js?v=47"></script>
+    <script src="js/state.js?v=54"></script>
+    <script src="js/crypto.js?v=54"></script>
+    <script src="js/vault.js?v=54"></script>
+    <script src="js/ui.js?v=54"></script>
+    <script src="js/topical.js?v=54"></script>
+    <script src="js/billing.js?v=54"></script>
+    <script src="js/skin-check.js?v=54"></script>
+    <script src="js/consent.js?v=54"></script>
+    <script src="js/aftercare.js?v=54"></script>
+    <script src="js/outputs.js?v=54"></script>
+    <script src="js/excision.js?v=54"></script>
+    <script src="js/lesion-vault.js?v=54"></script>
+    <script src="js/billing-vault.js?v=54"></script>
+    <script src="js/chart-vault.js?v=54"></script>
+    <script src="js/note-vault.js?v=54"></script>
+    <script src="js/auth.js?v=54"></script>
+    <script src="js/management.js?v=54"></script>
+    <script src="js/chart.js?v=54"></script>
+    <script src="js/procedure-session.js?v=54"></script>
+    <script src="js/app.js?v=54"></script>
 </body>
 </html>
