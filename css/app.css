@@ -253,6 +253,66 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Robo
             color: #fff;
             border-color: #0f172a;
         }
+        .mgmt-patient-summary {
+            border: 1px solid #c7d2fe;
+            background: linear-gradient(180deg, #eef2ff 0%, #ffffff 42%);
+            border-radius: 1rem;
+            padding: 1rem 1.1rem;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        .mgmt-patient-summary.hidden { display: none; }
+        .mgmt-patient-summary-inner { display: grid; gap: 0.9rem; }
+        .mgmt-summary-top {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 0.75rem 1rem;
+        }
+        .mgmt-summary-recall {
+            min-width: 14rem;
+            max-width: 24rem;
+            border-radius: 0.75rem;
+            padding: 0.65rem 0.8rem;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+        }
+        .mgmt-summary-recall.is-ready {
+            border-color: #86efac;
+            background: #ecfdf5;
+            color: #065f46;
+        }
+        .mgmt-summary-recall.is-pending {
+            border-color: #fcd34d;
+            background: #fffbeb;
+            color: #92400e;
+        }
+        .mgmt-summary-history {
+            border-top: 1px solid #e2e8f0;
+            padding-top: 0.75rem;
+        }
+        .mgmt-summary-queues {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+            gap: 0.75rem;
+        }
+        .mgmt-summary-queue {
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem;
+            background: #fff;
+            padding: 0.65rem 0.7rem;
+        }
+        .mgmt-summary-lesion {
+            display: grid;
+            gap: 0.05rem;
+            width: 100%;
+            text-align: left;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.55rem;
+            background: #f8fafc;
+            padding: 0.4rem 0.5rem;
+            cursor: pointer;
+        }
+        .mgmt-summary-lesion:hover { border-color: #93c5fd; background: #eff6ff; }
         .mgmt-action-btn {
             padding: 0.25rem 0.55rem;
             border-radius: 0.45rem;
@@ -593,6 +653,7 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Robo
         }
         .proc-allocate-row.is-idle { border-color: #e2e8f0; background: #f8fafc; opacity: 0.78; }
         .proc-allocate-row.is-incomplete { border-color: #fb923c; background: #fff7ed; }
+        .proc-allocate-row.is-consent { border-color: #a78bfa; background: #f5f3ff; }
         .proc-allocate-row.is-ready { border-color: #34d399; background: #ecfdf5; }
         .proc-allocate-row.is-active { box-shadow: 0 0 0 2px #2563eb inset; }
         .proc-ready-pill {
@@ -605,6 +666,7 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Robo
             padding: 0.1rem 0.45rem;
         }
         .proc-allocate-row.is-incomplete .proc-ready-pill { background: #ffedd5; color: #c2410c; }
+        .proc-allocate-row.is-consent .proc-ready-pill { background: #ede9fe; color: #6d28d9; }
         .proc-allocate-row.is-ready .proc-ready-pill { background: #d1fae5; color: #047857; }
         .proc-allocate-row.is-idle .proc-ready-pill { background: #e2e8f0; color: #475569; }
         .proc-allocate-check {
