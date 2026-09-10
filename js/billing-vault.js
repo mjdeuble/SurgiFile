@@ -37,6 +37,9 @@ function snapshotBillingFromLesion(lesion, existing) {
     const now = new Date().toISOString();
     const patient = sessionPatientSnapshot();
     const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
+    const kind = typeof billingProcedureKind === 'function' ? billingProcedureKind(lesion) : '';
+    const biopsy = kind === 'biopsy';
+    const suggestion = typeof suggestMbsItems === 'function' ? suggestMbsItems(lesion) : null;
     return {
         ...(existing || {}),
         id: existing?.id || newBillingId(),
@@ -50,20 +53,28 @@ function snapshotBillingFromLesion(lesion, existing) {
         impression: detail.pathology || lesion.impression || '',
         procedureType: detail.procedure || lesion.procedure || '',
         punchSize: detail.punchSize || lesion.punchSize || '',
+        type: lesion.type || (typeof lesionType === 'function' ? lesionType(lesion) : '') || existing?.type || '',
+        biopsyType: lesion.biopsyType || existing?.biopsyType || '',
         punchType: detail.punchType || lesion.punchType || '',
         procedure: detail.procedure || lesion.procedure || '',
         billingRegion: detail.billingRegion || lesion.billingRegion || '',
-        excisionLengthMm: detail.length || lesion.excisionLengthMm || '',
-        excisionWidthMm: detail.width || lesion.excisionWidthMm || '',
-        excisionMarginMm: detail.margin || lesion.excisionMarginMm || '',
-        excisionClosureType: detail.excisionClosureType || lesion.excisionClosureType || '',
+        excisionLengthMm: biopsy ? '' : (detail.length || lesion.excisionLengthMm || ''),
+        excisionWidthMm: biopsy ? '' : (detail.width || lesion.excisionWidthMm || ''),
+        excisionMarginMm: biopsy ? '' : (detail.margin || lesion.excisionMarginMm || ''),
+        excisionClosureType: biopsy ? '' : (detail.excisionClosureType || lesion.excisionClosureType || ''),
         graftType: detail.graftType || lesion.graftType || lesion.billingGraftType || '',
         billingGraftType: lesion.billingGraftType || detail.graftType || existing?.billingGraftType || '',
-        billingLesionType: lesion.billingLesionType || existing?.billingLesionType || '',
-        billingReconstruction: lesion.billingReconstruction || existing?.billingReconstruction || '',
+        billingLesionType: (typeof inferBillingLesionType === 'function' ? inferBillingLesionType(lesion) : '')
+            || lesion.billingLesionType
+            || existing?.billingLesionType
+            || '',
+        billingReconstruction: biopsy ? '' : (lesion.billingReconstruction || existing?.billingReconstruction || ''),
         includeFlapGraft: lesion.includeFlapGraft ?? existing?.includeFlapGraft,
         histologyResult: lesion.histologyResult || existing?.histologyResult || '',
-        suggestedMbsItems: existing?.suggestedMbsItems || lesion.suggestedMbsItems || '',
+        suggestedMbsItems: (suggestion && suggestion.ready && suggestion.summary)
+            || lesion.suggestedMbsItems
+            || existing?.suggestedMbsItems
+            || '',
         assignedMbsItems: existing?.assignedMbsItems || lesion.assignedMbsItems || '',
         excludeConsult: existing?.excludeConsult ?? false,
         consultItem: existing?.consultItem || '',
@@ -138,6 +149,16 @@ async function migrateBillingQueueStatuses() {
 
 async function createOrUpdateBillingFromLesion(lesion) {
     if (!lesion?.id) return null;
+    if (typeof applyInferredBillingLesionType === 'function') {
+        applyInferredBillingLesionType(lesion);
+    } else if (typeof inferBillingLesionType === 'function' && !lesion.billingLesionType) {
+        const inferred = inferBillingLesionType(lesion);
+        if (inferred) lesion.billingLesionType = inferred;
+    }
+    if (typeof suggestMbsItems === 'function') {
+        const suggestion = suggestMbsItems(lesion);
+        if (suggestion.ready && suggestion.summary) lesion.suggestedMbsItems = suggestion.summary;
+    }
     const existing = billingForLesion(lesion.id);
     const bill = snapshotBillingFromLesion(lesion, existing);
     if (!existing) bill.status = 'awaiting';
@@ -151,6 +172,7 @@ async function createOrUpdateBillingFromLesion(lesion) {
     const managed = managedLesions.find((item) => String(item.id) === String(lesion.id));
     if (managed) {
         managed.billingRecordId = bill.id;
+        if (lesion.billingLesionType) managed.billingLesionType = lesion.billingLesionType;
         if (isVaultLoggedIn()) {
             try { await writeManagedLesion(managed); } catch (err) { /* billing file is the source of truth */ }
         }
@@ -183,7 +205,19 @@ function billingViewModel(bill) {
         billingLesionType: firstFilled(lesion.billingLesionType, bill.billingLesionType),
         impression: firstFilled(lesion.impression, bill.impression)
     };
-    if (closureLooksLikeExcision(merged.excisionClosureType)) merged.procedure = 'Excision';
+    if (typeof inferBillingLesionType === 'function') {
+        const inferred = inferBillingLesionType(merged);
+        if (inferred) merged.billingLesionType = inferred;
+    }
+    const kind = typeof billingProcedureKind === 'function' ? billingProcedureKind(merged) : '';
+    if (kind === 'biopsy') {
+        if (!merged.procedure) {
+            const t = typeof lesionType === 'function' ? lesionType(merged) : merged.type;
+            merged.procedure = (t === 'shave' || /shave/i.test(String(merged.biopsyType || ''))) ? 'Shave' : 'Punch';
+        }
+    } else if (closureLooksLikeExcision(merged.excisionClosureType)) {
+        merged.procedure = 'Excision';
+    }
     return merged;
 }
 

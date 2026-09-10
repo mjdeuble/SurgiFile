@@ -9,6 +9,7 @@ let lastChartSearchHits = [];
 let chartSearchActiveIndex = 0;
 let managedCharts = [];
 let managedVisitNotes = [];
+let managedConsents = [];
 let pendingWorkspaceTab = '';
 let pendingSanitise = false;
 
@@ -33,9 +34,11 @@ let procedureSession = {
 // Skin Check View State
 let isBedSanitised = false;
 let shaveConsentVerified = false;
+let pendingShaveConsentAction = '';
 let patientConcerns = [];
 let noPatientConcerns = false;
 let screeningMarkedComplete = false;
+let smsNormalResultsConsent = '';
 let lesions = [];
 let customConsentRisks = [];
 let consentProcedures = [];
@@ -108,6 +111,15 @@ function formatDiagnosisDisplay(raw) {
     }).filter(Boolean).join(', ');
 }
 
+/** Compact diagnosis for IEMR paste — acronym / code only when known. */
+function formatDiagnosisIemr(raw) {
+    return String(raw || '').split(';').map((part) => {
+        const t = part.trim();
+        if (!t) return '';
+        return diagnosisCodeFromText(t) || t;
+    }).filter(Boolean).join('; ');
+}
+
 const PROC_SUPPLIES_STORAGE_KEY = 'dermRecordProcSupplies';
 const DEFAULT_PROC_SUPPLIES = {
     anesthetics: [
@@ -138,9 +150,23 @@ const outputCopyState = {
 };
 
 function getBiopsyLesions() {
-    return lesions.filter(l => (l.plan || '').includes('Biopsy'));
+    const rows = (typeof chartLesions === 'function' && typeof hasCurrentPatient === 'function' && hasCurrentPatient())
+        ? chartLesions()
+        : (typeof lesions !== 'undefined' ? lesions : []);
+    return rows.filter((l) => {
+        const t = typeof lesionType === 'function' ? lesionType(l) : '';
+        const isBx = t === 'punch' || t === 'shave' || String(l.plan || '').includes('Biopsy');
+        if (!isBx) return false;
+        if (typeof isVisitLesion === 'function' && isVisitLesion(l.id)) return true;
+        return typeof isLesionCreatedToday === 'function' && isLesionCreatedToday(l);
+    });
 }
 
 function getBookedExcisionLesions() {
-    return lesions.filter(l => (l.plan || '').includes('Excision'));
+    const rows = typeof lesions !== 'undefined' ? lesions : [];
+    return rows.filter((l) => {
+        if (l.procedureCompletedAt) return false;
+        if (typeof lesionType === 'function') return lesionType(l) === 'excision';
+        return String(l.plan || '').includes('Excision');
+    });
 }

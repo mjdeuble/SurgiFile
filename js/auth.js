@@ -70,6 +70,9 @@ function dismissAuthModal() {
 
 async function lockVaultSession() {
     try {
+        if (hasCurrentPatient() && typeof rememberLastPatient === 'function') {
+            rememberLastPatient();
+        }
         if (hasCurrentPatient() && typeof saveCurrentChartFromDom === 'function') {
             await saveCurrentChartFromDom();
         }
@@ -87,13 +90,17 @@ async function lockVaultSession() {
     stopVaultIdleTimer();
     managedCharts = [];
     managedVisitNotes = [];
+    managedConsents = [];
     pendingWorkspaceTab = '';
     pendingSanitise = false;
     isBedSanitised = false;
+    shaveConsentVerified = false;
+    pendingShaveConsentAction = '';
     lesions = [];
     patientConcerns = [];
     noPatientConcerns = false;
     screeningMarkedComplete = false;
+    smsNormalResultsConsent = '';
     selectedChartLesionId = '';
     if (typeof resetProcedureSession === 'function') resetProcedureSession();
     if (typeof resetScreeningAndExamForm === 'function') resetScreeningAndExamForm();
@@ -132,6 +139,7 @@ async function createVaultUser(rawUsername, password, displayName) {
     await userDir.getDirectoryHandle('billing', { create: true });
     await userDir.getDirectoryHandle('charts', { create: true });
     await userDir.getDirectoryHandle('notes', { create: true });
+    await userDir.getDirectoryHandle('consents', { create: true });
 
     vaultAuth = { username, key, displayName: fullName };
     return username;
@@ -375,11 +383,26 @@ async function afterVaultLogin() {
     if (confirm) confirm.value = '';
     if (display) display.value = '';
     closeAuthModal();
+    if (typeof loadClinicProfile === 'function') await loadClinicProfile();
+    if (typeof loadClinicSupplies === 'function') {
+        await loadClinicSupplies();
+        if (typeof populateProcSupplySelects === 'function') populateProcSupplySelects();
+    }
+    if (typeof loadClinicPdtPrices === 'function') {
+        await loadClinicPdtPrices();
+        if (typeof renderPdtAreaSelect === 'function') renderPdtAreaSelect();
+        if (typeof renderPdtPriceEditor === 'function') renderPdtPriceEditor();
+    }
     await loadManagedLesionsFromVault();
     updateHeaderPatient();
     if (typeof updateChartChrome === 'function') updateChartChrome();
     renderManagedLesions();
-    switchWorkspaceTab('management');
+    const resumeKind = typeof resumeLastChartAfterLogin === 'function'
+        ? await resumeLastChartAfterLogin()
+        : false;
+    if (resumeKind !== 'procedure' && resumeKind !== 'visit') {
+        switchWorkspaceTab('management');
+    }
     startVaultIdleLock();
 }
 

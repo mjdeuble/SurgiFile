@@ -41,21 +41,25 @@ function currentBiopsyBilling() {
 }
 
 function sessionBiopsyCount() {
-    const exam = typeof getBiopsyLesions === 'function' ? getBiopsyLesions() : [];
-    const ids = new Set(exam.map((item) => String(item.id)));
-    let count = exam.length;
-    if (typeof procedureSelectedLesions === 'function') {
-        procedureSelectedLesions().forEach((lesion) => {
-            const id = String(lesion.id || '');
-            if (!id || ids.has(id)) return;
-            const plan = String(lesion.plan || '');
-            const diagnostic = typeof isDiagnosticBiopsyForBilling === 'function' && isDiagnosticBiopsyForBilling(lesion);
-            const shave = typeof isShaveBiopsyLesion === 'function' && isShaveBiopsyLesion(lesion);
-            if (diagnostic || shave || plan.includes('Biopsy')) {
-                ids.add(id);
-                count += 1;
-            }
-        });
+    const seen = new Set();
+    let count = 0;
+    const add = (lesion) => {
+        if (!lesion || !lesion.id) return;
+        const id = String(lesion.id);
+        if (seen.has(id)) return;
+        const diagnostic = typeof isDiagnosticBiopsyType === 'function'
+            ? isDiagnosticBiopsyType(lesion)
+            : (typeof isDiagnosticBiopsyForBilling === 'function' && isDiagnosticBiopsyForBilling(lesion));
+        if (!diagnostic) return;
+        seen.add(id);
+        count += 1;
+    };
+    const chart = typeof chartLesions === 'function' ? chartLesions() : (typeof lesions !== 'undefined' ? lesions : []);
+    chart.forEach((lesion) => {
+        if (typeof lesionPerformedToday === 'function' ? lesionPerformedToday(lesion) : lesion.procedureCompletedAt) add(lesion);
+    });
+    if (typeof procedureSession !== 'undefined' && procedureSession.started && typeof procedureSelectedLesions === 'function') {
+        procedureSelectedLesions().forEach(add);
     }
     return count;
 }
@@ -349,36 +353,84 @@ function itemLabel(code, options) {
 }
 
 function impressionForBilling(lesion) {
-    return String(lesion?.impression || lesion?.pathology || '').toLowerCase();
+    return String(lesion?.impression || lesion?.pathology || lesion?.procedureDetail?.pathology || '').toLowerCase();
+}
+
+const MELANOMA_CLINICAL_CODES = ['MMis', 'MMinv', 'MMmet', 'HMF'];
+const MELANOMA_EXCLUSION_RE = /exclude melanoma|no melanoma|not melanoma|melanoma not identified|negative for melanoma/;
+const MELANOMA_POSITIVE_RE = /\bmelanoma\b|\bhutchinson|\blentigo maligna\b|\bmmis\b|\bmminv\b|\bmmmet\b|\bhmf\b/;
+const MALIGNANT_HISTO_RE = /\bbcc\b|\bscc\b|basal cell|squamous cell|intraepidermal|bowen|keratoacanthoma|malignant/;
+const BENIGN_HISTO_RE = /benign|seborrheic|seborrhoeic|nevus|naevus|dermatofibroma|hemangioma|cyst|keratosis/;
+
+function textIndicatesMelanoma(raw) {
+    if (!raw) return false;
+    const normalized = typeof normalizePathologyString === 'function' ? normalizePathologyString(raw) : String(raw);
+    const parts = String(normalized).split(/[;,\n]+/).map((part) => part.trim()).filter(Boolean);
+    const chunks = parts.length ? parts : [String(raw).trim()];
+    for (const part of chunks) {
+        const code = typeof diagnosisCodeFromText === 'function' ? (diagnosisCodeFromText(part) || part) : part;
+        if (MELANOMA_CLINICAL_CODES.includes(code) || MELANOMA_CLINICAL_CODES.includes(part)) return true;
+        const label = (typeof exPathologyOptions !== 'undefined' && (exPathologyOptions[code] || exPathologyOptions[part])) || '';
+        const hay = (part + ' ' + label).toLowerCase();
+        if (MELANOMA_EXCLUSION_RE.test(hay)) continue;
+        if (MELANOMA_POSITIVE_RE.test(hay)) return true;
+    }
+    return false;
+}
+
+function clinicalDiagnosisIsMelanoma(lesion) {
+    if (!lesion) return false;
+    const raw = [lesion.impression, lesion.pathology, lesion.procedureDetail?.pathology]
+        .filter(Boolean)
+        .join(';');
+    return textIndicatesMelanoma(raw);
+}
+
+function histologyIndicatesMelanoma(lesionOrText) {
+    if (lesionOrText == null) return false;
+    const text = typeof lesionOrText === 'string' ? lesionOrText : lesionOrText.histologyResult;
+    return textIndicatesMelanoma(text);
 }
 
 function inferBillingLesionType(lesion) {
-    if (lesion.billingLesionType) return lesion.billingLesionType;
-    const histology = String(lesion.histologyResult || '').toLowerCase();
+    if (!lesion) return '';
+    const histology = String(lesion.histologyResult || '').trim();
     if (histology) {
-        if (/\bmelanoma\b/.test(histology) && !/exclude melanoma|no melanoma|not melanoma/.test(histology)) {
-            return 'confirmed_melanoma';
+        if (histologyIndicatesMelanoma(lesion)) return 'confirmed_melanoma';
+        if (lesion.billingLesionType === 'confirmed_melanoma') return 'confirmed_melanoma';
+        const histoLower = histology.toLowerCase();
+        if (MALIGNANT_HISTO_RE.test(histoLower)) return 'malignant';
+        if (BENIGN_HISTO_RE.test(histoLower)) return 'benign';
+        if (lesion.billingLesionType && lesion.billingLesionType !== 'suspected_melanoma') {
+            return lesion.billingLesionType;
         }
-        if (/\bbcc\b|\bscc\b|basal cell|squamous cell|intraepidermal|bowen|keratoacanthoma|malignant/.test(histology)) {
-            return 'malignant';
-        }
-        if (/benign|seborrheic|seborrhoeic|nevus|naevus|dermatofibroma|hemangioma|cyst|keratosis/.test(histology)) {
-            return 'benign';
-        }
+        return '';
     }
+    if (clinicalDiagnosisIsMelanoma(lesion)) return 'suspected_melanoma';
+    if (lesion.billingLesionType) return lesion.billingLesionType;
     const impression = impressionForBilling(lesion);
     if (impression) {
-        if (/\bmelanoma\b/.test(impression) && !/exclude melanoma|no melanoma|not melanoma/.test(impression)) {
-            return 'suspected_melanoma';
-        }
-        if (/\bbcc\b|\bscc\b|basal cell|squamous cell|intraepidermal|bowen|keratoacanthoma|malignant/.test(impression)) {
-            return 'malignant';
-        }
-        if (/benign|seborrheic|seborrhoeic|nevus|naevus|dermatofibroma|hemangioma|cyst|keratosis/.test(impression)) {
-            return 'benign';
-        }
+        if (textIndicatesMelanoma(impression)) return 'suspected_melanoma';
+        if (MALIGNANT_HISTO_RE.test(impression)) return 'malignant';
+        if (BENIGN_HISTO_RE.test(impression)) return 'benign';
     }
     return '';
+}
+
+function applyInferredBillingLesionType(lesion) {
+    if (!lesion) return '';
+    const inferred = inferBillingLesionType(lesion);
+    if (!inferred) return lesion.billingLesionType || '';
+    const current = lesion.billingLesionType || '';
+    const histoKnown = !!String(lesion.histologyResult || '').trim();
+    if (
+        inferred === 'confirmed_melanoma'
+        || !current
+        || (histoKnown && current === 'suspected_melanoma')
+    ) {
+        lesion.billingLesionType = inferred;
+    }
+    return lesion.billingLesionType || inferred;
 }
 
 function firstFilled(...values) {
@@ -393,27 +445,34 @@ function closureLooksLikeExcision(value) {
 }
 
 function billingProcedureKind(lesion) {
+    if (!lesion) return '';
+    const type = typeof lesionType === 'function' ? lesionType(lesion) : String(lesion.type || '');
     const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
-    const closure = firstFilled(detail.excisionClosureType, lesion?.excisionClosureType, lesion?.billingReconstruction, lesion?.excisionReconstruction);
-    if (closureLooksLikeExcision(closure) || lesion?.excisionFinalisedAt) return 'excision';
-
-    const procedure = String(firstFilled(detail.procedure, lesion?.procedure) || '').trim();
     const punchType = String(firstFilled(detail.punchType, lesion?.punchType) || '').trim();
+    const procedure = String(firstFilled(detail.procedure, lesion?.procedure, lesion?.procedureType) || '').trim();
+    const biopsyType = String(firstFilled(lesion?.biopsyType, detail.biopsyType) || '').trim();
+    const punchExcision = /punch excision/i.test(punchType) || /formal excision/i.test(punchType)
+        || (/punch/i.test(biopsyType) && /excision/i.test(biopsyType) && !/biopsy/i.test(biopsyType));
+
+    if (type === 'shave' || /^shave$/i.test(procedure) || /shave/i.test(biopsyType) || /shave/i.test(punchType)) {
+        return 'biopsy';
+    }
+    if (type === 'punch') return punchExcision ? 'excision' : 'biopsy';
+    if (/^punch$/i.test(procedure) || /punch biopsy/i.test(punchType) || (/punch/i.test(biopsyType) && !punchExcision)) {
+        return punchExcision ? 'excision' : 'biopsy';
+    }
+    if (type === 'excision' || /^excision$/i.test(procedure) || punchExcision) return 'excision';
+
+    const surgicalClosure = firstFilled(detail.excisionClosureType, lesion?.excisionClosureType, lesion?.excisionReconstruction);
+    if (lesion?.excisionFinalisedAt || closureLooksLikeExcision(surgicalClosure)) return 'excision';
+
     const hasNedMeasures = !!(
         firstFilled(lesion?.excisionLengthMm, detail.length) &&
         firstFilled(lesion?.excisionWidthMm, detail.width) &&
         firstFilled(lesion?.excisionMarginMm, detail.margin)
     );
-    if (/^excision$/i.test(procedure) || /punch excision/i.test(punchType) || /formal excision/i.test(punchType)) return 'excision';
-    if (hasNedMeasures && !/^shave$/i.test(procedure) && !( /^punch$/i.test(procedure) && /biopsy/i.test(punchType || 'Punch Biopsy') )) {
-        return 'excision';
-    }
-
-    if (/^shave$/i.test(procedure) || /shave/i.test(punchType)) return 'biopsy';
-    if (/^punch$/i.test(procedure) || /punch biopsy/i.test(punchType)) return 'biopsy';
-    const biopsyType = String(lesion?.biopsyType || '').trim();
-    if (/shave/i.test(biopsyType) || (/punch/i.test(biopsyType) && !/excision/i.test(biopsyType))) return 'biopsy';
-    if (firstFilled(lesion?.punchSize, detail.punchSize) && !hasNedMeasures) return 'biopsy';
+    if (hasNedMeasures) return 'excision';
+    if (firstFilled(lesion?.punchSize, detail.punchSize)) return 'biopsy';
     return procedure || punchType ? 'excision' : '';
 }
 
@@ -581,11 +640,14 @@ function suggestMbsItems(lesion) {
         items.push({ code: '30071', label: itemLabel('30071') });
         notes.push('TN.8.7: 30071 for diagnostic punch or shave biopsy when the specimen is sent for pathology. If a shave completely removes the lesion, still claim 30071 only. Aftercare is 2 days.');
         if (!region) notes.push('Record the procedure area for the site. Item 30071 is the same for all regions.');
+        const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
+        const punch = parseMm(firstFilled(lesion?.punchSize, detail.punchSize));
+        const biopsyNed = Number.isFinite(punch) && punch > 0 ? punch : null;
         return {
             region,
             type,
             recon,
-            nedMm,
+            nedMm: biopsyNed,
             items,
             notes,
             summary: '30071',
@@ -706,8 +768,11 @@ function renderBillingSuggestionHtml(lesion) {
         ).join('<span class="text-slate-400 font-bold">+</span>')
         : '<span class="text-slate-400 italic">No item yet</span>';
     const notes = suggestion.notes.map((note) => `<p class="text-[11px] text-slate-500">${escapeHtml(note)}</p>`).join('');
-    const sizeText = suggestion.kind === 'biopsy' && ned
-        ? ' · Punch ' + ned + ' mm'
+    const t = typeof lesionType === 'function' ? lesionType(lesion) : String(lesion?.type || '');
+    const sizeText = suggestion.kind === 'biopsy'
+        ? (t === 'shave' || /shave/i.test(String(lesion?.biopsyType || lesion?.procedure || ''))
+            ? (ned ? ' · Shave ' + ned + ' mm' : ' · Shave · 30071')
+            : (ned ? ' · Punch ' + ned + ' mm' : ' · Punch · 30071'))
         : (ned ? ' · NED ' + ned + ' mm' : '');
     return `
         <div class="space-y-1.5">
@@ -758,7 +823,15 @@ function lesionCanBillAtProcedure(lesion) {
         };
     }
     const type = inferBillingLesionType(lesion);
-    if (type === 'suspected_melanoma') {
+    if (type === 'confirmed_melanoma' || histologyIndicatesMelanoma(lesion)) {
+        return {
+            ok: true,
+            hold: false,
+            reason: 'Confirmed melanoma histology. Bill confirmed melanoma excision items (31371–31376) now.',
+            kind: 'confirmed_melanoma'
+        };
+    }
+    if (type === 'suspected_melanoma' || (!lesion.histologyResult && clinicalDiagnosisIsMelanoma(lesion))) {
         return {
             ok: true,
             hold: false,
@@ -786,28 +859,49 @@ function procedureSessionBillingSummary(lesionList) {
     const rows = (lesionList || []).map((lesion) => {
         const status = lesionCanBillAtProcedure(lesion);
         const suggestion = suggestMbsItems(lesion);
+        const t = typeof lesionType === 'function' ? lesionType(lesion) : '';
+        const tag = suggestion.kind === 'biopsy'
+            ? (t === 'shave' ? 'Shave' : 'Punch')
+            : (status.kind === 'confirmed_melanoma' ? 'Confirmed melanoma'
+                : (status.kind === 'suspected_melanoma' ? 'Suspected melanoma'
+                    : (status.kind === 'histo_known' ? 'Histology confirmed' : 'Excision')));
         return {
             lesion,
             ...status,
             codes: suggestion.summary || '',
             ready: !!suggestion.ready,
-            site: lesion.location || 'site'
+            site: lesion.location || 'site',
+            tag,
+            items: suggestion.items || []
         };
     });
     const processRows = rows.filter((row) => row.ok);
     const holdRows = rows.filter((row) => row.hold);
+    const allProcess = rows.length > 0 && holdRows.length === 0;
+    const allReady = allProcess && rows.every((row) => row.ready && row.codes);
+    const doctorLines = rows.map((row) => {
+        const codes = row.codes || (row.hold ? 'HOLD' : 'Codes pending');
+        return `${row.site} (${row.tag}): ${codes}`;
+    });
     return {
         rows,
         processRows,
         holdRows,
-        allProcess: rows.length > 0 && holdRows.length === 0,
+        allProcess,
         allHold: rows.length > 0 && processRows.length === 0,
-        mixed: processRows.length > 0 && holdRows.length > 0
+        mixed: processRows.length > 0 && holdRows.length > 0,
+        allReady,
+        doctorLines,
+        doctorText: doctorLines.join('\n')
     };
 }
 
 function receptionBillingInstruction(summary) {
     if (!summary || !summary.rows || !summary.rows.length) return '';
+    if (summary.allReady) {
+        const codes = summary.rows.map((row) => row.codes).filter(Boolean).join('; ');
+        return 'Billing: BILLED TODAY — ' + codes + '. Punch/shave, suspected melanoma, or histology-confirmed items.';
+    }
     if (summary.allProcess) {
         return 'Billing: PROCESS NOW — all procedures are OK to bill (histology known, suspected melanoma items, or biopsy 30071). Enter codes in Best Practice now.';
     }
@@ -817,5 +911,26 @@ function receptionBillingInstruction(summary) {
     const processSites = summary.processRows.map((row) => row.site).join(', ');
     const holdSites = summary.holdRows.map((row) => row.site).join(', ');
     return `Billing: PROCESS NOW for ${processSites}. HOLD for ${holdSites} until histology is known.`;
+}
+
+async function confirmSameDaySessionBilling(lesionList) {
+    const summary = procedureSessionBillingSummary(lesionList);
+    if (!summary.allReady) return { confirmed: 0, codes: [], doctorText: summary.doctorText || '' };
+    const codes = [];
+    for (const row of summary.rows) {
+        let bill = typeof billingForLesion === 'function' ? billingForLesion(row.lesion.id) : null;
+        if (!bill && typeof createOrUpdateBillingFromLesion === 'function') {
+            bill = await createOrUpdateBillingFromLesion(row.lesion);
+        }
+        if (!bill || (typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill))) {
+            if (row.codes) codes.push(row.codes);
+            continue;
+        }
+        if (typeof persistProcessedBilling === 'function') {
+            await persistProcessedBilling(bill, row.codes, { silentToast: true });
+        }
+        codes.push(row.codes);
+    }
+    return { confirmed: codes.length, codes, doctorText: summary.doctorText };
 }
 

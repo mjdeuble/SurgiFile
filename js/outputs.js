@@ -45,6 +45,31 @@ function generateRegionalClearanceSummary() {
     return summaryText + `\n`;
 }
 
+/** IEMR management line: punch or shave alone when that technique is chosen. */
+function formatLesionPlanIemr(lesion) {
+    if (!lesion) return '';
+    if (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan)) {
+        return 'Topical / Field Treatment';
+    }
+    const biopsyPlan = typeof isPunchShaveBiopsyPlan === 'function'
+        ? isPunchShaveBiopsyPlan(lesion.plan)
+        : /Biopsy/i.test(String(lesion.plan || ''));
+    if (biopsyPlan) {
+        const type = String(lesion.biopsyType || '').trim();
+        if (/punch/i.test(type)) {
+            return /excision/i.test(type) && !/biopsy/i.test(type) ? type : 'Punch Biopsy';
+        }
+        if (/shave|saucer/i.test(type)) return 'Shave Biopsy';
+        if (type) return type;
+        if (typeof lesionType === 'function') {
+            if (lesionType(lesion) === 'punch') return 'Punch Biopsy';
+            if (lesionType(lesion) === 'shave') return 'Shave Biopsy';
+        }
+        return 'Biopsy';
+    }
+    return String(lesion.plan || '').trim();
+}
+
 function generateEMRNotePlainText(options) {
     const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
@@ -67,6 +92,9 @@ function generateEMRNotePlainText(options) {
     if (scopeVal) txt += `- Consented Scope: ${scopeVal}\n`;
     if (fitz) txt += `- Skin Phenotype: ${fitz}\n`;
     if (lastCheck) txt += `- Interval Since Last Skin Check: ${lastCheck}\n`;
+    if (typeof smsNormalResultsConsentLabel === 'function' && smsNormalResultsConsentLabel()) {
+        txt += `- Normal results by text: ${smsNormalResultsConsentLabel()}\n`;
+    }
     txt += `\n`;
 
     if (patientConcerns.length > 0) {
@@ -88,8 +116,9 @@ function generateEMRNotePlainText(options) {
 
     txt += generateRegionalClearanceSummary();
 
+    const noteLesions = typeof visitNoteLesions === 'function' ? visitNoteLesions() : (lesions || []);
     txt += `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
-    if (lesions.length === 0) {
+    if (noteLesions.length === 0) {
         if (scopeVal.includes('Full body')) {
             txt += `- Full body skin examination performed. No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
         } else if (scopeVal) {
@@ -98,17 +127,26 @@ function generateEMRNotePlainText(options) {
             txt += `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
         }
     } else {
-        lesions.forEach((l, idx) => {
+        noteLesions.forEach((l, idx) => {
             txt += `Lesion #${idx + 1}: ${l.location}\n`;
-            if (l.billingRegion) {
-                txt += `    - Procedure area: ${procedureAreaLabel(l.billingRegion)}\n`;
-            }
-            txt += `    - Provisional Diagnosis: ${typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(l.impression) : l.impression}\n`;
-            txt += `    - Macroscopic Description: ${l.macroscopic}\n`;
-            txt += `    - Dermoscopic Features: ${l.dermoscopy}\n`;
-            txt += `    - Management Plan: ${isTopicalPlan(l.plan) ? 'Topical / Field Treatment' : l.plan}${l.biopsyType ? ' (' + l.biopsyType + ')' : ''}\n`;
-            if (l.punchSize) txt += `    - Punch size: ${l.punchSize}mm\n`;
-            else {
+            const dx = typeof formatDiagnosisIemr === 'function'
+                ? formatDiagnosisIemr(l.impression)
+                : (l.impression || '');
+            txt += `    - Prov Dx: ${dx}\n`;
+            if (l.macroscopic) txt += `    - Macroscopic: ${l.macroscopic}\n`;
+            if (l.dermoscopy) txt += `    - Dermoscopic: ${l.dermoscopy}\n`;
+            const planLabel = typeof formatLesionPlanIemr === 'function'
+                ? formatLesionPlanIemr(l)
+                : (isTopicalPlan(l.plan) ? 'Topical / Field Treatment' : (l.plan || ''));
+            if (planLabel) txt += `    - Management Plan: ${planLabel}\n`;
+            const comms = typeof lesionIemrCommsLine === 'function' ? lesionIemrCommsLine(l) : '';
+            if (comms) txt += `    - ${comms}\n`;
+            const consent = typeof lesionConsentLabel === 'function' ? lesionConsentLabel(l) : '';
+            if (consent) txt += `    - Consent: ${consent}\n`;
+            const punchLike = (typeof lesionType === 'function' && lesionType(l) === 'punch') || !!l.punchSize;
+            if (punchLike) {
+                if (l.punchSize) txt += `    - Punch size: ${l.punchSize}mm\n`;
+            } else {
                 const sizeBits = [];
                 if (l.length && l.width) sizeBits.push(`${l.length}x${l.width}mm`);
                 else if (l.length) sizeBits.push(`${l.length}mm`);
@@ -117,18 +155,15 @@ function generateEMRNotePlainText(options) {
                 if (sizeBits.length) txt += `    - Size / margin: ${sizeBits.join(', ')}\n`;
             }
             txt += formatTopicalEmrLines(l);
-            if (l.plan.includes('Biopsy') || l.plan.includes('Excision')) {
-                txt += `    - SMS Normal Results Consent: ${l.smsConsent !== false ? 'Agreed' : 'Declined'}\n`;
-            }
             txt += `\n`;
         });
     }
 
-    if (procedureSession.started || procedureSession.completedAt) {
+    if (procedureSession.started || procedureSession.completedAt || (typeof chartLesions === 'function' ? chartLesions() : []).some((item) => typeof lesionPerformedToday === 'function' && lesionPerformedToday(item))) {
         txt += `=== PROCEDURE SESSION ===\n\n`;
         const allocated = typeof procedureSelectedLesions === 'function' && procedureSession.started
             ? procedureSelectedLesions()
-            : (typeof chartLesions === 'function' ? chartLesions() : []).filter((item) => item.procedureCompletedAt);
+            : (typeof chartLesions === 'function' ? chartLesions() : []).filter((item) => typeof lesionPerformedToday === 'function' ? lesionPerformedToday(item) : item.procedureCompletedAt);
         if (allocated.length) {
             allocated.forEach((l, idx) => {
                 const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(l) : null;
@@ -143,7 +178,9 @@ function generateEMRNotePlainText(options) {
     const biopsiesCount = typeof sessionBiopsyCount === 'function' ? sessionBiopsyCount() : getBiopsyLesions().length;
     if (biopsiesCount > 0) {
         txt += generateBiopsyFinancialEmrSection(biopsiesCount);
-        if (shaveConsentVerified) {
+        const verbalShave = shaveConsentVerified
+            || (typeof chartLesions === 'function' ? chartLesions() : (lesions || [])).some((item) => (typeof lesionConsentStatus === 'function' ? lesionConsentStatus(item) : '') === 'verbal');
+        if (verbalShave) {
             txt += `- Shave / Saucerisation Safety Checklist Verified: Reticular dermis depth confirmed, bleeding risk checked, Hyfrecator safety confirmed, skin prep completely dry.\n`;
         }
         txt += `\n`;
@@ -153,9 +190,19 @@ function generateEMRNotePlainText(options) {
     if (pdtQuotes.length > 0) {
         txt += `=== RED LIGHT PDT QUOTE & FINANCIAL DISCLOSURE ===\n\n`;
         pdtQuotes.forEach((l, idx) => {
-            const area = l.pdtAreaName || 'Body area not specified';
-            const fee = l.pdtQuotedPrice > 0 ? formatPdtMoney(l.pdtQuotedPrice) + ' OOP' : 'Fee not yet set in the saved PDT price list';
-            txt += `- Lesion ${idx + 1} (${l.location}): Red Light PDT to ${area}. Quoted fee: ${fee}.\n`;
+            const regions = typeof normalizePdtRegions === 'function' ? normalizePdtRegions(l) : [];
+            const summary = typeof summarizePdtRegions === 'function'
+                ? summarizePdtRegions(regions)
+                : { names: l.pdtAreaName || 'Body area not specified', total: Number(l.pdtQuotedPrice) || 0 };
+            const fee = summary.total > 0
+                ? formatPdtMoney(summary.total) + ' OOP'
+                : 'Fee not yet set in the clinic PDT price list';
+            txt += `- Lesion ${idx + 1} (${l.location}): Red Light PDT to ${summary.names || 'Body area not specified'}. Quoted fee: ${fee}.\n`;
+            if (regions.length > 1) {
+                regions.forEach((row) => {
+                    txt += `  · ${row.area}: ${formatPdtMoney(row.price)} OOP\n`;
+                });
+            }
         });
         txt += `\n`;
     }
@@ -181,17 +228,33 @@ function generateEMRNotePlainText(options) {
     return txt;
 }
 
+function visitNoteLesions() {
+    if (Array.isArray(lesions) && lesions.length) return lesions;
+    const ids = (typeof currentManagedChart === 'function' ? currentManagedChart()?.visitSession?.visitLesionIds : null) || [];
+    if (!ids.length || typeof chartLesions !== 'function') return Array.isArray(lesions) ? lesions : [];
+    const wanted = new Set(ids.map(String));
+    return chartLesions().filter((item) => wanted.has(String(item.id)));
+}
+
 function copyEMRNotePlainText() {
-    const text = generateEMRNotePlainText();
+    return copyTodaysClinicalNote();
+}
+
+function copyTodaysClinicalNote() {
+    const text = typeof generateCompleteInteractionNote === 'function'
+        ? generateCompleteInteractionNote()
+        : generateEMRNotePlainText();
     if (!text) return;
     const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
-    if (typeof chartExamCopyIsCurrent === 'function' && chartExamCopyIsCurrent(chart)) {
-        showToast('Already copied to IEMR. Screening stays on the chart for consent forms.');
-        return;
-    }
-    copyTextToClipboard(text, 'Clinical EMR Note copied to clipboard!', () => {
+    const alreadyCopied = (typeof chartExamAlreadyCopiedToday === 'function' && chartExamAlreadyCopiedToday(chart))
+        || !!(typeof outputCopyState !== 'undefined' && outputCopyState.emr && outputCopyState.emr.copied);
+    const toast = alreadyCopied
+        ? 'Full visit note copied. It may duplicate content already in Best Practice — replace the note there rather than append.'
+        : 'Today’s clinical note copied for Best Practice.';
+    copyTextToClipboard(text, toast, () => {
         markOutputCopied('emr', text);
         if (typeof markChartIemrCopied === 'function') markChartIemrCopied(text);
+        if (typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
     });
 }
 
@@ -208,7 +271,10 @@ function generateBiopsyFinancialEmrSection(biopsiesCount) {
     txt += `- Financial Consent & Billing Structure:\n`;
     txt += `    - Consultation Billing: ${cBilling}\n`;
     txt += `    - Biopsy Fee Option: ${bBilling}\n`;
-    txt += `    - Total Out-of-Pocket Biopsy Cost: ${oopTotal > 0 ? '$' + oopTotal + ' Total' : '$0'} (${count} biopsy procedure${count === 1 ? '' : 's'} performed today).\n`;
+    txt += `    - Total Out-of-Pocket Biopsy Cost: ${oopTotal > 0 ? '$' + oopTotal + ' Total' : '$0'} (${count} biopsy procedure${count === 1 ? '' : 's'} in this note).\n`;
+    if (typeof smsNormalResultsConsentLabel === 'function') {
+        txt += `- Normal results by text: ${smsNormalResultsConsentLabel() || 'Not recorded'}\n`;
+    }
     return txt;
 }
 
@@ -230,10 +296,7 @@ function generateProcedureIemrAddendum() {
 }
 
 function generateCompleteInteractionNote() {
-    if (typeof chartExamAlreadyCopiedToday === 'function' && chartExamAlreadyCopiedToday()) {
-        return generateProcedureIemrAddendum();
-    }
-    let txt = generateEMRNotePlainText() || '';
+    let txt = generateEMRNotePlainText({ includeFullScreening: true, forceFull: true }) || '';
     if (typeof generateExEntryNote === 'function' && Array.isArray(exLesions) && exLesions.length) {
         const op = generateExEntryNote();
         if (op && !op.startsWith('Your')) {
@@ -263,7 +326,8 @@ function histoTechniqueLabel(l) {
 
 function histoSizeSuffix(l) {
     const kind = String(l?.procedure || l?.biopsyType || '');
-    const isPunchBx = /punch/i.test(kind) && !/excision/i.test(kind);
+    const type = typeof lesionType === 'function' ? lesionType(l) : '';
+    const isPunchBx = type === 'punch' || (/punch/i.test(kind) && !/excision/i.test(kind));
     if (isPunchBx) return l?.punchSize ? `, ${l.punchSize}mm punch` : '';
     const bits = [];
     if (l?.length && l?.width) bits.push(`${l.length}x${l.width}mm`);
@@ -477,10 +541,15 @@ function generateReceptionMessage() {
     const consultLesions = typeof lesions !== 'undefined' ? lesions : [];
     const biopsiesCount = typeof sessionBiopsyCount === 'function' ? sessionBiopsyCount() : getBiopsyLesions().length;
     const excisionsCount = getBookedExcisionLesions().length;
-    const procedureLesions = typeof procedureSelectedLesions === 'function' ? procedureSelectedLesions() : [];
+    const procedureStarted = !!(typeof procedureSession !== 'undefined' && procedureSession.started);
+    const procedureLesions = procedureStarted && typeof procedureSelectedLesions === 'function'
+        ? procedureSelectedLesions()
+        : (typeof chartLesions === 'function' ? chartLesions() : consultLesions).filter((item) => {
+            return typeof lesionPerformedToday === 'function' ? lesionPerformedToday(item) : !!item.procedureCompletedAt;
+        });
     const hasConsult = consultLesions.length > 0 || biopsiesCount > 0 || excisionsCount > 0
         || (typeof isSection1RiskComplete === 'function' && isSection1RiskComplete());
-    const hasProcedure = procedureLesions.length > 0 || !!(typeof procedureSession !== 'undefined' && procedureSession.started);
+    const hasProcedure = procedureLesions.length > 0;
 
     const recallTitle = typeof computedRecallInterval === 'function' ? computedRecallInterval() : '';
 
@@ -502,6 +571,12 @@ function generateReceptionMessage() {
         const topicalBits = typeof getTopicalReceptionBits === 'function' ? getTopicalReceptionBits() : [];
         if (topicalBits.length > 0) {
             parts.push(`Topical / Field Rx: ${topicalBits.join('; ')}`);
+        }
+        const cryoRecalls = (typeof lesions !== 'undefined' ? lesions : [])
+            .filter((l) => l.topicalDecision === 'cryotherapy' && l.cryoRecallRepeat)
+            .map((l) => `${l.location || 'site'}${l.cryoSessionInterval ? ' in ' + l.cryoSessionInterval : ''}`);
+        if (cryoRecalls.length) {
+            parts.push(`BOOK CRYO RECALL: ${cryoRecalls.join('; ')}`);
         }
         if (recallTitle) parts.push(`Follow-Up Recall: ${recallTitle}`);
     }
@@ -597,8 +672,13 @@ function updateActionCardStatuses() {
     const examCopiedToday = typeof chartExamCopyIsCurrent === 'function' && chartExamCopyIsCurrent();
     const emrTheme = (emrCopied || examCopiedToday) ? 'done' : 'pending';
     applyStatusCard('cardStatusEmr', emrTheme);
-    setStatusBadge('textEmrStatus', 'dotEmr', emrTheme, (emrCopied || examCopiedToday) ? 'Copied to IEMR' : 'Pending copy');
-    setActionButtonState(document.getElementById('btnCopyEmr'), !examCopiedToday);
+    setStatusBadge(
+        'textEmrStatus',
+        'dotEmr',
+        emrTheme,
+        (emrCopied || examCopiedToday) ? 'Copied — re-copy replaces in BP' : 'Pending copy'
+    );
+    setActionButtonState(document.getElementById('btnCopyEmr'), true);
 
     const pathNeeded = biopsyCount > 0;
     const pathTheme = !pathNeeded ? 'idle' : (pathCopied ? 'done' : 'pending');
@@ -673,7 +753,11 @@ function updateOutput() {
     const suppTextEl = document.getElementById('supplementaryReportText');
     const recEl = document.getElementById('receptionMessageText');
 
-    if (plainContainer) plainContainer.value = generateEMRNotePlainText();
+    if (plainContainer) {
+        plainContainer.value = typeof generateCompleteInteractionNote === 'function'
+            ? generateCompleteInteractionNote()
+            : generateEMRNotePlainText();
+    }
 
     const histoData = generatePathologyOutputs();
     const biopsyCount = getBiopsyLesions().length;
@@ -722,7 +806,11 @@ function toggleNotePreviewModal() {
     const view = document.getElementById('previewModalRtfView');
     if (!modal) return;
     if (modal.classList.contains('hidden')) {
-        if (view) view.innerText = generateEMRNotePlainText();
+        if (view) {
+            view.innerText = typeof generateCompleteInteractionNote === 'function'
+                ? generateCompleteInteractionNote()
+                : generateEMRNotePlainText();
+        }
         modal.classList.remove('hidden');
     } else {
         modal.classList.add('hidden');

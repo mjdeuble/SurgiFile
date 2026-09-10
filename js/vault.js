@@ -100,7 +100,7 @@ async function ensureVaultLayout(rootHandle) {
         await writeTextFile(rootHandle, 'dermrecord.json', JSON.stringify({
             app: 'DermRecord',
             version: 1,
-            note: 'Encrypted lesion records live under users/<username>/lesions/; billing under billing/; patient charts under charts/; visit notes under notes/ (kept 7 days)'
+            note: 'Encrypted lesion records live under users/<username>/lesions/; billing under billing/; patient charts under charts/; visit notes under notes/; consents under consents/ (notes and consents kept 7 days)'
         }, null, 2));
     } catch (err) {
         /* Marker file is optional; the users/ directory is what login needs. */
@@ -157,6 +157,9 @@ async function pickClinicFolder() {
     } catch (err) {
         console.warn('Could not persist clinic folder handle', err);
     }
+    if (typeof loadClinicProfile === 'function') await loadClinicProfile();
+    if (typeof loadClinicSupplies === 'function') await loadClinicSupplies();
+    if (typeof loadClinicPdtPrices === 'function') await loadClinicPdtPrices();
     return handle;
 }
 
@@ -167,6 +170,9 @@ async function restoreClinicFolder(interactive) {
     if (!ok) return null;
     await ensureVaultLayout(handle);
     vaultRootHandle = handle;
+    if (typeof loadClinicProfile === 'function') await loadClinicProfile();
+    if (typeof loadClinicSupplies === 'function') await loadClinicSupplies();
+    if (typeof loadClinicPdtPrices === 'function') await loadClinicPdtPrices();
     return handle;
 }
 
@@ -207,6 +213,11 @@ async function getUserChartsDir(username, create) {
 async function getUserNotesDir(username, create) {
     const userDir = await getUserDir(username, create);
     return userDir.getDirectoryHandle('notes', { create: !!create });
+}
+
+async function getUserConsentsDir(username, create) {
+    const userDir = await getUserDir(username, create);
+    return userDir.getDirectoryHandle('consents', { create: !!create });
 }
 
 async function deleteTextFile(dirHandle, name) {

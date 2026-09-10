@@ -62,19 +62,16 @@ function notesPendingCopy() {
     const procedureText = currentProcedureNoteText();
     const consultExists = consultNoteIsSavable(consultText);
     const procedureExists = procedureNoteIsSavable(procedureText);
-    const examCopied = (typeof chartExamAlreadyCopiedToday === 'function' && chartExamAlreadyCopiedToday())
-        || !!(typeof outputCopyState !== 'undefined' && outputCopyState.emr && outputCopyState.emr.copied);
-    const copiedText = String((typeof outputCopyState !== 'undefined' && outputCopyState.emr && outputCopyState.emr.lastCopiedText) || '');
-    const procedureCopied = procedureExists && !!(typeof outputCopyState !== 'undefined' && outputCopyState.emr && outputCopyState.emr.copied)
-        && /OPERATIVE NOTE|OBJECTIVE:|PROCEDURE ADDENDUM|PROCEDURE \d/i.test(copiedText);
-    const consultPending = consultExists && !examCopied;
-    const procedurePending = procedureExists && !procedureCopied;
+    const hasContent = consultExists || procedureExists;
+    const copyCurrent = typeof chartExamCopyIsCurrent === 'function' && chartExamCopyIsCurrent();
+    const pending = hasContent && !copyCurrent;
     return {
-        pending: consultPending || procedurePending,
-        consultPending,
-        procedurePending,
+        pending,
+        consultPending: consultExists && !copyCurrent,
+        procedurePending: procedureExists && !copyCurrent,
         consultExists,
-        procedureExists
+        procedureExists,
+        todayPending: pending
     };
 }
 

@@ -1,5 +1,12 @@
 /* Skin check workflow: sanitation, concerns, risk screening, lesions */
 
+const PUNCH_SHAVE_BIOPSY_PLAN = 'Punch / Shave Biopsy';
+
+function isPunchShaveBiopsyPlan(plan) {
+    const p = String(plan || '');
+    return p.includes('Punch / Shave Biopsy') || p.includes('Biopsy Today');
+}
+
 function syncPatientIdentifiers(source) {
     const mainName = document.getElementById('mainPatientName');
     const mainDOB = document.getElementById('mainPatientDOB');
@@ -45,6 +52,9 @@ function openSanitationModal() {
 }
 
 function setModalBedSanitation(isClean) {
+    if (!isClean && isBedSanitised && typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        isClean = true;
+    }
     isBedSanitised = isClean;
     const btnYes = document.getElementById('modalBedYes');
     const btnNo = document.getElementById('modalBedNo');
@@ -124,7 +134,50 @@ function examScopeIsComplete() {
 function examMetadataSectionComplete() {
     return examScopeIsComplete()
         && !!(document.getElementById('fitzpatrick')?.value)
-        && !!(document.getElementById('lastSkinCheck')?.value);
+        && !!(document.getElementById('lastSkinCheck')?.value)
+        && smsNormalResultsConsentIsSet();
+}
+
+function normalizeSmsNormalResultsConsent(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'yes' || raw === 'true' || raw === 'agreed') return 'yes';
+    if (raw === 'no' || raw === 'false' || raw === 'declined') return 'no';
+    return '';
+}
+
+function smsNormalResultsConsentIsSet() {
+    return smsNormalResultsConsent === 'yes' || smsNormalResultsConsent === 'no';
+}
+
+function smsNormalResultsConsentLabel() {
+    if (smsNormalResultsConsent === 'yes') return 'Yes — happy to receive normal results by text';
+    if (smsNormalResultsConsent === 'no') return 'No — do not send normal results by text';
+    return '';
+}
+
+function updateSmsNormalResultsButtons() {
+    const btnNo = document.getElementById('smsResultsNo');
+    const btnYes = document.getElementById('smsResultsYes');
+    const unset = 'px-3 py-1 rounded text-xs font-bold transition-all bg-slate-200 text-slate-700 hover:bg-slate-300 cursor-pointer';
+    const yesOn = 'px-3 py-1 rounded text-xs font-bold transition-all bg-emerald-600 text-white shadow cursor-pointer';
+    const noOn = 'px-3 py-1 rounded text-xs font-bold transition-all bg-slate-700 text-white shadow cursor-pointer';
+    if (btnYes) btnYes.className = smsNormalResultsConsent === 'yes' ? yesOn : unset;
+    if (btnNo) btnNo.className = smsNormalResultsConsent === 'no' ? noOn : unset;
+    setExamFieldComplete('examSmsResultsField', smsNormalResultsConsentIsSet());
+}
+
+function applySmsNormalResultsConsent(value) {
+    smsNormalResultsConsent = normalizeSmsNormalResultsConsent(value);
+    updateSmsNormalResultsButtons();
+}
+
+function setSmsNormalResultsConsent(value) {
+    smsNormalResultsConsent = normalizeSmsNormalResultsConsent(value);
+    updateSmsNormalResultsButtons();
+    updateExamRequiredFields();
+    updateOutput();
+    if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) return;
+    if (typeof scheduleChartSave === 'function') scheduleChartSave();
 }
 
 function concernsSectionComplete() {
@@ -159,7 +212,8 @@ function updateExamRequiredFields() {
     setExamFieldComplete('examScopeField', scopeOk);
     setExamFieldComplete('examFitzField', fitzOk);
     setExamFieldComplete('examLastCheckField', lastOk);
-    const complete = scopeOk && fitzOk && lastOk;
+    setExamFieldComplete('examSmsResultsField', smsNormalResultsConsentIsSet());
+    const complete = scopeOk && fitzOk && lastOk && smsNormalResultsConsentIsSet();
     if (complete && !examMetadataWasComplete) {
         if (typeof collapseExamSectionWhenComplete === 'function') collapseExamSectionWhenComplete('sec-metadata');
     }
@@ -385,6 +439,7 @@ function setRecallDisplay(interval, reason) {
     if (reasonEl) reasonEl.innerText = reason;
     if (badgeEl) badgeEl.innerText = interval;
     if (headerReasonEl) headerReasonEl.innerText = reason;
+    if (typeof renderPatientChartSummary === 'function') renderPatientChartSummary();
 }
 
 function computedRecallInterval() {
@@ -476,6 +531,9 @@ function openLesionModal(lesionId = null) {
             document.getElementById('lesionDermoscopy').value = item.dermoscopy;
             const planEl = document.getElementById('lesionPlan');
             planEl.value = item.plan;
+            if (isPunchShaveBiopsyPlan(item.plan) && planEl.value !== item.plan) {
+                planEl.value = PUNCH_SHAVE_BIOPSY_PLAN;
+            }
             if (isTopicalPlan(item.plan) && planEl.value !== item.plan) {
                 planEl.value = 'Topical / Field Treatment';
             }
@@ -484,11 +542,6 @@ function openLesionModal(lesionId = null) {
             biopsyRadios.forEach(r => {
                 if (r.value === item.biopsyType) r.checked = true;
             });
-
-            const chkBiopsySms = document.getElementById('biopsySmsConsent');
-            const chkExcisionSms = document.getElementById('excisionSmsConsent');
-            if (chkBiopsySms) chkBiopsySms.checked = item.smsConsent !== false;
-            if (chkExcisionSms) chkExcisionSms.checked = item.smsConsent !== false;
             const marginEl = document.getElementById('excisionMargin');
             const reconEl = document.getElementById('excisionReconstruction');
             if (marginEl) marginEl.value = item.excisionMargin || '';
@@ -527,10 +580,6 @@ function openLesionModal(lesionId = null) {
         const graftEl = document.getElementById('consultExcisionGraftType');
         if (graftEl) graftEl.value = 'Full-Thickness Skin Graft (FTSG)';
 
-        const chkBiopsySms = document.getElementById('biopsySmsConsent');
-        const chkExcisionSms = document.getElementById('excisionSmsConsent');
-        if (chkBiopsySms) chkBiopsySms.checked = true;
-        if (chkExcisionSms) chkExcisionSms.checked = true;
         resetTopicalForm();
     }
 
@@ -561,6 +610,12 @@ function handleExamDiagnosisChange() {
     const isOther = sel?.value === 'OTHER';
     other.classList.toggle('hidden', !isOther);
     if (isOther) other.focus();
+    if (typeof isCryoRelevant === 'function' && isCryoRelevant()) {
+        const panel = document.getElementById('cryoPlanPanel');
+        if (panel && panel.dataset.modified !== '1' && typeof applyCryoRecommendationFromImpression === 'function') {
+            applyCryoRecommendationFromImpression({ force: true });
+        }
+    }
 }
 
 function applyExamImpressionValue(raw) {
@@ -624,7 +679,7 @@ function handlePlanChange() {
     if (eFields) eFields.classList.add('hidden');
     if (tFields) tFields.classList.add('hidden');
 
-    if (plan.includes('Biopsy Today')) {
+    if (isPunchShaveBiopsyPlan(plan)) {
         if (bFields) bFields.classList.remove('hidden');
         handleBiopsyTypeChange();
     } else if (plan.includes('Formally Book Excision')) {
@@ -665,17 +720,15 @@ function saveLesion() {
     let excisionReconstruction = '';
     let excisionClosureType = '';
     let graftType = '';
-    let smsConsent = false;
     let topicalFields = emptyTopicalFields();
     let length = '';
     let width = '';
     let margin = '';
     let punchSize = '';
 
-    if (plan.includes('Biopsy Today')) {
+    if (isPunchShaveBiopsyPlan(plan)) {
         const bRadios = document.getElementsByName('biopsyType');
         bRadios.forEach(r => { if (r.checked) biopsyType = r.value; });
-        smsConsent = document.getElementById('biopsySmsConsent')?.checked || false;
         if (biopsyType.includes('Punch')) {
             punchSize = document.getElementById('examPunchSize')?.value.trim() || '';
         } else {
@@ -684,15 +737,23 @@ function saveLesion() {
             margin = document.getElementById('examLesionMargin')?.value.trim() || '';
         }
 
-        if (biopsyType.includes('Shave') && !shaveConsentVerified) {
-            openShaveConsentModal();
+        if (biopsyType.includes('Shave')) {
+            const existingLesion = editId
+                ? ((lesions || []).find((item) => String(item.id) === String(editId))
+                    || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId)))
+                : null;
+            const existingConsent = typeof lesionConsentStatus === 'function' ? lesionConsentStatus(existingLesion) : '';
+            const alreadyConsented = existingConsent === 'verbal' || existingConsent === 'written';
+            if (!alreadyConsented && pendingShaveConsentAction !== 'verbal' && pendingShaveConsentAction !== 'skip') {
+                openShaveConsentModal();
+                return;
+            }
         }
     } else if (plan.includes('Formally Book Excision')) {
         excisionMargin = document.getElementById('excisionMargin')?.value.trim() || '3mm to 5mm';
         excisionClosureType = document.getElementById('excisionReconstruction')?.value || 'Ellipse';
         excisionReconstruction = closureToReconstruction(excisionClosureType);
         graftType = document.getElementById('consultExcisionGraftType')?.value || '';
-        smsConsent = document.getElementById('excisionSmsConsent')?.checked || false;
     } else if (isTopicalPlan(plan)) {
         topicalFields = readTopicalFieldsFromForm();
         if (topicalFields.topicalDiscussed.length === 0) {
@@ -703,8 +764,12 @@ function saveLesion() {
             showToast('Record the patient decision, or mark treatment as declined.');
             return;
         }
-        if (topicalFields.topicalDecision === 'pdt' && !topicalFields.pdtAreaId) {
-            showToast('Select a PDT body area so the stored fee can be quoted.');
+        if (topicalFields.topicalDecision === 'pdt' && !(topicalFields.pdtRegions || []).length) {
+            showToast('Select at least one PDT body area so the stored fee can be quoted.');
+            return;
+        }
+        if (topicalFields.topicalDecision === 'cryotherapy' && !(Number(topicalFields.cryoFreezeSeconds) > 0)) {
+            showToast('Choose a cryotherapy protocol (or enter freeze time) before saving.');
             return;
         }
     }
@@ -725,10 +790,34 @@ function saveLesion() {
         excisionClosureType,
         graftType,
         billingGraftType: graftType,
-        billingReconstruction: inferBillingReconstruction({ excisionReconstruction, excisionClosureType }),
-        smsConsent,
+        billingReconstruction: plan.includes('Formally Book Excision')
+            ? inferBillingReconstruction({ excisionReconstruction, excisionClosureType })
+            : '',
         ...topicalFields
     };
+
+    if (biopsyType.includes('Shave') && pendingShaveConsentAction === 'verbal') {
+        const existingConsent = editId && typeof lesionConsentStatus === 'function'
+            ? lesionConsentStatus((lesions || []).find((item) => String(item.id) === String(editId))
+                || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId)))
+            : '';
+        if (existingConsent !== 'written') {
+            lesionRecord.consentStatus = 'verbal';
+            lesionRecord.consentedAt = new Date().toISOString();
+        }
+        shaveConsentVerified = true;
+    }
+    pendingShaveConsentAction = '';
+
+    if (isPunchShaveBiopsyPlan(plan)) {
+        lesionRecord.type = biopsyType.includes('Punch') ? 'punch' : 'shave';
+    } else if (plan.includes('Formally Book Excision')) {
+        lesionRecord.type = 'excision';
+    } else if (isTopicalPlan(plan)) {
+        lesionRecord.type = 'topical';
+    } else {
+        lesionRecord.type = 'none';
+    }
 
     if (editId) {
         const idx = lesions.findIndex(l => String(l.id) === String(editId));
@@ -788,7 +877,7 @@ function renderLesionsTable() {
             <td class="p-3 font-bold text-slate-500">${idx + 1}</td>
             <td class="p-3 font-semibold text-slate-800">${escapeHtml(l.location || '')}${today ? ' <span class="text-[10px] font-bold text-emerald-700">Today</span>' : ''}</td>
             <td class="p-3 text-slate-700">${escapeHtml(typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(l.impression) : (l.impression || ''))}</td>
-            <td class="p-3"><span class="text-[11px] font-semibold text-blue-800">${escapeHtml(status)}</span></td>
+            <td class="p-3"><span class="text-[11px] font-semibold text-blue-800">${escapeHtml(status)}</span>${l.currentPlan ? `<div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(l.currentPlan)}</div>` : ''}${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(l) ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(l)))}</span>` : ''}</td>
             <td class="p-3">
                         <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${(l.plan || '').includes('Biopsy') ? 'bg-blue-100 text-blue-800' : (l.plan || '').includes('Excision') ? 'bg-purple-100 text-purple-800' : isTopicalPlan(l.plan) ? 'bg-teal-100 text-teal-800' : (l.plan || '').includes('Awaiting') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'}">
                             ${isTopicalPlan(l.plan) ? formatTopicalTableBadge(l) : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`}
@@ -807,10 +896,26 @@ function openShaveConsentModal() {
     if (modal) modal.classList.remove('hidden');
 }
 
-function confirmShaveConsent() {
-    shaveConsentVerified = true;
+function closeShaveConsentModal() {
     const modal = document.getElementById('shaveConsentModal');
     if (modal) modal.classList.add('hidden');
-    updateOutput();
+}
+
+function confirmShaveConsent() {
+    pendingShaveConsentAction = 'verbal';
+    shaveConsentVerified = true;
+    closeShaveConsentModal();
+    saveLesion();
+}
+
+function skipShaveVerbalConsent() {
+    pendingShaveConsentAction = 'skip';
+    closeShaveConsentModal();
+    saveLesion();
+}
+
+function cancelShaveConsent() {
+    pendingShaveConsentAction = '';
+    closeShaveConsentModal();
 }
 

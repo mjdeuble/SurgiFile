@@ -1,6 +1,21 @@
 /* Operative excision generator (note + shorthand pathology request) */
 
 function loadProcSupplies() {
+    /* Prefer clinic-folder supplies when available; sync fallback for boot before login. */
+    if (typeof loadClinicSupplies === 'function' && vaultRootHandle) {
+        return;
+    }
+    const fromLocal = typeof readLocalProcSuppliesFallback === 'function'
+        ? readLocalProcSuppliesFallback()
+        : null;
+    if (fromLocal) {
+        procSupplies = {
+            anesthetics: fromLocal.anesthetics.slice(),
+            sutures: fromLocal.sutures.slice(),
+            preps: fromLocal.preps.slice()
+        };
+        return;
+    }
     try {
         const raw = localStorage.getItem(PROC_SUPPLIES_STORAGE_KEY);
         if (raw) {
@@ -26,14 +41,17 @@ function loadProcSupplies() {
         sutures: DEFAULT_PROC_SUPPLIES.sutures.slice(),
         preps: DEFAULT_PROC_SUPPLIES.preps.slice()
     };
-    saveProcSupplies();
 }
 
-function saveProcSupplies() {
+async function saveProcSupplies() {
     try {
+        if (typeof saveClinicSupplies === 'function') {
+            await saveClinicSupplies();
+            return;
+        }
         localStorage.setItem(PROC_SUPPLIES_STORAGE_KEY, JSON.stringify(procSupplies));
     } catch (err) {
-        showToast('Unable to save procedure supplies on this device.');
+        showToast(err.message || 'Unable to save procedure supplies.');
     }
 }
 
@@ -91,25 +109,25 @@ function renderProcSupplyEditors() {
     renderProcSupplyEditorList('preps', 'procSupplyPreps');
 }
 
-function updateProcSupplyItem(kind, index, value) {
+async function updateProcSupplyItem(kind, index, value) {
     if (!procSupplies[kind] || !procSupplies[kind][index]) return;
     const next = String(value || '').trim();
     if (!next) return;
     procSupplies[kind][index] = next;
-    saveProcSupplies();
+    await saveProcSupplies();
     populateProcSupplySelects();
     renderProcSupplyEditors();
 }
 
-function removeProcSupplyItem(kind, index) {
+async function removeProcSupplyItem(kind, index) {
     if (!procSupplies[kind]) return;
     procSupplies[kind].splice(index, 1);
-    saveProcSupplies();
+    await saveProcSupplies();
     populateProcSupplySelects();
     renderProcSupplyEditors();
 }
 
-function addProcSupplyItem(kind) {
+async function addProcSupplyItem(kind) {
     const inputId = kind === 'anesthetics' ? 'newProcAnesthetic' : (kind === 'sutures' ? 'newProcSuture' : 'newProcPrep');
     const input = document.getElementById(inputId);
     const value = String(input?.value || '').trim();
@@ -125,13 +143,18 @@ function addProcSupplyItem(kind) {
     }
     procSupplies[kind].push(value);
     if (input) input.value = '';
-    saveProcSupplies();
+    await saveProcSupplies();
     populateProcSupplySelects();
     renderProcSupplyEditors();
+    showToast('Saved to clinic supplies.');
 }
 
-function initProcedureSupplies() {
-    loadProcSupplies();
+async function initProcedureSupplies() {
+    if (typeof loadClinicSupplies === 'function' && vaultRootHandle) {
+        await loadClinicSupplies();
+    } else {
+        loadProcSupplies();
+    }
     populateProcSupplySelects();
     renderProcSupplyEditors();
 }

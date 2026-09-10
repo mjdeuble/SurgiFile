@@ -25,7 +25,7 @@ function escapeHtml(str) {
     }[ch]));
 }
 
-function switchWorkspaceTab(tabName) {
+function switchWorkspaceTab(tabName, options) {
     if (typeof requireRoomReady === 'function' && !requireRoomReady(tabName)) return;
 
     activeWorkspaceTab = tabName;
@@ -62,7 +62,7 @@ function switchWorkspaceTab(tabName) {
     if (tabName === 'excision-generator') {
         updateExOutputVisibility();
         if (typeof renderProcedureWorkspace === 'function') renderProcedureWorkspace();
-        if (typeof procedureSession !== 'undefined' && procedureSession.started && typeof openProcedureCompleteModal === 'function') {
+        if (!options?.skipCompleteModal && typeof procedureSession !== 'undefined' && procedureSession.started && typeof openProcedureCompleteModal === 'function') {
             openProcedureCompleteModal();
         }
     }
@@ -71,6 +71,7 @@ function switchWorkspaceTab(tabName) {
     if (sanitation) sanitation.classList.add('hidden');
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
     if (typeof closeLesionFlyout === 'function') closeLesionFlyout();
+    if (!options?.skipPersist && typeof scheduleChartSave === 'function') scheduleChartSave();
 }
 
 const EXAM_ACCORDION_IDS = ['sec-metadata', 'sec-concerns', 'sec-risks', 'sec-lesions'];
@@ -105,48 +106,57 @@ function collapseExamSectionWhenComplete(id) {
     setAccordionCollapsed(id, true);
 }
 
-function copyTextToClipboard(text, successMsg, onSuccess) {
-    if (!text) {
-        showToast("No text available to copy.");
-        return;
-    }
-
-    const notifySuccess = () => {
-        showToast(successMsg);
-        if (typeof onSuccess === 'function') onSuccess(text);
-    };
-
+function copyViaTextarea(text) {
     const tempArea = document.createElement('textarea');
     tempArea.value = text;
+    tempArea.setAttribute('readonly', '');
     tempArea.style.position = 'fixed';
     tempArea.style.left = '-9999px';
     tempArea.style.top = '0';
-    tempArea.setAttribute('readonly', '');
     document.body.appendChild(tempArea);
-
     tempArea.focus();
     tempArea.select();
-    tempArea.setSelectionRange(0, 999999);
-
+    try {
+        tempArea.setSelectionRange(0, tempArea.value.length);
+    } catch (err) {
+        /* Selection range is best-effort. */
+    }
     let successful = false;
     try {
         successful = document.execCommand('copy');
     } catch (err) {
         successful = false;
     }
-
     document.body.removeChild(tempArea);
+    return successful;
+}
 
-    if (successful) {
+function copyTextToClipboard(text, successMsg, onSuccess) {
+    if (!text) {
+        showToast('No text available to copy.');
+        return false;
+    }
+
+    const notifySuccess = () => {
+        if (successMsg) showToast(successMsg);
+        if (typeof onSuccess === 'function') onSuccess(text);
+    };
+
+    if (copyViaTextarea(text)) {
         notifySuccess();
-    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        return true;
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(() => {
             notifySuccess();
         }).catch(() => {
             showToast('Copy failed. Please copy manually.');
         });
-    } else {
-        showToast('Copy failed. Please copy manually.');
+        return true;
     }
+
+    showToast('Copy failed. Please copy manually.');
+    return false;
 }
 

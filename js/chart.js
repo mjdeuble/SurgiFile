@@ -22,10 +22,17 @@ function isVisitLesion(id) {
 }
 
 function lesionStatusLabel(lesion) {
-    const status = lesion.managementStatus || deriveLesionStatusFromPlan(lesion);
-    if (status === 'planned_excision') return 'Assigned excision';
-    if (status === 'awaiting_histology') return 'Awaiting results';
-    return LESION_STATUSES[status] || status || 'On chart';
+    const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : (lesion.managementStatus || deriveLesionStatusFromPlan(lesion));
+    const type = typeof lesionType === 'function' ? lesionType(lesion) : '';
+    let label = '';
+    if (status === 'planned_procedure' && type === 'excision') label = 'Planned procedure · Excision';
+    else if (status === 'planned_procedure' && type === 'punch') label = 'Planned procedure · Punch';
+    else if (status === 'planned_procedure' && type === 'shave') label = 'Planned procedure · Shave';
+    else if (status === 'planned_procedure') label = 'Planned procedure';
+    else if (status === 'awaiting_histology') label = 'Awaiting results';
+    else label = LESION_STATUSES[status] || status || 'On chart';
+    const consent = typeof lesionConsentLabel === 'function' ? lesionConsentLabel(lesion) : '';
+    return consent ? label + ' · ' + consent : label;
 }
 
 function isLesionFlyoutOpen() {
@@ -66,24 +73,22 @@ function markChartSanitised() {
         requireCurrentPatient('Select a patient first. Sanitise unlocks examination and procedures for this chart.');
         return;
     }
+    if (isBedSanitised) {
+        showToast('Already sanitised for this chart. Close the chart to end the visit.');
+        return;
+    }
     pendingSanitise = false;
-    isBedSanitised = !isBedSanitised;
-    if (typeof setModalBedSanitation === 'function') setModalBedSanitation(isBedSanitised);
+    isBedSanitised = true;
+    if (typeof setModalBedSanitation === 'function') setModalBedSanitation(true);
     renderChartSidebar();
     updateOutput();
-    if (isBedSanitised) {
-        showToast('Room marked sanitised. Examination and procedures are unlocked.');
-        if (pendingWorkspaceTab) {
-            const tab = pendingWorkspaceTab;
-            pendingWorkspaceTab = '';
-            switchWorkspaceTab(tab);
-        }
-    } else {
-        showToast('Sanitised cleared. Examination and procedures are locked.');
-        if (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator') {
-            switchWorkspaceTab('management');
-        }
+    showToast('Room marked sanitised. Examination and procedures are unlocked.');
+    if (pendingWorkspaceTab) {
+        const tab = pendingWorkspaceTab;
+        pendingWorkspaceTab = '';
+        switchWorkspaceTab(tab);
     }
+    if (typeof scheduleChartSave === 'function') scheduleChartSave();
 }
 
 function pulseSanitiseControl() {
@@ -113,13 +118,16 @@ function requireRoomReady(tabName) {
     return true;
 }
 
-function selectChartLesion(id) {
+function selectChartLesion(id, options) {
     selectedChartLesionId = String(id || '');
     renderChartSidebar();
     const lesion = chartLesions().find((item) => String(item.id) === selectedChartLesionId);
     if (!lesion) return;
 
-    if (activeWorkspaceTab === 'management') return;
+    if (activeWorkspaceTab === 'management') {
+        if (!options?.skipComms && typeof openLesionCommsModal === 'function') openLesionCommsModal(lesion.id);
+        return;
+    }
 
     if (!isBedSanitised) {
         pulseSanitiseControl();
@@ -132,7 +140,7 @@ function selectChartLesion(id) {
     if (activeWorkspaceTab === 'excision-generator') {
         if (typeof openProcedureLesionDetail === 'function') {
             openProcedureLesionDetail(lesion.id);
-        } else if (typeof allocateManagedLesionAsCurrentCase === 'function' && (lesion.managementStatus === 'planned_excision' || lesion.managementStatus === 'current_case' || String(lesion.plan || '').includes('Excision'))) {
+        } else if (typeof allocateManagedLesionAsCurrentCase === 'function' && (typeof lesionType === 'function' ? lesionType(lesion) === 'excision' : (lesion.managementStatus === 'planned_excision' || lesion.managementStatus === 'current_case' || String(lesion.plan || '').includes('Excision')))) {
             allocateManagedLesionAsCurrentCase(lesion.id);
         } else if (typeof applyManagedLesionToExcisionForm === 'function') {
             applyManagedLesionToExcisionForm(lesion);
@@ -164,7 +172,7 @@ function renderChartSidebar() {
     if (sanitiseBtn) sanitiseBtn.classList.toggle('is-on', !!isBedSanitised);
     if (sanitiseHint) {
         sanitiseHint.textContent = isBedSanitised
-            ? 'Examination and procedures are unlocked for this patient.'
+            ? 'Room is sanitised for this visit. Close the chart to end the visit.'
             : 'Click once to unlock examination and procedures for this patient.';
     }
 
@@ -228,6 +236,10 @@ function renderChartSidebar() {
                     <span class="text-blue-800">${escapeHtml(lesionStatusLabel(lesion))}</span>
                     <span class="text-slate-400">${tag}</span>
                 </span>
+                ${lesion.currentPlan ? `<span class="mt-0.5 block text-[10px] text-slate-600 truncate">${escapeHtml(lesion.currentPlan)}</span>` : ''}
+                ${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(lesion)
+                    ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(lesion)))}</span>`
+                    : ''}
             </button>`;
     }).join('') + concernRows.map((text) => `
         <div class="chart-lesion-item is-concern">

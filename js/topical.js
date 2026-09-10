@@ -11,6 +11,191 @@ const TOPICAL_TREATMENT_OPTIONS = [
 const TOPICAL_DECISION_DECLINED = 'declined';
 const PDT_PRICE_STORAGE_KEY = 'dermRecordPdtPrices';
 
+/* RACGP AFP May 2017 — Optimising cryosurgery technique (Table 2), timed spot-freeze.
+   Freeze time is held after ice ball encompasses lesion + margin. Clinician may modify. */
+const CRYOTHERAPY_PROTOCOLS = [
+    {
+        id: 'ak',
+        label: 'Actinic / solar keratosis',
+        matchCodes: ['SK'],
+        matchWords: ['actinic', 'solar keratosis'],
+        technique: 'open-spray',
+        freezeSeconds: 15,
+        freezeSecondsMax: 15,
+        ftc: 1,
+        marginMm: 1,
+        sessions: 1,
+        interval: '',
+        suggestRecall: false,
+        hint: 'RACGP: open-spray 15 s × 1 FTC, 1 mm margin. Brief 1–2 s freezes are ineffective. Some AU sources cite shorter freezes for thin AKs — adjust if needed.'
+    },
+    {
+        id: 'sebk',
+        label: 'Seborrhoeic keratosis',
+        matchCodes: ['SebK'],
+        matchWords: ['seborrhoeic', 'seborrheic'],
+        technique: 'open-spray',
+        freezeSeconds: 10,
+        freezeSecondsMax: 20,
+        ftc: 1,
+        marginMm: 1,
+        sessions: 1,
+        interval: '',
+        suggestRecall: false,
+        hint: 'RACGP: freeze to ice formation × 1 FTC, 1 mm margin; usually single session. Thicker lesions may need longer freeze or a second FTC.'
+    },
+    {
+        id: 'wart-flat',
+        label: 'Viral wart (flat)',
+        matchCodes: [],
+        matchWords: ['wart', 'verruca'],
+        technique: 'open-spray',
+        freezeSeconds: 10,
+        freezeSecondsMax: 10,
+        ftc: 1,
+        marginMm: 1,
+        sessions: 2,
+        interval: '2 weeks',
+        suggestRecall: true,
+        hint: 'RACGP: flat warts 10 s × 1 FTC, 1 mm; typically 2 sessions ~2 weeks apart. Pare thick keratin first when practical.'
+    },
+    {
+        id: 'wart-plane',
+        label: 'Plane wart',
+        matchCodes: [],
+        matchWords: [],
+        technique: 'open-spray',
+        freezeSeconds: 4,
+        freezeSecondsMax: 5,
+        ftc: 1,
+        marginMm: 1,
+        sessions: 2,
+        interval: '2 weeks',
+        suggestRecall: true,
+        hint: 'RACGP: plane warts 3–5 s × 1 FTC, 1 mm; often needs a second session.'
+    },
+    {
+        id: 'wart-plantar',
+        label: 'Plantar wart',
+        matchCodes: [],
+        matchWords: ['plantar'],
+        technique: 'open-spray',
+        freezeSeconds: 15,
+        freezeSecondsMax: 20,
+        ftc: 1,
+        marginMm: 1,
+        sessions: 2,
+        interval: '2 weeks',
+        suggestRecall: true,
+        hint: 'RACGP: plantar 10–20 s × 1 FTC (recalcitrant may need double FTC), 1 mm; usually ≥2 sessions.'
+    },
+    {
+        id: 'wart-filiform',
+        label: 'Filiform / digit wart',
+        matchCodes: [],
+        matchWords: ['filiform'],
+        technique: 'open-spray',
+        freezeSeconds: 10,
+        freezeSecondsMax: 10,
+        ftc: 1,
+        marginMm: 1,
+        sessions: 2,
+        interval: '2 weeks',
+        suggestRecall: true,
+        hint: 'RACGP: filiform/digit ~10 s × 1 FTC, 1 mm; plan a review/repeat session.'
+    },
+    {
+        id: 'skin-tag',
+        label: 'Skin tag',
+        matchCodes: [],
+        matchWords: ['skin tag', 'acrochordon'],
+        technique: 'open-spray',
+        freezeSeconds: 8,
+        freezeSecondsMax: 10,
+        ftc: 1,
+        marginMm: 1,
+        sessions: 1,
+        interval: '',
+        suggestRecall: false,
+        hint: 'RACGP: 5–10 s × 1 FTC, 1 mm; usually single treatment (spray or forceps).'
+    },
+    {
+        id: 'solar-lentigo',
+        label: 'Solar lentigo',
+        matchCodes: ['SL'],
+        matchWords: ['solar lentigo', 'lentigo'],
+        technique: 'open-spray',
+        freezeSeconds: 5,
+        freezeSecondsMax: 5,
+        ftc: 1,
+        marginMm: 1,
+        sessions: 1,
+        interval: '',
+        suggestRecall: false,
+        hint: 'RACGP: 5 s × 1 FTC, 1 mm. Do not treat if melanoma in situ cannot be excluded — biopsy/refer instead.'
+    },
+    {
+        id: 'bowen',
+        label: 'Bowen’s / IEC',
+        matchCodes: ['IEC'],
+        matchWords: ['bowen', 'iec', 'intraepidermal'],
+        technique: 'open-spray',
+        freezeSeconds: 20,
+        freezeSecondsMax: 30,
+        ftc: 1,
+        marginMm: 3,
+        sessions: 1,
+        interval: '',
+        suggestRecall: false,
+        hint: 'RACGP: 15–30 s × 1 FTC, 3 mm margin. Confirm diagnosis is suitable for cryotherapy.'
+    },
+    {
+        id: 'dermatofibroma',
+        label: 'Dermatofibroma',
+        matchCodes: ['DF'],
+        matchWords: ['dermatofibroma'],
+        technique: 'cryoprobe',
+        freezeSeconds: 25,
+        freezeSecondsMax: 30,
+        ftc: 1,
+        marginMm: 2,
+        sessions: 2,
+        interval: '8 weeks',
+        suggestRecall: true,
+        hint: 'RACGP: 20–30 s × 1 FTC, 2 mm; often 2 sessions ~8 weeks apart.'
+    },
+    {
+        id: 'bcc-caution',
+        label: 'BCC (selected lesions only)',
+        matchCodes: ['BCC'],
+        matchWords: ['basal cell'],
+        technique: 'open-spray',
+        freezeSeconds: 30,
+        freezeSecondsMax: 30,
+        ftc: 2,
+        marginMm: 5,
+        sessions: 1,
+        interval: '',
+        suggestRecall: false,
+        hint: 'RACGP: 30 s × 2 FTC, 5 mm — only for carefully selected lesions. Prefer excision when histology/margins needed. Not for poorly defined, deep, or high-risk sites.'
+    },
+    {
+        id: 'custom',
+        label: 'Custom / other',
+        matchCodes: [],
+        matchWords: [],
+        technique: 'open-spray',
+        freezeSeconds: 10,
+        freezeSecondsMax: 15,
+        ftc: 1,
+        marginMm: 1,
+        sessions: 1,
+        interval: '',
+        suggestRecall: false,
+        hint: 'Enter parameters clinically. Biopsy or refer if diagnosis is uncertain (RACGP).'
+    }
+];
+
 const DEFAULT_PDT_PRICE_LIST = [
     { id: 'pdt-face', area: 'Face', price: 0 },
     { id: 'pdt-scalp', area: 'Scalp', price: 0 },
@@ -32,6 +217,16 @@ function topicalLabel(id) {
 }
 
 function loadPdtPriceList() {
+    if (typeof loadClinicPdtPrices === 'function' && vaultRootHandle) {
+        return;
+    }
+    const fromLocal = typeof readLocalPdtPricesFallback === 'function'
+        ? readLocalPdtPricesFallback()
+        : null;
+    if (fromLocal) {
+        pdtPriceList = fromLocal.map((item) => ({ ...item }));
+        return;
+    }
     try {
         const raw = localStorage.getItem(PDT_PRICE_STORAGE_KEY);
         if (raw) {
@@ -49,14 +244,17 @@ function loadPdtPriceList() {
         pdtPriceList = [];
     }
     pdtPriceList = DEFAULT_PDT_PRICE_LIST.map(item => ({ ...item }));
-    savePdtPriceList();
 }
 
-function savePdtPriceList() {
+async function savePdtPriceList() {
     try {
+        if (typeof saveClinicPdtPrices === 'function') {
+            await saveClinicPdtPrices();
+            return;
+        }
         localStorage.setItem(PDT_PRICE_STORAGE_KEY, JSON.stringify(pdtPriceList));
     } catch (err) {
-        showToast('Unable to save PDT prices on this device.');
+        showToast(err.message || 'Unable to save PDT prices.');
     }
 }
 
@@ -70,28 +268,83 @@ function getPdtAreaById(id) {
     return pdtPriceList.find(item => item.id === id) || null;
 }
 
-function initTopicalModule() {
-    loadPdtPriceList();
+function normalizePdtRegions(lesionOrFields) {
+    const src = lesionOrFields || {};
+    if (Array.isArray(src.pdtRegions) && src.pdtRegions.length) {
+        return src.pdtRegions.map((row) => ({
+            id: String(row.id || ''),
+            area: String(row.area || '').trim(),
+            price: Math.max(0, Number(row.price) || 0)
+        })).filter((row) => row.area || row.id);
+    }
+    if (src.pdtAreaId || src.pdtAreaName) {
+        return [{
+            id: String(src.pdtAreaId || ''),
+            area: String(src.pdtAreaName || '').trim() || 'Body area',
+            price: Math.max(0, Number(src.pdtQuotedPrice) || 0)
+        }];
+    }
+    return [];
+}
+
+function summarizePdtRegions(regions) {
+    const list = Array.isArray(regions) ? regions : [];
+    const names = list.map((row) => row.area).filter(Boolean);
+    const total = list.reduce((sum, row) => sum + (Number(row.price) || 0), 0);
+    return {
+        names: names.join(' + '),
+        total,
+        count: list.length
+    };
+}
+
+function pdtRegionsSnapshotFromIds(ids) {
+    return (ids || []).map((id) => {
+        const item = getPdtAreaById(id);
+        if (!item) return null;
+        return { id: item.id, area: item.area, price: Number(item.price) || 0 };
+    }).filter(Boolean);
+}
+
+async function initTopicalModule() {
+    if (typeof loadClinicPdtPrices === 'function' && vaultRootHandle) {
+        await loadClinicPdtPrices();
+    } else {
+        loadPdtPriceList();
+    }
     renderPdtAreaSelect();
     renderPdtPriceEditor();
     renderAkComparisonTable();
     updateAkComparisonControls();
 }
 
-function renderPdtAreaSelect(selectedId) {
-    const select = document.getElementById('pdtAreaSelect');
-    if (!select) return;
-    const current = selectedId || select.value;
+function getSelectedPdtAreaIds() {
+    return Array.from(document.querySelectorAll('input[name="pdtAreaPick"]:checked')).map((el) => el.value);
+}
+
+function renderPdtAreaSelect(selectedIds) {
+    const host = document.getElementById('pdtAreaChecklist');
+    if (!host) return;
+    let selected = Array.isArray(selectedIds)
+        ? selectedIds.slice()
+        : (selectedIds ? [selectedIds] : getSelectedPdtAreaIds());
+    if (!selected.length) {
+        const legacy = document.getElementById('pdtAreaSelect')?.value;
+        if (legacy) selected = [legacy];
+    }
     if (pdtPriceList.length === 0) {
-        select.innerHTML = '<option value="">No PDT areas saved yet — add one below</option>';
+        host.innerHTML = '<p class="text-[11px] text-teal-800 italic">No PDT areas in clinic settings yet. Add them under Clinic settings → PDT prices.</p>';
+        updatePdtQuotePreview();
         return;
     }
-    select.innerHTML = '<option value="">Select PDT body area...</option>' + pdtPriceList.map(item => {
-        return `<option value="${item.id}">${item.area} (${formatPdtMoney(item.price)})</option>`;
+    host.innerHTML = pdtPriceList.map((item) => {
+        const checked = selected.includes(item.id) ? ' checked' : '';
+        return `<label class="flex items-center gap-2 p-2 bg-teal-50/80 border border-teal-200 rounded-lg cursor-pointer">
+            <input type="checkbox" name="pdtAreaPick" value="${item.id}"${checked} onchange="updatePdtQuotePreview()" class="text-teal-600 rounded">
+            <span class="flex-1 text-xs font-semibold text-slate-800">${escapeHtml(item.area)}</span>
+            <span class="text-[11px] text-teal-900 font-medium">${formatPdtMoney(item.price)}</span>
+        </label>`;
     }).join('');
-    if (current && pdtPriceList.some(item => item.id === current)) {
-        select.value = current;
-    }
     updatePdtQuotePreview();
 }
 
@@ -99,48 +352,48 @@ function renderPdtPriceEditor() {
     const list = document.getElementById('pdtPriceEditorList');
     if (!list) return;
     if (pdtPriceList.length === 0) {
-        list.innerHTML = `<p class="text-[11px] text-teal-800 italic">No body areas yet. Add an area and fee below — it is saved on this device.</p>`;
+        list.innerHTML = `<p class="text-[11px] text-slate-500 italic">No body areas yet. Add an area and fee below — saved to the clinic folder.</p>`;
         return;
     }
     list.innerHTML = pdtPriceList.map(item => `
         <div class="grid grid-cols-12 gap-2 items-center">
-            <input type="text" value="${item.area.replace(/"/g, '&quot;')}" onchange="updatePdtPriceArea('${item.id}', this.value)" class="col-span-6 p-1.5 border border-teal-300 rounded bg-white text-[11px]">
+            <input type="text" value="${escapeHtml(item.area)}" onchange="updatePdtPriceArea('${item.id}', this.value)" class="col-span-6 p-1.5 border border-slate-300 rounded bg-white text-[11px]">
             <div class="col-span-4 flex items-center gap-1">
-                <span class="text-[11px] text-teal-900">$</span>
-                <input type="number" min="0" step="1" value="${item.price || ''}" onchange="updatePdtPriceAmount('${item.id}', this.value)" placeholder="0" class="w-full p-1.5 border border-teal-300 rounded bg-white text-[11px]">
+                <span class="text-[11px] text-slate-700">$</span>
+                <input type="number" min="0" step="1" value="${item.price || ''}" onchange="updatePdtPriceAmount('${item.id}', this.value)" placeholder="0" class="w-full p-1.5 border border-slate-300 rounded bg-white text-[11px]">
             </div>
             <button type="button" onclick="removePdtPriceArea('${item.id}')" class="col-span-2 text-[11px] font-bold text-red-600 hover:text-red-800 cursor-pointer">Remove</button>
         </div>
     `).join('');
 }
 
-function updatePdtPriceArea(id, area) {
+async function updatePdtPriceArea(id, area) {
     const item = getPdtAreaById(id);
     if (!item) return;
     item.area = area.trim() || item.area;
-    savePdtPriceList();
-    renderPdtAreaSelect(id);
-    renderPdtPriceEditor();
-}
-
-function updatePdtPriceAmount(id, price) {
-    const item = getPdtAreaById(id);
-    if (!item) return;
-    item.price = Math.max(0, Number(price) || 0);
-    savePdtPriceList();
-    renderPdtAreaSelect(id);
-    renderPdtPriceEditor();
-    updatePdtQuotePreview();
-}
-
-function removePdtPriceArea(id) {
-    pdtPriceList = pdtPriceList.filter(item => item.id !== id);
-    savePdtPriceList();
+    await savePdtPriceList();
     renderPdtAreaSelect();
     renderPdtPriceEditor();
 }
 
-function addPdtPriceArea() {
+async function updatePdtPriceAmount(id, price) {
+    const item = getPdtAreaById(id);
+    if (!item) return;
+    item.price = Math.max(0, Number(price) || 0);
+    await savePdtPriceList();
+    renderPdtAreaSelect();
+    renderPdtPriceEditor();
+    updatePdtQuotePreview();
+}
+
+async function removePdtPriceArea(id) {
+    pdtPriceList = pdtPriceList.filter(item => item.id !== id);
+    await savePdtPriceList();
+    renderPdtAreaSelect();
+    renderPdtPriceEditor();
+}
+
+async function addPdtPriceArea() {
     const areaInput = document.getElementById('newPdtAreaName');
     const priceInput = document.getElementById('newPdtAreaPrice');
     const area = areaInput ? areaInput.value.trim() : '';
@@ -151,12 +404,12 @@ function addPdtPriceArea() {
     const price = Math.max(0, Number(priceInput?.value) || 0);
     const id = 'pdt-' + Date.now();
     pdtPriceList.push({ id, area, price });
-    savePdtPriceList();
+    await savePdtPriceList();
     if (areaInput) areaInput.value = '';
     if (priceInput) priceInput.value = '';
-    renderPdtAreaSelect(id);
+    renderPdtAreaSelect();
     renderPdtPriceEditor();
-    showToast('PDT area saved on this device.');
+    showToast('PDT area saved to clinic settings.');
 }
 
 function isPdtRelevant() {
@@ -165,8 +418,224 @@ function isPdtRelevant() {
     return discussed.includes('pdt') || decision === 'pdt';
 }
 
+function isCryoRelevant() {
+    const discussed = getDiscussedTreatmentIds();
+    const decision = document.querySelector('input[name="topicalDecision"]:checked')?.value || '';
+    return discussed.includes('cryotherapy') || decision === 'cryotherapy';
+}
+
 function getDiscussedTreatmentIds() {
     return Array.from(document.querySelectorAll('input[name="topicalDiscussed"]:checked')).map(el => el.value);
+}
+
+function getCryoProtocolById(id) {
+    return CRYOTHERAPY_PROTOCOLS.find((row) => row.id === id) || CRYOTHERAPY_PROTOCOLS.find((row) => row.id === 'custom');
+}
+
+function inferCryoProtocolId(impression) {
+    const raw = String(impression || '').trim();
+    const code = typeof diagnosisCodeFromText === 'function' ? (diagnosisCodeFromText(raw) || raw) : raw;
+    const lower = raw.toLowerCase();
+    if (/plantar/.test(lower)) return 'wart-plantar';
+    if (/filiform/.test(lower)) return 'wart-filiform';
+    if (/plane\s*wart/.test(lower)) return 'wart-plane';
+    if (/skin\s*tag|acrochordon/.test(lower)) return 'skin-tag';
+    for (const row of CRYOTHERAPY_PROTOCOLS) {
+        if (row.id === 'custom' || row.id.startsWith('wart-')) continue;
+        if (row.matchCodes.some((c) => c === code || raw === c)) return row.id;
+        if (row.matchWords.some((w) => lower.includes(w))) return row.id;
+    }
+    if (/wart|verruca/.test(lower)) return 'wart-flat';
+    return 'custom';
+}
+
+function populateCryoProtocolSelect(selectedId) {
+    const sel = document.getElementById('cryoProtocolSelect');
+    if (!sel) return;
+    const current = selectedId || sel.value || 'ak';
+    sel.innerHTML = CRYOTHERAPY_PROTOCOLS.map((row) => (
+        `<option value="${row.id}">${escapeHtml(row.label)}</option>`
+    )).join('');
+    if ([...sel.options].some((opt) => opt.value === current)) sel.value = current;
+}
+
+function emptyCryoFields() {
+    return {
+        cryoProtocolId: '',
+        cryoProtocolLabel: '',
+        cryoTechnique: 'open-spray',
+        cryoFreezeSeconds: 0,
+        cryoFreezeThawCycles: 1,
+        cryoMarginMm: 1,
+        cryoSessionsPlanned: 1,
+        cryoSessionInterval: '',
+        cryoRecallRepeat: false,
+        cryoGuidelineHint: '',
+        cryoModified: false
+    };
+}
+
+function readCryoFieldsFromForm() {
+    const protocolId = document.getElementById('cryoProtocolSelect')?.value || '';
+    const protocol = getCryoProtocolById(protocolId);
+    const freeze = Math.max(0, Number(document.getElementById('cryoFreezeSeconds')?.value) || 0);
+    const ftc = Math.max(1, Number(document.getElementById('cryoFreezeThawCycles')?.value) || 1);
+    const margin = Math.max(0, Number(document.getElementById('cryoMarginMm')?.value) || 0);
+    const sessions = Math.max(1, Number(document.getElementById('cryoSessionsPlanned')?.value) || 1);
+    const interval = document.getElementById('cryoSessionInterval')?.value || '';
+    const recall = !!document.getElementById('cryoRecallRepeat')?.checked;
+    const technique = document.getElementById('cryoTechnique')?.value || 'open-spray';
+    const modified = document.getElementById('cryoPlanPanel')?.dataset.modified === '1';
+    return {
+        cryoProtocolId: protocolId,
+        cryoProtocolLabel: protocol?.label || '',
+        cryoTechnique: technique,
+        cryoFreezeSeconds: freeze,
+        cryoFreezeThawCycles: ftc,
+        cryoMarginMm: margin,
+        cryoSessionsPlanned: sessions,
+        cryoSessionInterval: interval,
+        cryoRecallRepeat: recall,
+        cryoGuidelineHint: protocol?.hint || '',
+        cryoModified: modified
+    };
+}
+
+function fillCryoFields(fields, options) {
+    const opts = options || {};
+    const protocolId = fields?.cryoProtocolId || 'custom';
+    populateCryoProtocolSelect(protocolId);
+    const protocol = getCryoProtocolById(protocolId);
+    const setVal = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    };
+    setVal('cryoFreezeSeconds', fields?.cryoFreezeSeconds ?? protocol.freezeSeconds);
+    setVal('cryoFreezeThawCycles', fields?.cryoFreezeThawCycles ?? protocol.ftc);
+    setVal('cryoMarginMm', fields?.cryoMarginMm ?? protocol.marginMm);
+    setVal('cryoSessionsPlanned', fields?.cryoSessionsPlanned ?? protocol.sessions);
+    setVal('cryoSessionInterval', fields?.cryoSessionInterval ?? protocol.interval ?? '');
+    setVal('cryoTechnique', fields?.cryoTechnique ?? protocol.technique);
+    const recall = document.getElementById('cryoRecallRepeat');
+    if (recall) {
+        recall.checked = fields?.cryoRecallRepeat != null
+            ? !!fields.cryoRecallRepeat
+            : !!protocol.suggestRecall;
+    }
+    const panel = document.getElementById('cryoPlanPanel');
+    if (panel) panel.dataset.modified = fields?.cryoModified ? '1' : '0';
+    const hint = document.getElementById('cryoProtocolHint');
+    if (hint) hint.textContent = protocol?.hint || '';
+    updateCryoPlanPreview();
+    if (opts.syncFollowUp !== false) syncTopicalFollowUpFromCryo();
+}
+
+function applyCryoProtocol(protocolId, options) {
+    const protocol = getCryoProtocolById(protocolId);
+    fillCryoFields({
+        cryoProtocolId: protocol.id,
+        cryoProtocolLabel: protocol.label,
+        cryoTechnique: protocol.technique,
+        cryoFreezeSeconds: protocol.freezeSeconds,
+        cryoFreezeThawCycles: protocol.ftc,
+        cryoMarginMm: protocol.marginMm,
+        cryoSessionsPlanned: protocol.sessions,
+        cryoSessionInterval: protocol.interval || '',
+        cryoRecallRepeat: !!protocol.suggestRecall,
+        cryoGuidelineHint: protocol.hint,
+        cryoModified: false
+    }, options);
+}
+
+function applyCryoProtocolFromSelect() {
+    applyCryoProtocol(document.getElementById('cryoProtocolSelect')?.value || 'custom', { syncFollowUp: true });
+}
+
+function applyCryoRecommendationFromImpression(options) {
+    const opts = options || {};
+    if (!isCryoRelevant() && !opts.force) return;
+    const impression = typeof readExamImpression === 'function' ? readExamImpression() : '';
+    const id = inferCryoProtocolId(impression);
+    applyCryoProtocol(id, { syncFollowUp: true });
+    const panel = document.getElementById('cryoPlanPanel');
+    if (panel) panel.dataset.modified = '0';
+}
+
+function markCryoPlanModified() {
+    const panel = document.getElementById('cryoPlanPanel');
+    if (panel) panel.dataset.modified = '1';
+    updateCryoPlanPreview();
+}
+
+function onCryoSessionsChanged() {
+    markCryoPlanModified();
+    const sessions = Math.max(1, Number(document.getElementById('cryoSessionsPlanned')?.value) || 1);
+    const recall = document.getElementById('cryoRecallRepeat');
+    const interval = document.getElementById('cryoSessionInterval');
+    if (sessions > 1) {
+        if (recall) recall.checked = true;
+        if (interval && !interval.value) interval.value = '2 weeks';
+    }
+    syncTopicalFollowUpFromCryo();
+}
+
+function onCryoRecallFieldsChanged() {
+    markCryoPlanModified();
+    const recall = document.getElementById('cryoRecallRepeat');
+    const interval = document.getElementById('cryoSessionInterval');
+    if (recall?.checked && interval && !interval.value) interval.value = '2 weeks';
+    syncTopicalFollowUpFromCryo();
+    updateCryoPlanPreview();
+}
+
+function syncTopicalFollowUpFromCryo() {
+    const follow = document.getElementById('topicalFollowUp');
+    if (!follow) return;
+    const recall = !!document.getElementById('cryoRecallRepeat')?.checked;
+    const interval = document.getElementById('cryoSessionInterval')?.value || '';
+    if (!recall) return;
+    const map = {
+        '2 weeks': '2 weeks',
+        '4 weeks': '4 weeks',
+        '6 weeks': '8 weeks',
+        '8 weeks': '8 weeks'
+    };
+    const next = map[interval] || (interval ? '4 weeks' : '2 weeks');
+    if ([...follow.options].some((opt) => opt.value === next)) follow.value = next;
+}
+
+function cryoTechniqueLabel(value) {
+    if (value === 'cryoprobe') return 'cryoprobe';
+    if (value === 'dipstick') return 'cotton-tipped dipstick';
+    return 'open-spray timed spot-freeze';
+}
+
+function formatCryoPlanSummary(fields) {
+    if (!fields || !(Number(fields.cryoFreezeSeconds) > 0)) return '';
+    const ftc = Number(fields.cryoFreezeThawCycles) || 1;
+    const margin = Number(fields.cryoMarginMm);
+    const sessions = Number(fields.cryoSessionsPlanned) || 1;
+    let text = `LN2 ${cryoTechniqueLabel(fields.cryoTechnique)}, ${fields.cryoFreezeSeconds}s × ${ftc} FTC`;
+    if (!Number.isNaN(margin)) text += `, ${margin} mm margin`;
+    if (fields.cryoProtocolLabel) text += ` (${fields.cryoProtocolLabel})`;
+    if (sessions > 1) {
+        text += `; ${sessions} sessions`;
+        if (fields.cryoSessionInterval) text += ` ~${fields.cryoSessionInterval} apart`;
+    }
+    if (fields.cryoRecallRepeat) {
+        text += `; recall for further cryotherapy${fields.cryoSessionInterval ? ' in ' + fields.cryoSessionInterval : ''}`;
+    }
+    if (fields.cryoModified) text += ' [clinician-modified]';
+    return text;
+}
+
+function updateCryoPlanPreview() {
+    const preview = document.getElementById('cryoPlanPreview');
+    if (!preview) return;
+    const summary = formatCryoPlanSummary(readCryoFieldsFromForm());
+    preview.textContent = summary
+        ? `Documented plan: ${summary}. Source: RACGP cryosurgery technique guidance (clinician may modify).`
+        : 'Set freeze time and margin for this lesion.';
 }
 
 function updateTopicalFieldVisibility() {
@@ -174,6 +643,18 @@ function updateTopicalFieldVisibility() {
     if (pdtPanel) {
         if (isPdtRelevant()) pdtPanel.classList.remove('hidden');
         else pdtPanel.classList.add('hidden');
+    }
+    const cryoPanel = document.getElementById('cryoPlanPanel');
+    if (cryoPanel) {
+        if (isCryoRelevant()) {
+            cryoPanel.classList.remove('hidden');
+            populateCryoProtocolSelect(document.getElementById('cryoProtocolSelect')?.value || '');
+            const hasPlan = Number(document.getElementById('cryoFreezeSeconds')?.value) > 0;
+            if (!hasPlan) applyCryoRecommendationFromImpression({ force: true });
+            else updateCryoPlanPreview();
+        } else {
+            cryoPanel.classList.add('hidden');
+        }
     }
     updatePdtQuotePreview();
 }
@@ -184,21 +665,32 @@ function handleTopicalDecisionChange() {
         const pdtDiscussed = document.querySelector('input[name="topicalDiscussed"][value="pdt"]');
         if (pdtDiscussed) pdtDiscussed.checked = true;
     }
+    if (decision === 'cryotherapy') {
+        const cryoDiscussed = document.querySelector('input[name="topicalDiscussed"][value="cryotherapy"]');
+        if (cryoDiscussed) cryoDiscussed.checked = true;
+        applyCryoRecommendationFromImpression({ force: true });
+    }
     updateTopicalFieldVisibility();
 }
 
 function updatePdtQuotePreview() {
     const preview = document.getElementById('pdtQuotePreview');
     if (!preview) return;
-    const areaId = document.getElementById('pdtAreaSelect')?.value || '';
-    const item = getPdtAreaById(areaId);
-    if (!item) {
-        preview.textContent = 'Select a saved body area to pull the stored PDT fee.';
+    const regions = pdtRegionsSnapshotFromIds(getSelectedPdtAreaIds());
+    if (!regions.length) {
+        preview.textContent = 'Select one or more body areas for this field (e.g. Scalp + Face). Fees come from clinic PDT prices.';
         return;
     }
-    preview.textContent = item.price > 0
-        ? `Quoted fee for ${item.area}: ${formatPdtMoney(item.price)} OOP`
-        : `${item.area} is in the list, but no PDT fee has been set yet.`;
+    const summary = summarizePdtRegions(regions);
+    const lines = regions.map((row) => `${row.area}: ${formatPdtMoney(row.price)}`);
+    if (regions.length === 1) {
+        preview.textContent = summary.total > 0
+            ? `Quoted fee for ${summary.names}: ${formatPdtMoney(summary.total)} OOP`
+            : `${summary.names} is selected, but no PDT fee has been set yet in clinic settings.`;
+        return;
+    }
+    preview.innerHTML = lines.map((line) => escapeHtml(line)).join('<br>')
+        + `<br><strong>Combined quote: ${escapeHtml(formatPdtMoney(summary.total))} OOP</strong> for ${escapeHtml(summary.names)}`;
 }
 
 function resetTopicalForm() {
@@ -208,8 +700,12 @@ function resetTopicalForm() {
     if (declined) declined.checked = false;
     const notes = document.getElementById('topicalNotes');
     if (notes) notes.value = '';
+    document.querySelectorAll('input[name="pdtAreaPick"]').forEach((el) => { el.checked = false; });
     const select = document.getElementById('pdtAreaSelect');
     if (select) select.value = '';
+    fillCryoFields(emptyCryoFields(), { syncFollowUp: false });
+    const follow = document.getElementById('topicalFollowUp');
+    if (follow) follow.value = 'none';
     updateTopicalFieldVisibility();
 }
 
@@ -228,23 +724,42 @@ function populateTopicalForm(item) {
     if (notes) notes.value = item.topicalNotes || '';
     const follow = document.getElementById('topicalFollowUp');
     if (follow) follow.value = item.topicalFollowUp || 'none';
-    renderPdtAreaSelect(item.pdtAreaId || '');
+    const regionIds = normalizePdtRegions(item).map((row) => row.id).filter(Boolean);
+    renderPdtAreaSelect(regionIds);
+    if (item.topicalDecision === 'cryotherapy' || (item.cryoFreezeSeconds > 0)) {
+        fillCryoFields({
+            cryoProtocolId: item.cryoProtocolId || inferCryoProtocolId(item.impression),
+            cryoProtocolLabel: item.cryoProtocolLabel || '',
+            cryoTechnique: item.cryoTechnique || 'open-spray',
+            cryoFreezeSeconds: item.cryoFreezeSeconds || 0,
+            cryoFreezeThawCycles: item.cryoFreezeThawCycles || 1,
+            cryoMarginMm: item.cryoMarginMm ?? 1,
+            cryoSessionsPlanned: item.cryoSessionsPlanned || 1,
+            cryoSessionInterval: item.cryoSessionInterval || '',
+            cryoRecallRepeat: !!item.cryoRecallRepeat,
+            cryoGuidelineHint: item.cryoGuidelineHint || '',
+            cryoModified: !!item.cryoModified
+        }, { syncFollowUp: false });
+    }
     updateTopicalFieldVisibility();
 }
 
 function readTopicalFieldsFromForm() {
     const discussed = getDiscussedTreatmentIds();
     const decision = document.querySelector('input[name="topicalDecision"]:checked')?.value || '';
-    const areaId = document.getElementById('pdtAreaSelect')?.value || '';
-    const area = getPdtAreaById(areaId);
+    const pdtRegions = pdtRegionsSnapshotFromIds(getSelectedPdtAreaIds());
+    const summary = summarizePdtRegions(pdtRegions);
+    const cryo = decision === 'cryotherapy' ? readCryoFieldsFromForm() : emptyCryoFields();
     return {
         topicalDiscussed: discussed,
         topicalDecision: decision,
         topicalNotes: document.getElementById('topicalNotes')?.value.trim() || '',
         topicalFollowUp: document.getElementById('topicalFollowUp')?.value || 'none',
-        pdtAreaId: area ? area.id : '',
-        pdtAreaName: area ? area.area : '',
-        pdtQuotedPrice: area ? Number(area.price) || 0 : 0
+        pdtRegions,
+        pdtAreaId: pdtRegions[0]?.id || '',
+        pdtAreaName: summary.names,
+        pdtQuotedPrice: summary.total,
+        ...cryo
     };
 }
 
@@ -254,9 +769,11 @@ function emptyTopicalFields() {
         topicalDecision: '',
         topicalNotes: '',
         topicalFollowUp: 'none',
+        pdtRegions: [],
         pdtAreaId: '',
         pdtAreaName: '',
-        pdtQuotedPrice: 0
+        pdtQuotedPrice: 0,
+        ...emptyCryoFields()
     };
 }
 
@@ -266,11 +783,18 @@ function formatTopicalDecisionText(lesion) {
         return 'Declined treatment after discussion';
     }
     let text = topicalLabel(lesion.topicalDecision);
-    if (lesion.topicalDecision === 'pdt' && lesion.pdtAreaName) {
-        text += ` — ${lesion.pdtAreaName}`;
-        if (lesion.pdtQuotedPrice > 0) {
-            text += ` (quoted ${formatPdtMoney(lesion.pdtQuotedPrice)} OOP)`;
+    if (lesion.topicalDecision === 'pdt') {
+        const summary = summarizePdtRegions(normalizePdtRegions(lesion));
+        if (summary.names) {
+            text += ` — ${summary.names}`;
+            if (summary.total > 0) {
+                text += ` (quoted ${formatPdtMoney(summary.total)} OOP)`;
+            }
         }
+    }
+    if (lesion.topicalDecision === 'cryotherapy') {
+        const summary = formatCryoPlanSummary(lesion);
+        if (summary) text += ` — ${summary}`;
     }
     return text;
 }
@@ -287,6 +811,24 @@ function formatTopicalEmrLines(lesion) {
         lines += `    - Patient decision: ${decision}\n`;
     } else {
         lines += `    - Patient decision: Not yet recorded\n`;
+    }
+    if (lesion.topicalDecision === 'pdt') {
+        const regions = normalizePdtRegions(lesion);
+        if (regions.length > 1) {
+            regions.forEach((row) => {
+                lines += `    - PDT region: ${row.area || 'Area'} (${formatPdtMoney(row.price)} OOP)\n`;
+            });
+        }
+    }
+    if (lesion.topicalDecision === 'cryotherapy' && Number(lesion.cryoFreezeSeconds) > 0) {
+        lines += `    - Cryotherapy parameters: ${formatCryoPlanSummary(lesion)}.\n`;
+        lines += `    - Technique note: timed spot-freeze; freeze clock starts after ice ball covers lesion + intended margin; allow full thaw (>60 s) before any second FTC (RACGP).\n`;
+        if (lesion.cryoGuidelineHint) {
+            lines += `    - Guideline basis: ${lesion.cryoGuidelineHint}\n`;
+        }
+        if (lesion.cryoRecallRepeat) {
+            lines += `    - Further cryotherapy recall requested${lesion.cryoSessionInterval ? ' in ' + lesion.cryoSessionInterval : ''}.\n`;
+        }
     }
     if (lesion.topicalNotes) {
         lines += `    - Treatment counselling notes: ${lesion.topicalNotes}\n`;
@@ -306,10 +848,23 @@ function formatTopicalTableBadge(lesion) {
 function getTopicalReceptionBits() {
     return lesions.filter(l => isTopicalPlan(l.plan)).map(l => {
         if (l.topicalDecision === 'pdt') {
-            const quote = l.pdtQuotedPrice > 0 ? ` ${formatPdtMoney(l.pdtQuotedPrice)} OOP` : '';
-            return `PDT ${l.pdtAreaName || 'area TBC'}${quote}`.trim();
+            const summary = summarizePdtRegions(normalizePdtRegions(l));
+            const quote = summary.total > 0 ? ` ${formatPdtMoney(summary.total)} OOP` : '';
+            return `PDT ${summary.names || 'area TBC'}${quote}`.trim();
         }
-        if (l.topicalDecision === 'cryotherapy') return 'Cryotherapy';
+        if (l.topicalDecision === 'cryotherapy') {
+            const bits = ['Cryotherapy'];
+            if (Number(l.cryoFreezeSeconds) > 0) {
+                bits.push(`${l.cryoFreezeSeconds}s×${l.cryoFreezeThawCycles || 1}FTC`);
+            }
+            if (l.cryoProtocolLabel) bits.push(l.cryoProtocolLabel);
+            if (l.cryoRecallRepeat) {
+                bits.push(`BOOK CRYO RECALL${l.cryoSessionInterval ? ' in ' + l.cryoSessionInterval : ''}`);
+            } else if (l.topicalFollowUp && l.topicalFollowUp !== 'none') {
+                bits.push(`FU ${l.topicalFollowUp}`);
+            }
+            return bits.join(' · ');
+        }
         if (l.topicalDecision === 'efudix') return 'Efudix script';
         if (l.topicalDecision === 'efudix-calcipotriol') return 'Efudix + Calcipotriol script';
         if (l.topicalDecision === 'aldara') return 'Aldara script';

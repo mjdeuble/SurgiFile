@@ -1,6 +1,7 @@
-/* Patient aftercare sheet: print/PDF-style handout generated from the open chart. */
+/* Visit-adaptive patient advice handout: consult / planned / done combinations. */
 
 let aftercarePaperwork = emptyAftercareRecord();
+let aftercarePreviewPending = null;
 
 function emptyAftercareRecord() {
     return { given: false, givenAt: '', visitDate: '', topics: [] };
@@ -18,9 +19,53 @@ function aftercareIdentity() {
     return { name, dob, phone, doctor, doctorLine };
 }
 
-function aftercareSourceLesions() {
+function aftercareChartLesions() {
     if (typeof chartLesions === 'function' && hasCurrentPatient()) return chartLesions();
     return Array.isArray(lesions) ? lesions : [];
+}
+
+function aftercareAdviceLesions() {
+    const all = aftercareChartLesions();
+    if (!all.length) return [];
+
+    const visitIds = new Set();
+    if (typeof visitNoteLesions === 'function') {
+        visitNoteLesions().forEach((item) => visitIds.add(String(item.id)));
+    }
+    (Array.isArray(lesions) ? lesions : []).forEach((item) => visitIds.add(String(item.id)));
+    if (typeof procedureSession !== 'undefined') {
+        (procedureSession.selectedIds || []).forEach((id) => visitIds.add(String(id)));
+        (procedureSession.lockedIds || []).forEach((id) => visitIds.add(String(id)));
+    }
+    const chartVisitIds = (typeof currentManagedChart === 'function'
+        ? (currentManagedChart()?.visitSession?.visitLesionIds || [])
+        : []).map(String);
+    chartVisitIds.forEach((id) => visitIds.add(id));
+
+    const scoped = all.filter((lesion) => {
+        const id = String(lesion.id || '');
+        if (visitIds.has(id)) return true;
+        if (aftercareProcedureDone(lesion) && typeof lesionPerformedToday === 'function' && lesionPerformedToday(lesion)) return true;
+        const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus;
+        if (status === 'planned_procedure' || status === 'current_case') return true;
+        if (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan) && lesion.topicalDecision && lesion.topicalDecision !== 'declined') {
+            return visitIds.size === 0 || visitIds.has(id);
+        }
+        return false;
+    });
+
+    return scoped.length ? scoped : all.filter((lesion) => {
+        const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus;
+        return status === 'planned_procedure'
+            || status === 'current_case'
+            || status === 'awaiting_histology'
+            || aftercareProcedureDone(lesion)
+            || (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan));
+    });
+}
+
+function aftercareSourceLesions() {
+    return aftercareAdviceLesions();
 }
 
 function aftercareLocationBlob(lesion) {
@@ -52,17 +97,20 @@ function aftercareSiteGroup(locationStr) {
 }
 
 function aftercareIsExcision(lesion) {
-    const status = lesion?.managementStatus || '';
+    if (typeof lesionType === 'function' && lesionType(lesion) === 'excision') return true;
     const plan = String(lesion?.plan || '');
     const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
     const proc = String(detail.procedure || lesion?.procedure || '');
-    if (status === 'planned_excision' || status === 'current_case') return true;
     if (plan.includes('Excision')) return true;
     if (/^excision$/i.test(proc)) return true;
     return false;
 }
 
 function aftercareIsBiopsy(lesion) {
+    if (typeof lesionType === 'function') {
+        const t = lesionType(lesion);
+        if (t === 'shave' || t === 'punch') return true;
+    }
     const plan = String(lesion?.plan || '');
     const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
     const proc = String(detail.procedure || lesion?.biopsyType || '');
@@ -73,6 +121,40 @@ function aftercareIsBiopsy(lesion) {
 
 function aftercareProcedureDone(lesion) {
     return !!(lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt);
+}
+
+function aftercareClosureKind(lesion) {
+    const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
+    const raw = String(detail.excisionClosureType || lesion.excisionReconstruction || lesion.billingReconstruction || '');
+    const lower = raw.toLowerCase();
+    if (/flap/.test(lower)) return 'flap';
+    if (/graft/.test(lower)) return 'graft';
+    if (/secondary/.test(lower)) return 'secondary';
+    if (/wedge|cartilage/.test(lower)) return 'wedge';
+    if (raw) return 'ellipse';
+    return '';
+}
+
+function aftercareSutureRemovalLine(lesion) {
+    const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
+    const site = detail.location || lesion.location || 'the treated site';
+    if (detail.procedure === 'Shave' || detail.excisionClosureType === 'Secondary Intention' || aftercareClosureKind(lesion) === 'secondary') {
+        return site + ': usually no stitch removal (open wound / shave — clinic will advise if a review is needed).';
+    }
+    if (detail.skinSutureType === 'Dissolvable' || /dissolvable/i.test(String(detail.skinSutureType || ''))) {
+        return site + ': dissolvable stitches — no removal appointment unless the clinic asks you to return.';
+    }
+    if (detail.skinSutureRemoval) {
+        return site + ': plan for stitch removal in about ' + detail.skinSutureRemoval + ' days (confirm the exact date with reception).';
+    }
+    if (typeof procedureRosLine === 'function') {
+        const ros = procedureRosLine(lesion);
+        if (ros && /ROS/i.test(ros)) return ros.replace(/ROS/i, 'stitch removal around');
+    }
+    if (aftercareIsExcision(lesion) || aftercareIsBiopsy(lesion)) {
+        return site + ': stitch removal is often about 5–7 days on the face and 10–14 days on the body or limbs — reception will confirm your date.';
+    }
+    return '';
 }
 
 function aftercarePlanLabel(lesion) {
@@ -86,7 +168,8 @@ function aftercarePlanLabel(lesion) {
         return (done ? 'Excision completed' : 'Formal excision planned') + (closure ? ' (' + closure + ')' : '');
     }
     if (aftercareIsBiopsy(lesion)) {
-        return lesion.biopsyType || detail.procedure || 'Biopsy';
+        const done = aftercareProcedureDone(lesion) ? ' completed' : '';
+        return (lesion.biopsyType || detail.procedure || 'Biopsy') + done;
     }
     return lesion.plan || 'Clinical review';
 }
@@ -142,10 +225,15 @@ function aftercareSiteAdvice(siteId, kind) {
 function aftercareTopicsFromLesions(list) {
     const topics = new Set();
     list.forEach((lesion) => {
-        if (aftercareIsExcision(lesion) && aftercareProcedureDone(lesion)) topics.add('excision-done');
-        else if (aftercareIsExcision(lesion)) topics.add('excision-planned');
-        else if (aftercareIsBiopsy(lesion) && (/shave/i.test(String(lesion.biopsyType || '')))) topics.add('shave');
-        else if (aftercareIsBiopsy(lesion) && (/punch/i.test(String(lesion.biopsyType || '')))) topics.add('punch');
+        if (aftercareIsExcision(lesion) && aftercareProcedureDone(lesion)) {
+            topics.add('excision-done');
+            const closure = aftercareClosureKind(lesion);
+            if (closure === 'flap') topics.add('flap');
+            if (closure === 'graft') topics.add('graft');
+            if (closure === 'secondary') topics.add('secondary');
+        } else if (aftercareIsExcision(lesion)) topics.add('excision-planned');
+        else if (aftercareIsBiopsy(lesion) && (/shave/i.test(String(lesion.biopsyType || '')) || (typeof lesionType === 'function' && lesionType(lesion) === 'shave'))) topics.add('shave');
+        else if (aftercareIsBiopsy(lesion) && (/punch/i.test(String(lesion.biopsyType || '')) || (typeof lesionType === 'function' && lesionType(lesion) === 'punch'))) topics.add('punch');
         else if (aftercareIsBiopsy(lesion) || aftercareProcedureDone(lesion)) topics.add('biopsy');
         const decision = lesion.topicalDecision || '';
         if (decision && decision !== 'declined') topics.add(decision);
@@ -154,11 +242,12 @@ function aftercareTopicsFromLesions(list) {
             topics.add('monitor');
         }
     });
+    if (typeof computedRecallInterval === 'function' && computedRecallInterval()) topics.add('recall');
     return Array.from(topics);
 }
 
 function aftercareHasContent() {
-    return aftercareSourceLesions().length > 0 || (typeof hasCurrentPatient === 'function' && hasCurrentPatient());
+    return aftercareAdviceLesions().length > 0 || (typeof hasCurrentPatient === 'function' && hasCurrentPatient());
 }
 
 function aftercareWasGivenToday() {
@@ -173,7 +262,7 @@ function markAftercareGiven(topics) {
         given: true,
         givenAt: new Date().toISOString(),
         visitDate: typeof todayVisitKey === 'function' ? todayVisitKey() : '',
-        topics: Array.isArray(topics) ? topics : aftercareTopicsFromLesions(aftercareSourceLesions())
+        topics: Array.isArray(topics) ? topics : aftercareTopicsFromLesions(aftercareAdviceLesions())
     };
     if (typeof updateOutput === 'function') updateOutput();
     if (typeof scheduleChartSave === 'function') scheduleChartSave();
@@ -222,18 +311,27 @@ function aftercareTreatmentBlocks(list) {
 
     const anyExcisionPlanned = list.some((l) => aftercareIsExcision(l) && !aftercareProcedureDone(l));
     const anyExcisionDone = list.some((l) => aftercareIsExcision(l) && aftercareProcedureDone(l));
-    const anyShave = list.some((l) => aftercareIsBiopsy(l) && /shave/i.test(String(l.biopsyType || '') + String((typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(l).procedure : '') || '')));
-    const anyPunch = list.some((l) => aftercareIsBiopsy(l) && /punch/i.test(String(l.biopsyType || '') + String((typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(l).procedure : '') || '')));
+    const anyShave = list.some((l) => aftercareIsBiopsy(l) && (/shave/i.test(String(l.biopsyType || '')) || (typeof lesionType === 'function' && lesionType(l) === 'shave')));
+    const anyPunch = list.some((l) => aftercareIsBiopsy(l) && (/punch/i.test(String(l.biopsyType || '')) || (typeof lesionType === 'function' && lesionType(l) === 'punch')));
     const anyBiopsy = list.some((l) => aftercareIsBiopsy(l));
+    const anyFlap = list.some((l) => aftercareProcedureDone(l) && aftercareClosureKind(l) === 'flap');
+    const anyGraft = list.some((l) => aftercareProcedureDone(l) && aftercareClosureKind(l) === 'graft');
+    const anySecondary = list.some((l) => aftercareProcedureDone(l) && aftercareClosureKind(l) === 'secondary');
+    const onBloodThinners = typeof groupStates !== 'undefined' && groupStates.bld === 'YES';
 
     if (anyExcisionPlanned) {
-        add('excision-planned', 'Before your planned excision', [
+        const prep = [
             'This is a planned procedure under local anaesthetic. Eat and drink as usual unless you have been told otherwise. Wear a loose top that does not need to be pulled over a fresh dressing.',
+            'In the days before surgery, finish awkward jobs that need heavy lifting, ladders, or prolonged bending if you can — you will need to rest the treated area afterwards.',
+            'Avoid heavy gym workouts, contact sport, and activities that make you sweat heavily for 24–48 hours before the procedure when practical (sweat and strain can increase bleeding and swelling afterwards).',
             'Take your usual medicines unless your doctor has specifically asked you to pause a blood thinner. Bring a current medication list.',
             'Allow extra time. You can usually drive home after a small local-anaesthetic procedure, but arrange a driver if you feel faint easily or the site will make driving awkward (for example near an eye or on the right foot).',
-            'After the excision you will have a dressing and, in most cases, stitches. Expected aftercare is the same as the surgical wound advice on this sheet: keep the dressing dry, rest the area, and contact the clinic if you are worried.',
             'If you become unwell with an infection, or start a new blood thinner, telephone the clinic before the appointment.'
-        ]);
+        ];
+        if (onBloodThinners) {
+            prep.splice(3, 0, 'Your chart notes blood-thinning medicines or supplements. Follow any specific instructions you were given about pausing or continuing them — do not stop prescription anticoagulants unless your treating doctor has agreed.');
+        }
+        add('excision-planned', 'Before your planned excision', prep);
     }
 
     if (anyExcisionDone) {
@@ -241,8 +339,36 @@ function aftercareTreatmentBlocks(list) {
             'A dressing is in place. Leave it on and keep it clean and dry for 48 hours unless you have been given different instructions.',
             'Mild ooze or a small amount of blood on the dressing in the first day is common. If blood soaks through, apply firm pressure with a clean pad for 15–20 minutes without peeking. If bleeding continues, contact the clinic or seek urgent care.',
             'Expect tightness, bruising and a pulling sensation as the wound heals. Pain is usually managed with paracetamol. Avoid anti-inflammatory tablets (ibuprofen) in the first 24 hours if you were advised they increase bleeding.',
-            'Stitches: keep the wound supported. Do not pick crusts. Return at the advised time for removal (often 5–7 days on the face; 10–14 days on the body or limbs).',
-            'Avoid swimming, baths, spa pools, and heavy exercise until the clinic confirms the wound is sealed. Showers are usually fine after 48 hours if the dressing is patted dry or changed as instructed.'
+            'Do not pick crusts or stitches. Support the wound when coughing or moving.',
+            'Avoid swimming, baths, spa pools, and heavy exercise until the clinic confirms the wound is sealed. Showers are usually fine after 48 hours if the dressing is patted dry or changed as instructed.',
+            'Avoid heavy lifting, straining, and prolonged sweating until stitches are out or the clinic advises — these increase bleeding and wound stretch.'
+        ]);
+    }
+
+    if (anyFlap) {
+        add('flap', 'After a local skin flap repair', [
+            'Part of nearby skin has been rearranged to close the wound. Expect more swelling and bruising than a simple straight scar, often peaking on day 2–3.',
+            'Avoid pressure, tight clothing, or sleeping directly on the flap. Do not massage the area until advised.',
+            'A bluish or pale tip can occur; contact the clinic promptly if a large area turns dark purple/black, or if pain and swelling escalate rapidly.',
+            'Keep activity light. The flap needs a good blood supply to “take”.'
+        ]);
+    }
+
+    if (anyGraft) {
+        add('graft', 'After a skin graft', [
+            'A piece of skin has been placed to cover the wound. The graft is delicate for the first 1–2 weeks.',
+            'Leave the dressing undisturbed until your review unless you were told otherwise. Do not soak the area.',
+            'Avoid knocking the graft. Elevate the site if it is on a limb. Tobacco smoking reduces graft take — avoid smoking while it heals if you can.',
+            'Some crusting or small areas of graft loss can occur; the clinic will assess this at review. Contact us sooner if there is foul smell, heavy pus, or severe pain.'
+        ]);
+    }
+
+    if (anySecondary) {
+        add('secondary', 'Healing by secondary intention (open wound)', [
+            'The wound has been left open to heal from the base up. This takes longer than stitches but avoids tension in some sites.',
+            'Expect regular dressing changes as instructed. Keep the wound moist with the ointment or dressing plan you were given unless told to keep it dry.',
+            'Protect the area from knocks and dirt. Elevation reduces swelling on limbs.',
+            'Healing often takes several weeks. Contact the clinic if the wound becomes increasingly painful, smelly, or the surrounding skin is hot and spreading red.'
         ]);
     }
 
@@ -329,7 +455,26 @@ function aftercareTreatmentBlocks(list) {
         ]);
     }
 
+    const recall = typeof computedRecallInterval === 'function' ? computedRecallInterval() : '';
+    if (recall) {
+        const reason = typeof computedRecallReason === 'function' ? computedRecallReason() : '';
+        add('recall', 'Recommended skin check interval', [
+            'Based on your risk assessment today, a repeat full skin check is recommended in about ' + recall + '.',
+            reason || 'Reception can help book this recall. Contact us sooner if a spot changes before then.'
+        ]);
+    }
+
     return blocks;
+}
+
+function aftercareSutureBlocks(list) {
+    const lines = list
+        .filter((l) => aftercareProcedureDone(l) || (aftercareIsExcision(l) && aftercareProcedureDone(l)) || (aftercareIsBiopsy(l) && aftercareProcedureDone(l)))
+        .map(aftercareSutureRemovalLine)
+        .filter(Boolean);
+    const unique = [...new Set(lines)];
+    if (!unique.length) return [];
+    return [{ key: 'sutures', title: 'Stitch removal / wound review timing', items: unique }];
 }
 
 function aftercareSiteBlocks(list) {
@@ -357,11 +502,15 @@ function aftercareSiteBlocks(list) {
 
 function generateAftercareHtml() {
     const { name, dob, phone, doctorLine } = aftercareIdentity();
-    const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const list = aftercareSourceLesions();
+    const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' });
+    const list = aftercareAdviceLesions();
     const treatments = aftercareTreatmentBlocks(list);
+    const sutures = aftercareSutureBlocks(list);
     const sites = aftercareSiteBlocks(list);
-    const clinicPhoneHint = phone ? ' (clinic already has your number ' + phone + ' on the chart)' : '';
+    const clinicLines = typeof clinicProfileContactLines === 'function' ? clinicProfileContactLines() : [];
+    const clinic = typeof clinicProfile !== 'undefined' ? clinicProfile : null;
+    const urgent = (clinic && clinic.urgentAdvice) || 'If you have heavy bleeding that will not stop, rapidly spreading infection, shortness of breath, or feel severely unwell, seek urgent medical care (this clinic if open, your GP, or a hospital emergency department). Take this sheet with you.';
+    const patientPhoneHint = phone ? ' (we already have your number ' + phone + ' on the chart)' : '';
 
     const lesionRows = list.length
         ? list.map((lesion, idx) => {
@@ -369,13 +518,23 @@ function generateAftercareHtml() {
             return `<tr>
                 <td>${idx + 1}</td>
                 <td><strong>${aftercareEsc(lesion.location || 'Site')}</strong></td>
-                <td>${aftercareEsc(dx)}</td>
+                <td>${aftercareEsc(typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(dx) : dx)}</td>
                 <td>${aftercareEsc(aftercarePlanLabel(lesion))}</td>
             </tr>`;
         }).join('')
-        : '<tr><td colspan="4">No individual lesions were recorded today. General skin-care advice still applies.</td></tr>';
+        : '<tr><td colspan="4">No individual lesions were recorded for this advice sheet. General care and contact advice still apply.</td></tr>';
+
+    const sectionHtml = (title, items) => items.length ? `
+        <div class="section-head">${aftercareEsc(title)}</div>
+        ${aftercareListHtml(items)}
+    ` : '';
 
     const treatmentHtml = treatments.map((block) => `
+        <div class="section-head">${aftercareEsc(block.title)}</div>
+        ${aftercareListHtml(block.items)}
+    `).join('');
+
+    const sutureHtml = sutures.map((block) => `
         <div class="section-head">${aftercareEsc(block.title)}</div>
         ${aftercareListHtml(block.items)}
     `).join('');
@@ -385,11 +544,15 @@ function generateAftercareHtml() {
         ${aftercareListHtml(site.tips)}
     `).join('');
 
+    const clinicHtml = clinicLines.length
+        ? `<div class="clinic-box"><strong>Contact this clinic</strong>${aftercareListHtml(clinicLines)}</div>`
+        : `<div class="clinic-box"><strong>Contact the clinic</strong><p style="margin:6px 0 0;">Ask reception for the best phone number if it is not printed here. Clinic details can be set in DermRecord → Clinic settings.</p></div>`;
+
     return `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Aftercare advice — ${aftercareEsc(name)}</title>
+    <title>Patient advice — ${aftercareEsc(name)}</title>
     <style>
         body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #0f172a; margin: 12mm; }
         h1 { font-size: 16pt; margin: 0 0 4px; letter-spacing: 0.02em; text-transform: uppercase; }
@@ -402,6 +565,7 @@ function generateAftercareHtml() {
         ul { margin: 4px 0 8px 18px; padding: 0; }
         li { margin-bottom: 5px; }
         .flag { background: #fef3c7; border: 1px solid #f59e0b; padding: 10px 12px; margin: 12px 0; }
+        .clinic-box { background: #eff6ff; border: 1px solid #93c5fd; padding: 10px 12px; margin: 12px 0; }
         .actions { margin: 0 0 14px; }
         .actions button { margin-right: 8px; padding: 8px 14px; font-weight: bold; cursor: pointer; }
         @media print { .actions { display: none; } body { margin: 8mm; } }
@@ -412,8 +576,8 @@ function generateAftercareHtml() {
         <button type="button" onclick="window.print()">Print / Save as PDF</button>
         <button type="button" onclick="window.close()">Close</button>
     </div>
-    <h1>Patient aftercare advice</h1>
-    <div class="subtitle">Take this sheet home. A copy can be saved into your medical record.</div>
+    <h1>Patient advice sheet</h1>
+    <div class="subtitle">Personalised for this visit — take this home. A copy can be saved into your medical record.</div>
     <div class="patient-info">
         <div><strong>Patient:</strong> ${aftercareEsc(name)}</div>
         <div><strong>DOB:</strong> ${aftercareEsc(dob)}</div>
@@ -437,11 +601,12 @@ function generateAftercareHtml() {
     ])}
 
     ${treatmentHtml}
+    ${sutureHtml}
     ${siteHtml}
 
-    <div class="section-head">When to contact the clinic</div>
+    <div class="section-head">When to contact the clinic (red flags)</div>
     <div class="flag">
-        <p style="margin:0 0 8px;"><strong>You may telephone the clinic or send photographs of the area.</strong> Photos are often enough for us to advise whether you need to come in.</p>
+        <p style="margin:0 0 8px;"><strong>Telephone the clinic or send photographs of the area.</strong> Photos are often enough for us to advise whether you need to come in.</p>
         ${aftercareListHtml([
             'Increasing pain, spreading redness, heat, pus, or a fever.',
             'Bleeding that soaks dressings and does not stop after 15–20 minutes of firm, continuous pressure.',
@@ -452,17 +617,19 @@ function generateAftercareHtml() {
         ])}
     </div>
 
+    ${clinicHtml}
+
     <div class="section-head">What to tell us when you make contact</div>
     ${aftercareListHtml([
         'Your full name and date of birth (as printed at the top of this sheet).',
         'The date you were seen (' + dateStr + ') and the doctor who treated you.',
-        'The body site and what was done (biopsy, excision, cream, PDT, cryotherapy).',
+        'The body site and what was done (biopsy, excision, cream, PDT, cryotherapy) or what is planned.',
         'What you are worried about now, and when it started.',
-        'Attach or bring clear photographs in good light if you are sending photos' + clinicPhoneHint + '.'
+        'Attach or bring clear photographs in good light if you are sending photos' + patientPhoneHint + '.'
     ])}
 
     <div class="section-head">Urgent care</div>
-    <p>If you have heavy bleeding that will not stop, rapidly spreading infection, shortness of breath, or feel severely unwell, seek urgent medical care (this clinic if open, your GP, or a hospital emergency department). Take this sheet with you.</p>
+    <p>${aftercareEsc(urgent)}</p>
 
     <p style="margin-top: 22px; font-size: 9pt; color: #475569;">This advice is for the visit on ${dateStr} and does not replace contacting the clinic if you are worried. Keep this copy with your appointment details.</p>
 </body>
@@ -473,13 +640,13 @@ function aftercareFilename() {
     const ident = aftercareIdentity();
     const slug = String(ident.name || 'patient').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
     const day = typeof todayVisitKey === 'function' ? todayVisitKey() : 'visit';
-    return 'Aftercare-' + slug + '-' + day + '.html';
+    return 'Patient-advice-' + slug + '-' + day + '.html';
 }
 
 function openAftercarePrintWindow(html) {
     const printWin = window.open('', '_blank', 'width=850,height=950');
     if (!printWin) {
-        showToast('Unable to open the aftercare window. Allow pop-ups, or use Download copy.');
+        showToast('Unable to open the advice window. Allow pop-ups, or use Download copy.');
         return false;
     }
     printWin.document.open();
@@ -500,24 +667,83 @@ function downloadAftercareCopy(html) {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-function giveAftercareSheet(options) {
-    if (typeof requireCurrentPatient === 'function' && !requireCurrentPatient('Open a patient chart before generating aftercare.')) {
+function aftercarePreviewSummaryLines(list) {
+    const topics = aftercareTopicsFromLesions(list);
+    const labels = {
+        'excision-planned': 'Pre-excision preparation',
+        'excision-done': 'Post-excision wound care',
+        flap: 'Flap repair care',
+        graft: 'Skin graft care',
+        secondary: 'Secondary intention healing',
+        shave: 'Shave biopsy care',
+        punch: 'Punch biopsy care',
+        biopsy: 'Biopsy care',
+        cryotherapy: 'Cryotherapy',
+        efudix: 'Efudix',
+        'efudix-calcipotriol': 'Efudix + calcipotriol',
+        aldara: 'Aldara',
+        pdt: 'PDT',
+        monitor: 'Lesion observation',
+        recall: 'Recommended review interval'
+    };
+    return topics.map((id) => labels[id] || id);
+}
+
+function openAftercarePreviewModal(options) {
+    if (typeof requireCurrentPatient === 'function' && !requireCurrentPatient('Open a patient chart before generating patient advice.')) {
         return;
     }
+    const list = aftercareAdviceLesions();
     const html = generateAftercareHtml();
-    const topics = aftercareTopicsFromLesions(aftercareSourceLesions());
-    const download = !!(options && options.download);
+    const topics = aftercareTopicsFromLesions(list);
+    aftercarePreviewPending = { html, topics, download: !!(options && options.download) };
+    const modal = document.getElementById('aftercarePreviewModal');
+    const summary = document.getElementById('aftercarePreviewSummary');
+    const frame = document.getElementById('aftercarePreviewFrame');
+    if (summary) {
+        const bits = aftercarePreviewSummaryLines(list);
+        summary.innerHTML = bits.length
+            ? '<p class="text-xs text-slate-600 mb-2">This sheet will include:</p><ul class="text-xs text-slate-700 list-disc pl-4 space-y-0.5">'
+                + bits.map((b) => '<li>' + aftercareEsc(b) + '</li>').join('')
+                + '</ul><p class="text-[11px] text-slate-500 mt-2">' + list.length + ' lesion' + (list.length === 1 ? '' : 's') + ' on the plan table.</p>'
+            : '<p class="text-xs text-slate-600">General advice and clinic contact details. Add lesions or complete a procedure for procedure-specific sections.</p>';
+    }
+    if (frame) {
+        frame.srcdoc = html;
+    }
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeAftercarePreviewModal() {
+    const modal = document.getElementById('aftercarePreviewModal');
+    if (modal) modal.classList.add('hidden');
+    const frame = document.getElementById('aftercarePreviewFrame');
+    if (frame) frame.srcdoc = '';
+    aftercarePreviewPending = null;
+}
+
+function confirmAftercareGive() {
+    if (!aftercarePreviewPending) {
+        closeAftercarePreviewModal();
+        return;
+    }
+    const { html, topics, download } = aftercarePreviewPending;
     if (download) {
         downloadAftercareCopy(html);
         markAftercareGiven(topics);
-        showToast('Aftercare copy downloaded. IEMR will record that written advice was given.');
-        return;
+        showToast('Patient advice downloaded. IEMR will record that written advice was given.');
+    } else {
+        const opened = openAftercarePrintWindow(html);
+        if (opened) {
+            markAftercareGiven(topics);
+            showToast('Patient advice ready to print or save as PDF. IEMR will record that it was given.');
+        }
     }
-    const opened = openAftercarePrintWindow(html);
-    if (opened) {
-        markAftercareGiven(topics);
-        showToast('Aftercare sheet ready to print or save as PDF. IEMR will record that it was given.');
-    }
+    closeAftercarePreviewModal();
+}
+
+function giveAftercareSheet(options) {
+    openAftercarePreviewModal(options);
 }
 
 function printAftercareSheet() {
@@ -532,10 +758,13 @@ function generateAftercareEmrSection() {
     if (!aftercareWasGivenToday()) return '';
     const topics = (aftercarePaperwork.topics || []).length
         ? aftercarePaperwork.topics
-        : aftercareTopicsFromLesions(aftercareSourceLesions());
+        : aftercareTopicsFromLesions(aftercareAdviceLesions());
     const labels = {
-        'excision-planned': 'pre- and post-operative advice for planned excision',
+        'excision-planned': 'pre-operative advice for planned excision',
         'excision-done': 'post-operative excision wound care',
+        flap: 'local flap aftercare',
+        graft: 'skin graft aftercare',
+        secondary: 'secondary intention wound care',
         shave: 'shave biopsy wound care',
         punch: 'punch biopsy wound care',
         biopsy: 'biopsy wound care',
@@ -544,15 +773,16 @@ function generateAftercareEmrSection() {
         'efudix-calcipotriol': 'combination Efudix + Calcipotriol',
         aldara: 'Aldara (imiquimod)',
         pdt: 'red light PDT',
-        monitor: 'lesion observation / photo review'
+        monitor: 'lesion observation / photo review',
+        recall: 'guideline recall interval'
     };
     const covered = topics.map((id) => labels[id] || id).filter(Boolean);
-    let txt = `=== WRITTEN AFTERCARE GIVEN ===\n\n`;
-    txt += `- Written aftercare advice sheet provided to the patient today (printed / PDF or downloaded copy for the chart).\n`;
+    let txt = `=== WRITTEN PATIENT ADVICE GIVEN ===\n\n`;
+    txt += `- Written patient advice sheet provided today (printed / PDF or downloaded copy for the chart).\n`;
     txt += `- Patient advised they may telephone the clinic or send photographs if concerned, and to quote their name, date of birth, visit date, and treated site.\n`;
     if (covered.length) {
         txt += `- Sheet included: ${covered.join('; ')}.\n`;
     }
-    txt += `- Standard wound / field-treatment care and red-flag advice included.\n\n`;
+    txt += `- Standard wound / field-treatment care, stitch-review timing where relevant, red-flag advice, and clinic contact details included.\n\n`;
     return txt;
 }

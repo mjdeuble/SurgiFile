@@ -75,8 +75,80 @@ function collectChartExamFromDom() {
         fitzpatrick: document.getElementById('fitzpatrick')?.value || '',
         lastSkinCheck: document.getElementById('lastSkinCheck')?.value || '',
         visitDate: todayVisitKey(),
-        noPatientConcerns: !!noPatientConcerns
+        noPatientConcerns: !!noPatientConcerns,
+        smsNormalResultsConsent: typeof smsNormalResultsConsent !== 'undefined' ? smsNormalResultsConsent : ''
     };
+}
+
+function collectVisitSessionFromDom() {
+    const today = todayVisitKey();
+    const tab = typeof activeWorkspaceTab !== 'undefined' ? activeWorkspaceTab : 'management';
+    return {
+        visitDate: today,
+        workspaceTab: (tab === 'skin-check' || tab === 'excision-generator') ? tab : 'management',
+        sanitised: typeof isBedSanitised !== 'undefined' ? !!isBedSanitised : false,
+        patientConcerns: Array.isArray(patientConcerns) ? patientConcerns.slice() : [],
+        visitLesionIds: (Array.isArray(lesions) ? lesions : []).map((item) => String(item.id)).filter(Boolean),
+        updatedAt: new Date().toISOString()
+    };
+}
+
+function isVisitSessionActive(session) {
+    if (!session) return false;
+    const today = todayVisitKey();
+    if (session.visitDate && session.visitDate !== today) return false;
+    if (session.sanitised) return true;
+    if ((session.visitLesionIds || []).length) return true;
+    if ((session.patientConcerns || []).length) return true;
+    if (session.workspaceTab === 'skin-check' || session.workspaceTab === 'excision-generator') return true;
+    return false;
+}
+
+function hydrateVisitLesionsFromIds(ids) {
+    const wanted = new Set((ids || []).map(String).filter(Boolean));
+    if (!wanted.size || !hasCurrentPatient()) {
+        lesions = [];
+        return;
+    }
+    const chartId = currentPatient.chartId;
+    const next = [];
+    managedLesions.forEach((item) => {
+        if (!wanted.has(String(item.id))) return;
+        if (typeof lesionChartId === 'function' && lesionChartId(item) !== chartId) return;
+        next.push({ ...item });
+    });
+    lesions = next;
+}
+
+function restoreVisitSessionFromChart(chart) {
+    const session = chart?.visitSession;
+    if (!isVisitSessionActive(session)) return false;
+
+    if (Array.isArray(session.patientConcerns)) {
+        patientConcerns = session.patientConcerns.slice();
+    }
+    hydrateVisitLesionsFromIds(session.visitLesionIds);
+
+    if (session.sanitised) {
+        isBedSanitised = true;
+        pendingSanitise = false;
+        if (typeof setModalBedSanitation === 'function') setModalBedSanitation(true);
+    }
+
+    if (typeof renderPatientConcerns === 'function') renderPatientConcerns();
+    if (typeof renderLesionsTable === 'function') renderLesionsTable();
+    if (typeof renderChartSidebar === 'function') renderChartSidebar();
+    if (typeof updateExamRequiredFields === 'function') updateExamRequiredFields();
+    if (typeof updateChartChrome === 'function') updateChartChrome();
+    return true;
+}
+
+async function clearStoredVisitSession() {
+    const chart = currentManagedChart();
+    if (chart) {
+        chart.visitSession = null;
+        await saveManagedChartRecord(chart);
+    }
 }
 
 function examFromDomIsFilled(exam) {
@@ -162,7 +234,12 @@ function newChartRecord(patient) {
         biopsyBilling: (typeof normalizeBiopsyBilling === 'function'
             ? normalizeBiopsyBilling(patient?.biopsyBilling)
             : (patient?.biopsyBilling || '$20 OOP per biopsy (Item 30071)')),
+        smsNormalResultsConsent: typeof normalizeSmsNormalResultsConsent === 'function'
+            ? normalizeSmsNormalResultsConsent(patient?.smsNormalResultsConsent)
+            : '',
         iemr: emptyChartIemr(),
+        procedureSession: null,
+        visitSession: null,
         owner: (typeof vaultAuth !== 'undefined' && vaultAuth.username) || '',
         fileName: chartRecordFileName(id)
     };
@@ -215,6 +292,7 @@ async function loadManagedChartsFromVault() {
                         ? normalizeBiopsyBilling('')
                         : '$20 OOP per biopsy (Item 30071)';
                 }
+                if (!chart.smsNormalResultsConsent) chart.smsNormalResultsConsent = '';
                 managedCharts.push(chart);
             }
         } catch (err) {
@@ -346,6 +424,7 @@ function resetScreeningAndExamForm() {
                 biopsyBilling: typeof DEFAULT_BIOPSY_BILLING !== 'undefined' ? DEFAULT_BIOPSY_BILLING : '$20 OOP per biopsy (Item 30071)'
             });
         }
+        if (typeof applySmsNormalResultsConsent === 'function') applySmsNormalResultsConsent('');
         examMetadataWasComplete = false;
         screeningMarkedComplete = false;
         if (typeof applyNoPatientConcerns === 'function') applyNoPatientConcerns(false);
@@ -374,13 +453,11 @@ function applyCurrentChartToForms() {
                 biopsyBilling: chart.biopsyBilling
             });
         }
-        if (chart.iemr?.examCopied && chart.iemr.examVisitDate === todayVisitKey() && chart.iemr.examFingerprint === examVisitFingerprint()) {
-            outputCopyState.emr.copied = true;
-            outputCopyState.emr.lastCopiedText = document.getElementById('emrNoteTextContainer')?.value || '';
-        } else {
-            outputCopyState.emr.copied = false;
-            outputCopyState.emr.lastCopiedText = '';
+        if (typeof applySmsNormalResultsConsent === 'function') {
+            applySmsNormalResultsConsent(chart.smsNormalResultsConsent);
         }
+        if (typeof updateExamRequiredFields === 'function') updateExamRequiredFields();
+        refreshExamCopyStateFromChart(chart);
     } finally {
         applyingChartRecord = false;
     }
@@ -389,7 +466,20 @@ function applyCurrentChartToForms() {
     if (typeof updateChartChrome === 'function') updateChartChrome();
 }
 
-async function saveCurrentChartFromDom() {
+function refreshExamCopyStateFromChart(chart) {
+    const record = chart || currentManagedChart();
+    if (record?.iemr?.examCopied && record.iemr.examVisitDate === todayVisitKey() && record.iemr.examFingerprint === examVisitFingerprint()) {
+        outputCopyState.emr.copied = true;
+        if (!outputCopyState.emr.lastCopiedText) {
+            outputCopyState.emr.lastCopiedText = document.getElementById('emrNoteTextContainer')?.value || '';
+        }
+    } else {
+        outputCopyState.emr.copied = false;
+        outputCopyState.emr.lastCopiedText = '';
+    }
+}
+
+async function saveCurrentChartFromDom(options) {
     if (!hasCurrentPatient()) return null;
     const chart = await ensureChartRecord(currentPatient);
     if (!chart) return null;
@@ -431,6 +521,32 @@ async function saveCurrentChartFromDom() {
             document.getElementById('modalBiopsyBilling')?.value || chart.biopsyBilling
         );
     }
+    if (typeof normalizeSmsNormalResultsConsent === 'function') {
+        chart.smsNormalResultsConsent = normalizeSmsNormalResultsConsent(smsNormalResultsConsent);
+    } else if (typeof smsNormalResultsConsent !== 'undefined') {
+        chart.smsNormalResultsConsent = smsNormalResultsConsent || chart.smsNormalResultsConsent || '';
+    }
+    if (typeof snapshotProcedureSession === 'function') {
+        const snap = snapshotProcedureSession();
+        chart.procedureSession = (typeof isStoredProcedureSessionActive === 'function' && isStoredProcedureSessionActive(snap))
+            ? snap
+            : null;
+    }
+    if (options?.endVisit) {
+        chart.visitSession = null;
+        chart.procedureSession = null;
+    } else {
+        const visitSnap = collectVisitSessionFromDom();
+        if (isVisitSessionActive(visitSnap)
+            || examFromDomIsFilled(exam)
+            || screening.filled
+            || screening.completed
+            || (typeof isStoredProcedureSessionActive === 'function' && isStoredProcedureSessionActive(chart.procedureSession))) {
+            chart.visitSession = visitSnap;
+        } else if (chart.visitSession?.visitDate === todayVisitKey()) {
+            chart.visitSession = visitSnap;
+        }
+    }
     await saveManagedChartRecord(chart);
     if (typeof updateChartChrome === 'function') updateChartChrome();
     return chart;
@@ -453,8 +569,9 @@ function chartScreeningAlreadyCopied(chart) {
 }
 
 function examVisitFingerprint() {
+    const noteLesions = typeof visitNoteLesions === 'function' ? visitNoteLesions() : (lesions || []);
     return JSON.stringify({
-        lesions: (lesions || []).map((item) => ({
+        lesions: (noteLesions || []).map((item) => ({
             id: item.id,
             location: item.location,
             impression: item.impression,
@@ -570,6 +687,21 @@ function generateScreeningEmrSection(options) {
 
 function screeningConsentHistoryLines() {
     const lines = [];
+    if (groupStates['canc'] === 'YES') {
+        const bits = [];
+        if (document.getElementById('hxPersonalMelanoma')?.checked) {
+            const stage = document.getElementById('melanomaStage')?.value || '';
+            const time = document.getElementById('melanomaTime')?.value || '';
+            bits.push('personal melanoma' + (stage || time ? ' (' + [stage, time].filter(Boolean).join(', ') + ')' : ''));
+        }
+        if (document.getElementById('hxPersonalNMSC')?.checked) bits.push('personal NMSC (BCC/SCC)');
+        if (document.getElementById('hxFamilyMelanoma')?.checked) bits.push('first-degree relative melanoma');
+        if (document.getElementById('hxHighMoleCount')?.checked) bits.push('high mole count / dysplastic nevi');
+        if (bits.length) lines.push('Skin cancer history: ' + bits.join('; ') + '.');
+        else lines.push('Skin cancer history reported (see chart).');
+    } else if (groupStates['canc'] === 'NO') {
+        lines.push('No personal or family skin cancer history.');
+    }
     if (groupStates['all'] === 'YES') {
         const bits = [];
         if (document.getElementById('algLocalAnaesthetic')?.checked) bits.push('local anaesthetic');
@@ -591,11 +723,15 @@ function screeningConsentHistoryLines() {
         const meds = document.getElementById('medicationsText')?.value.trim();
         if (bits.length) lines.push('Bleeding risk / anticoagulants: ' + bits.join(', '));
         if (meds) lines.push('Medications: ' + meds);
+    } else if (groupStates['bld'] === 'NO') {
+        lines.push('No anticoagulants reported.');
     }
     if (groupStates['dia'] === 'YES') {
         if (document.getElementById('diaPacemaker')?.checked) lines.push('CRITICAL: Cardiac pacemaker / ICD — monopolar diathermy contraindicated.');
         if (document.getElementById('diaMetalwork')?.checked) lines.push('Internal metalwork / joint replacement present.');
         if (document.getElementById('diaCochlear')?.checked) lines.push('Cochlear implant present.');
+    } else if (groupStates['dia'] === 'NO') {
+        lines.push('No pacemaker, cochlear implant, or internal metalwork reported.');
     }
     if (groupStates['hea'] === 'YES') {
         if (document.getElementById('heaSmoking')?.checked) lines.push('Active smoking (increased flap/graft ischaemia risk).');
@@ -603,9 +739,59 @@ function screeningConsentHistoryLines() {
         if (document.getElementById('heaImmuno')?.checked) lines.push('Immunosuppression / biologic therapy.');
         if (document.getElementById('heaKeloid')?.checked) lines.push('Keloid or hypertrophic scarring history.');
         if (document.getElementById('heaVasovagal')?.checked) lines.push('Vasovagal syncope history.');
+    } else if (groupStates['hea'] === 'NO') {
+        lines.push('No smoking, diabetes, immunosuppression, keloid, or vasovagal history reported.');
     }
     const past = document.getElementById('pastHistoryText')?.value.trim();
     if (past) lines.push(past);
+    return lines;
+}
+
+function patientSummaryHistoryLines() {
+    const fromDom = screeningConsentHistoryLines();
+    if (fromDom.length) return fromDom;
+    const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
+    const screening = chart?.screening;
+    if (!screening?.filled && !screening?.fields) return [];
+    const fields = screening.fields || {};
+    const groups = screening.groups || {};
+    const lines = [];
+    if (groups.canc === 'YES') {
+        const bits = [];
+        if (fields.hxPersonalMelanoma) bits.push('personal melanoma');
+        if (fields.hxPersonalNMSC) bits.push('personal NMSC');
+        if (fields.hxFamilyMelanoma) bits.push('family melanoma');
+        if (fields.hxHighMoleCount) bits.push('high mole count');
+        if (bits.length) lines.push('Skin cancer history: ' + bits.join('; ') + '.');
+    } else if (groups.canc === 'NO') {
+        lines.push('No personal or family skin cancer history.');
+    }
+    if (groups.all === 'YES') lines.push(fields.allergiesText ? 'Allergies: ' + fields.allergiesText : 'Allergies reported (see chart).');
+    else if (groups.all === 'NO') lines.push('No known allergies.');
+    if (groups.bld === 'YES') {
+        const bits = [];
+        if (fields.bldAspirin) bits.push('aspirin / NSAIDs');
+        if (fields.bldWarfarin) bits.push('warfarin');
+        if (fields.bldDOAC) bits.push('DOAC');
+        if (fields.bldHerbals) bits.push('fish oil / herbals');
+        if (bits.length) lines.push('Bleeding risk / anticoagulants: ' + bits.join(', '));
+        if (fields.medicationsText) lines.push('Medications: ' + fields.medicationsText);
+    }
+    if (groups.dia === 'YES') {
+        if (fields.diaPacemaker) lines.push('CRITICAL: Cardiac pacemaker / ICD — monopolar diathermy contraindicated.');
+        if (fields.diaMetalwork) lines.push('Internal metalwork / joint replacement present.');
+        if (fields.diaCochlear) lines.push('Cochlear implant present.');
+    } else if (groups.dia === 'NO') {
+        lines.push('No pacemaker, cochlear implant, or internal metalwork reported.');
+    }
+    if (groups.hea === 'YES') {
+        if (fields.heaSmoking) lines.push('Active smoking.');
+        if (fields.heaDiabetes) lines.push('Diabetes mellitus.');
+        if (fields.heaImmuno) lines.push('Immunosuppression / biologic therapy.');
+        if (fields.heaKeloid) lines.push('Keloid / hypertrophic scarring history.');
+        if (fields.heaVasovagal) lines.push('Vasovagal syncope history.');
+    }
+    if (fields.pastHistoryText) lines.push(fields.pastHistoryText);
     return lines;
 }
 
@@ -704,11 +890,112 @@ async function openPatientChart(patient, options) {
     if (chart?.firstName && !currentPatient.firstName) currentPatient.firstName = chart.firstName;
     if (chart?.lastName && !currentPatient.lastName) currentPatient.lastName = chart.lastName;
     applyCurrentChartToForms();
+    const restoredVisit = typeof restoreVisitSessionFromChart === 'function'
+        && restoreVisitSessionFromChart(chart);
+    const restoredProcedure = typeof restoreProcedureSessionFromChart === 'function'
+        && restoreProcedureSessionFromChart(chart);
+    if (typeof refreshExamCopyStateFromChart === 'function') refreshExamCopyStateFromChart(chart);
+    const shouldResumeWorkspace = !!(options?.resumeVisit || options?.resumeAfterLock || restoredVisit || restoredProcedure);
+    if (shouldResumeWorkspace && typeof switchWorkspaceTab === 'function') {
+        if (restoredProcedure) {
+            switchWorkspaceTab('excision-generator', { skipCompleteModal: true, skipPersist: true });
+        } else {
+            const tab = chart?.visitSession?.workspaceTab;
+            if (tab === 'skin-check' || tab === 'excision-generator') {
+                switchWorkspaceTab(tab, { skipCompleteModal: true, skipPersist: true });
+            }
+        }
+    }
     if (typeof setMgmtFilter === 'function' && (!options || !options.keepFilter)) setMgmtFilter('open');
     if (typeof renderManagedLesions === 'function') renderManagedLesions();
     if (typeof updateChartChrome === 'function') updateChartChrome();
-    if (!options?.silent) showToast('Opened chart: ' + name + '.');
+    if (typeof updateOutput === 'function') updateOutput();
+    if (!options?.silent) {
+        if (restoredProcedure) showToast('Opened chart: ' + name + '. Procedure still in progress.');
+        else if (restoredVisit) showToast('Opened chart: ' + name + '. Visit restored.');
+        else showToast('Opened chart: ' + name + '.');
+    }
     return true;
+}
+
+function chartForLastPatient(saved) {
+    if (!saved) return null;
+    if (saved.chartId && typeof findManagedChart === 'function') {
+        const byId = findManagedChart(saved.chartId);
+        if (byId) return byId;
+    }
+    const id = typeof patientChartId === 'function' ? patientChartId(saved.name, saved.dob) : '';
+    if (id && typeof findManagedChart === 'function') {
+        const byDerived = findManagedChart(id);
+        if (byDerived) return byDerived;
+    }
+    const charts = typeof managedCharts !== 'undefined' ? managedCharts : [];
+    return charts.find((chart) => chart.name === saved.name && chart.dob === saved.dob) || null;
+}
+
+async function resumeLastChartAfterLogin() {
+    if (typeof openPatientChart !== 'function') return false;
+    const last = typeof readLastPatient === 'function' ? readLastPatient() : null;
+    const lastChart = chartForLastPatient(last);
+    const activeChart = (!lastChart && typeof findActiveProcedureChart === 'function')
+        ? findActiveProcedureChart()
+        : null;
+    const source = lastChart || last || activeChart;
+    if (!source) return false;
+    const chartRecord = lastChart || (source.id ? source : chartForLastPatient(source));
+    const hasActiveVisit = !!(chartRecord && isVisitSessionActive(chartRecord.visitSession));
+    const hasActiveProcedure = !!(chartRecord && typeof isStoredProcedureSessionActive === 'function'
+        && isStoredProcedureSessionActive(chartRecord.procedureSession))
+        || !!(activeChart && typeof isStoredProcedureSessionActive === 'function'
+            && isStoredProcedureSessionActive(activeChart.procedureSession));
+    const opened = await openPatientChart(patientFromChartOrLast(source), {
+        silent: true,
+        keepFilter: true,
+        resumeVisit: true,
+        resumeAfterLock: true
+    });
+    if (!opened) return false;
+    if (hasActiveProcedure && typeof procedureSession !== 'undefined' && procedureSession.started) {
+        showToast('Procedure still in progress. Restored after sign-in.');
+        return 'procedure';
+    }
+    if (hasActiveVisit || (typeof activeWorkspaceTab !== 'undefined'
+        && (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator'))) {
+        showToast('Visit restored after sign-in.');
+        return 'visit';
+    }
+    return 'chart';
+}
+
+function patientFromChartOrLast(source) {
+    if (!source) return null;
+    return {
+        name: source.name,
+        firstName: source.firstName || '',
+        lastName: source.lastName || '',
+        dob: source.dob,
+        phone: source.phone || '',
+        clinician: source.clinician || '',
+        chartId: source.chartId || source.id || ''
+    };
+}
+
+function sessionNotesShouldPromptClose() {
+    if (!hasCurrentPatient()) return false;
+    if (typeof notesPendingCopy === 'function') {
+        const pending = notesPendingCopy();
+        if (pending?.pending) return true;
+    }
+    if (typeof chartExamCopyIsCurrent === 'function' && chartExamCopyIsCurrent()) return false;
+    const exam = typeof collectChartExamFromDom === 'function' ? collectChartExamFromDom() : null;
+    const examFilled = typeof examFromDomIsFilled === 'function' && examFromDomIsFilled(exam);
+    const hasVisitLesions = (Array.isArray(lesions) && lesions.length > 0)
+        || !!(typeof currentManagedChart === 'function' && (currentManagedChart()?.visitSession?.visitLesionIds || []).length);
+    const procedureActive = !!(typeof procedureSession !== 'undefined'
+        && (procedureSession.started || procedureSession.completedAt));
+    const screeningDone = !!(typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete)
+        || !!(typeof groupStates !== 'undefined' && ['canc', 'all', 'bld', 'dia', 'hea'].some((k) => groupStates[k] === 'YES' || groupStates[k] === 'NO'));
+    return !!(examFilled || hasVisitLesions || procedureActive || screeningDone);
 }
 
 async function closePatientChart(options) {
@@ -717,15 +1004,23 @@ async function closePatientChart(options) {
         if (typeof updateChartChrome === 'function') updateChartChrome();
         return;
     }
-    if (!options?.force && typeof notesPendingCopy === 'function') {
-        const pending = notesPendingCopy();
-        if (pending.pending) {
-            openCloseChartNotesModal(pending);
-            return;
-        }
+    if (!options?.force && sessionNotesShouldPromptClose()) {
+        const pending = typeof notesPendingCopy === 'function'
+            ? notesPendingCopy()
+            : { pending: true, consultExists: true, procedureExists: false };
+        openCloseChartNotesModal({
+            ...pending,
+            pending: true,
+            consultExists: pending.consultExists || true,
+            forcePrompt: true
+        });
+        return;
     }
     closeCloseChartNotesModal();
-    await saveCurrentChartFromDom();
+    if (typeof clearStoredProcedureSession === 'function') {
+        await clearStoredProcedureSession();
+    }
+    await saveCurrentChartFromDom({ endVisit: true });
     if (typeof saveCurrentVisitNotes === 'function') await saveCurrentVisitNotes();
     resetScreeningAndExamForm();
     clearCurrentPatient();
@@ -762,32 +1057,26 @@ function stayOnPatientChart() {
 function refreshCloseChartNotesModal(pending) {
     const state = pending || (typeof notesPendingCopy === 'function' ? notesPendingCopy() : { pending: false });
     const detail = document.getElementById('closeChartNotesDetail');
+    const todayBtn = document.getElementById('btnCloseChartCopyToday');
     const consultBtn = document.getElementById('btnCloseChartCopyConsult');
     const procBtn = document.getElementById('btnCloseChartCopyProcedure');
-    const bits = [];
-    if (state.consultPending) bits.push('consult notes');
-    if (state.procedurePending) bits.push('procedure notes');
     if (detail) {
-        detail.textContent = bits.length
-            ? 'Still to copy: ' + bits.join(' and ') + '. Copy them into Best Practice, then close the chart.'
+        detail.textContent = state.forcePrompt || state.pending
+            ? 'Copy today’s clinical note into Best Practice before closing. If you already pasted earlier, replace that note rather than appending.'
             : 'Notes have been copied. You can close the chart.';
     }
-    if (consultBtn) {
-        consultBtn.classList.toggle('hidden', !state.consultExists);
-        consultBtn.disabled = !state.consultPending;
-        consultBtn.textContent = state.consultPending ? 'Copy consult' : 'Consult copied';
+    if (todayBtn) {
+        todayBtn.classList.remove('hidden');
+        todayBtn.disabled = false;
+        todayBtn.textContent = 'Copy today’s note';
     }
-    if (procBtn) {
-        procBtn.classList.toggle('hidden', !state.procedureExists);
-        procBtn.disabled = !state.procedurePending;
-        procBtn.textContent = state.procedurePending ? 'Copy procedure' : 'Procedure copied';
-    }
+    if (consultBtn) consultBtn.classList.add('hidden');
+    if (procBtn) procBtn.classList.add('hidden');
 }
 
 function copyPendingChartNotes(kind) {
-    if (kind === 'procedure') {
-        if (typeof copyProcedureInteractionNote === 'function') copyProcedureInteractionNote();
-        else if (typeof copyEMRNotePlainText === 'function') copyEMRNotePlainText();
+    if (typeof copyTodaysClinicalNote === 'function') {
+        copyTodaysClinicalNote();
     } else if (typeof copyEMRNotePlainText === 'function') {
         copyEMRNotePlainText();
     }
@@ -801,6 +1090,47 @@ function copyPendingChartNotes(kind) {
     }, 350);
 }
 
+function flushVisitPersistence() {
+    if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) return;
+    if (typeof isVaultLoggedIn === 'function' && !isVaultLoggedIn()) return;
+    if (!hasCurrentPatient()) return;
+    if (typeof chartSaveTimer !== 'undefined' && chartSaveTimer) {
+        clearTimeout(chartSaveTimer);
+        chartSaveTimer = null;
+    }
+    if (typeof visitNoteSaveTimer !== 'undefined' && visitNoteSaveTimer) {
+        clearTimeout(visitNoteSaveTimer);
+        visitNoteSaveTimer = null;
+    }
+    const tasks = [];
+    if (typeof saveCurrentChartFromDom === 'function') {
+        tasks.push(saveCurrentChartFromDom().catch((err) => console.warn('Flush chart save failed', err)));
+    }
+    if (typeof saveCurrentVisitNotes === 'function') {
+        tasks.push(saveCurrentVisitNotes().catch((err) => console.warn('Flush note save failed', err)));
+    }
+    return Promise.all(tasks);
+}
+
+function bindVisitPersistenceFlush() {
+    if (typeof window === 'undefined' || window.__dermVisitFlushBound) return;
+    window.__dermVisitFlushBound = true;
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushVisitPersistence();
+    });
+    window.addEventListener('pagehide', () => {
+        flushVisitPersistence();
+    });
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindVisitPersistenceFlush);
+    } else {
+        bindVisitPersistenceFlush();
+    }
+}
+
 function updateChartChrome() {
     const open = hasCurrentPatient();
     const closeBtn = document.getElementById('btnHeaderCloseChart');
@@ -811,18 +1141,17 @@ function updateChartChrome() {
     const title = document.getElementById('mgmtBoardTitle');
     const iemrEl = document.getElementById('mgmtIemrStatus');
     if (title) title.textContent = open ? currentPatient.name : 'Practice board';
-    if (banner) {
-        banner.classList.toggle('is-open', open);
-        const sub = document.getElementById('mgmtChartBannerText');
-        if (sub) {
-            sub.textContent = open
-                ? ([currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ') + ' · This chart only. Close the chart to see every patient’s lesions.')
-                : 'All current active skin lesions. Search a patient to open their chart.';
-        }
+    if (banner) banner.classList.toggle('is-open', open);
+    const sub = document.getElementById('mgmtChartBannerText');
+    if (sub) {
+        sub.textContent = open
+            ? ([currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ') + ' · This chart only. Close the chart to see every patient’s lesions.')
+            : 'All current active skin lesions. Search a patient to open their chart.';
     }
     if (iemrEl) {
         iemrEl.classList.toggle('hidden', !open);
         iemrEl.textContent = open ? iemrCopyStatusLabel() : '';
     }
+    if (typeof renderPatientChartSummary === 'function') renderPatientChartSummary();
     updateHeaderPatient();
 }
