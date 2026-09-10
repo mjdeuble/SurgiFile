@@ -14,7 +14,7 @@
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=54">
+    <link rel="stylesheet" href="css/app.css?v=69">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -42,6 +42,15 @@
             <button type="button" id="btnHeaderCloseChart" onclick="requestClosePatientChart()" class="hidden px-2.5 py-1 text-[11px] font-bold rounded-lg border border-amber-500/70 bg-amber-900/40 hover:bg-amber-800/60 text-amber-100 cursor-pointer">Close chart</button>
 
             <div class="flex items-center gap-1 ml-auto">
+                <div class="header-icon-btn-wrap tooltip-end">
+                    <button type="button" id="headerClinicSettingsBtn" onclick="openClinicSettingsModal()" class="header-icon-btn" aria-label="Clinic settings">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </button>
+                    <div class="output-action-tooltip" role="tooltip">
+                        <div class="output-action-tooltip-title">Clinic settings</div>
+                        <p class="output-action-tooltip-desc">Clinic contact details and available procedure supplies (site-wide for this clinic folder).</p>
+                    </div>
+                </div>
                 <div id="headerAuthWrap" class="header-icon-btn-wrap tooltip-end">
                     <button type="button" id="headerAuthButton" onclick="isVaultLoggedIn() ? lockVaultSession() : openAuthModal()" class="header-icon-btn" aria-label="Account">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
@@ -98,7 +107,7 @@
                             </button>
                             <div class="output-action-tooltip" role="tooltip">
                                 <div class="output-action-tooltip-title">Sanitised</div>
-                                <p id="sidebarSanitiseHint" class="output-action-tooltip-desc">Click once to unlock examination and procedures for this patient.</p>
+                                <p id="sidebarSanitiseHint" class="output-action-tooltip-desc">Click once to unlock examination and procedures for this patient. Cannot be turned off until the chart is closed.</p>
                             </div>
                         </div>
                         <div class="header-icon-btn-wrap">
@@ -114,7 +123,7 @@
 
                     <div id="headerOutputActions" class="chart-rail-stack" role="toolbar" aria-label="Session actions">
                         <div id="cardStatusEmr" class="output-action-btn-wrap is-pending" data-rail="exam">
-                            <button type="button" id="btnCopyEmr" onclick="copyEMRNotePlainText()" class="output-action-btn" aria-label="Copy clinical EMR note">
+                            <button type="button" id="btnCopyEmr" onclick="copyTodaysClinicalNote()" class="output-action-btn" aria-label="Copy today’s clinical note">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                 <span id="dotEmr" class="output-action-dot is-pending"></span>
                             </button>
@@ -122,9 +131,9 @@
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                             </button>
                             <div class="output-action-tooltip" role="tooltip">
-                                <div class="output-action-tooltip-title">Clinical EMR Note</div>
+                                <div class="output-action-tooltip-title">Today’s clinical note</div>
                                 <div id="textEmrStatus" class="output-action-tooltip-status">Pending copy</div>
-                                <p class="output-action-tooltip-desc">Plain-text note for Best Practice. Click the document to copy, or the eye to preview.</p>
+                                <p class="output-action-tooltip-desc">Always rebuilds the full visit (exam + procedure). If already copied, replace in Best Practice — do not append, or you may get duplicates.</p>
                             </div>
                         </div>
 
@@ -189,17 +198,17 @@
                         </div>
 
                         <div id="cardStatusAftercare" class="output-action-btn-wrap is-aftercare" data-rail="clinical">
-                            <button type="button" id="btnPrintAftercare" onclick="printAftercareSheet()" class="output-action-btn" aria-label="Print patient aftercare sheet">
+                            <button type="button" id="btnPrintAftercare" onclick="printAftercareSheet()" class="output-action-btn" aria-label="Print patient advice sheet">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M7 4h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z"/></svg>
                                 <span id="dotAftercare" class="output-action-dot is-pending"></span>
                             </button>
-                            <button type="button" id="btnDownloadAftercare" onclick="downloadAftercareSheet()" class="output-action-sub" aria-label="Download aftercare copy for the chart">
+                            <button type="button" id="btnDownloadAftercare" onclick="downloadAftercareSheet()" class="output-action-sub" aria-label="Download patient advice copy for the chart">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"/></svg>
                             </button>
                             <div class="output-action-tooltip" role="tooltip">
-                                <div class="output-action-tooltip-title">Aftercare sheet</div>
+                                <div class="output-action-tooltip-title">Patient advice sheet</div>
                                 <div id="textAftercareStatus" class="output-action-tooltip-status">Give to patient</div>
-                                <p class="output-action-tooltip-desc">Print or save as PDF for the patient. The smaller arrow downloads a copy for the chart. IEMR records that written advice was given.</p>
+                                <p class="output-action-tooltip-desc">Visit-adaptive advice: planned prep, procedure aftercare, stitch timing, red flags, and clinic contacts. Preview before print. Arrow downloads a chart copy.</p>
                             </div>
                         </div>
 
@@ -679,37 +688,6 @@
             <div id="procAllocateList" class="space-y-2"></div>
         </div>
 
-        <details class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            <summary class="cursor-pointer font-bold text-sm text-slate-800">Saved procedure supplies</summary>
-            <p class="text-[11px] text-slate-500 mt-1 mb-3">Edit lignocaine, suture types, and cleaning products. They are saved on this device and used in the procedure form.</p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                <div>
-                    <h4 class="font-semibold text-slate-700 mb-1.5">Lignocaine / local anaesthetic</h4>
-                    <div id="procSupplyAnesthetics" class="space-y-1.5 mb-2"></div>
-                    <div class="flex gap-1.5">
-                        <input type="text" id="newProcAnesthetic" placeholder="Add anaesthetic" class="flex-1 p-1.5 border border-slate-300 rounded bg-white">
-                        <button type="button" onclick="addProcSupplyItem('anesthetics')" class="px-2 py-1.5 bg-slate-800 text-white font-bold rounded cursor-pointer">Add</button>
-                    </div>
-                </div>
-                <div>
-                    <h4 class="font-semibold text-slate-700 mb-1.5">Suture types</h4>
-                    <div id="procSupplySutures" class="space-y-1.5 mb-2"></div>
-                    <div class="flex gap-1.5">
-                        <input type="text" id="newProcSuture" placeholder="Add suture type" class="flex-1 p-1.5 border border-slate-300 rounded bg-white">
-                        <button type="button" onclick="addProcSupplyItem('sutures')" class="px-2 py-1.5 bg-slate-800 text-white font-bold rounded cursor-pointer">Add</button>
-                    </div>
-                </div>
-                <div>
-                    <h4 class="font-semibold text-slate-700 mb-1.5">Cleaning / skin prep</h4>
-                    <div id="procSupplyPreps" class="space-y-1.5 mb-2"></div>
-                    <div class="flex gap-1.5">
-                        <input type="text" id="newProcPrep" placeholder="Add cleaning product" class="flex-1 p-1.5 border border-slate-300 rounded bg-white">
-                        <button type="button" onclick="addProcSupplyItem('preps')" class="px-2 py-1.5 bg-slate-800 text-white font-bold rounded cursor-pointer">Add</button>
-                    </div>
-                </div>
-            </div>
-        </details>
-
         <!-- LEFT COLUMN: EXCISION OPERATIVE FORM ENTRY -->
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
             <form id="ex-lesion-form" onsubmit="return false;">
@@ -955,7 +933,7 @@
                     <button type="button" data-mgmt-filter="awaiting_histology" onclick="setMgmtFilter('awaiting_histology')" class="mgmt-filter-btn">Awaiting results</button>
                     <button type="button" data-mgmt-filter="planned_procedure" onclick="setMgmtFilter('planned_procedure')" class="mgmt-filter-btn">Planned procedure</button>
                     <button type="button" data-mgmt-filter="billing" onclick="setMgmtFilter('billing')" class="mgmt-filter-btn">Billing</button>
-                    <button type="button" data-mgmt-filter="notes" onclick="setMgmtFilter('notes')" class="mgmt-filter-btn">Saved notes</button>
+                    <button type="button" data-mgmt-filter="notes" onclick="setMgmtFilter('notes')" class="mgmt-filter-btn">Saved notes &amp; consents</button>
                 </div>
             </div>
             <div class="flex flex-wrap items-end gap-2">
@@ -967,6 +945,8 @@
                 <button type="button" onclick="openAddPatientModal()" class="px-3 py-2 text-xs font-bold rounded-lg bg-slate-900 hover:bg-slate-800 text-white cursor-pointer">Add new patient</button>
             </div>
         </div>
+        <div id="mgmtChartBanner" class="hidden"></div>
+        <section id="mgmtPatientSummary" class="mgmt-patient-summary hidden" aria-live="polite"></section>
         <p id="mgmtEmptyState" class="hidden text-sm text-slate-400 italic">No lesions in this queue.</p>
         <div id="mgmtBoard" class="grid grid-cols-1 lg:grid-cols-2 gap-4">        </div>
     </main>
@@ -1028,14 +1008,13 @@
                 </div>
                 <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-700">IEMR notes</p>
-                    <p class="text-xs text-slate-500">If the examination was already copied to IEMR, this copies a procedure addendum only so screening is not pasted again. Consult and procedure are combined when both exist.</p>
-                    <button type="button" id="btnProcCopyEmr" onclick="copyProcedureInteractionNote()" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy complete IEMR notes</button>
+                    <p class="text-xs text-slate-500">Copy the full visit note from Examination (document icon in the chart rail). It always rebuilds exam + procedure. If you already pasted earlier, replace the note in Best Practice rather than appending.</p>
                 </div>
                 <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Aftercare sheet</p>
-                    <p class="text-xs text-slate-500">Print for the patient, or download a copy for the chart. The IEMR note records that written advice was given.</p>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Patient advice sheet</p>
+                    <p class="text-xs text-slate-500">Preview then print or download. Includes procedure-specific aftercare, stitch timing, planned-excision prep if relevant, red flags, and clinic contacts.</p>
                     <div class="flex flex-wrap gap-2">
-                        <button type="button" onclick="printAftercareSheet()" class="px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-lg cursor-pointer">Print aftercare PDF</button>
+                        <button type="button" onclick="printAftercareSheet()" class="px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-lg cursor-pointer">Print advice PDF</button>
                         <button type="button" onclick="downloadAftercareSheet()" class="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg cursor-pointer">Download copy</button>
                     </div>
                 </div>
@@ -1183,6 +1162,127 @@
         </div>
     </div>
 
+    <div id="aftercarePreviewModal" class="fixed inset-0 z-[58] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full border border-slate-200 max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-3.5 bg-teal-900 text-white flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-sm">Patient advice — preview</h3>
+                    <p class="text-[11px] text-teal-100 mt-0.5">Confirm before print/download. IEMR records advice as given only after you confirm.</p>
+                </div>
+                <button type="button" onclick="closeAftercarePreviewModal()" class="text-teal-200 hover:text-white font-bold text-base cursor-pointer" aria-label="Close">&times;</button>
+            </div>
+            <div class="p-4 border-b border-slate-200 bg-slate-50" id="aftercarePreviewSummary"></div>
+            <div class="flex-1 min-h-0 bg-slate-100">
+                <iframe id="aftercarePreviewFrame" title="Patient advice preview" class="w-full h-[55vh] border-0 bg-white"></iframe>
+            </div>
+            <div class="px-5 py-3 bg-slate-100 border-t border-slate-200 flex flex-wrap justify-between gap-2">
+                <button type="button" onclick="closeAftercarePreviewModal()" class="px-3 py-2 text-xs font-semibold text-slate-600 cursor-pointer">Cancel</button>
+                <button type="button" onclick="confirmAftercareGive()" class="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-lg cursor-pointer">Confirm &amp; give to patient</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="clinicSettingsModal" class="fixed inset-0 z-[58] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full border border-slate-200 max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-3.5 bg-slate-900 text-white flex justify-between items-center gap-3">
+                <div>
+                    <h3 class="font-bold text-sm">Clinic settings</h3>
+                    <p class="text-[11px] text-slate-300 mt-0.5">Site-wide for this clinic folder — shared by every doctor on this machine set.</p>
+                </div>
+                <button type="button" onclick="closeClinicSettingsModal()" class="text-slate-400 hover:text-white font-bold text-base cursor-pointer" aria-label="Close">&times;</button>
+            </div>
+            <div class="px-5 pt-3 pb-2 border-b border-slate-200 bg-slate-50 flex flex-wrap gap-2" role="tablist" aria-label="Settings sections">
+                <button type="button" id="clinicSettingsTabDetails" role="tab" aria-selected="true" onclick="switchClinicSettingsTab('details')" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-900 text-white cursor-pointer">Clinic details</button>
+                <button type="button" id="clinicSettingsTabSupplies" role="tab" aria-selected="false" onclick="switchClinicSettingsTab('supplies')" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-700 border border-slate-300 cursor-pointer">Procedure supplies</button>
+                <button type="button" id="clinicSettingsTabPdt" role="tab" aria-selected="false" onclick="switchClinicSettingsTab('pdt')" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-700 border border-slate-300 cursor-pointer">PDT prices</button>
+            </div>
+            <div class="overflow-y-auto flex-1">
+                <div id="clinicSettingsPanelDetails" class="p-5 space-y-3 text-sm">
+                    <p class="text-[11px] text-slate-500">Printed on patient advice sheets. Saved as clinic-profile.json in the clinic folder.</p>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="clinicProfileName">Clinic name</label>
+                        <input id="clinicProfileName" type="text" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="e.g. Harbour Skin Clinic">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="clinicProfileAddress">Address</label>
+                        <textarea id="clinicProfileAddress" rows="2" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="Street, suburb, state, postcode"></textarea>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="clinicProfilePhone">Phone</label>
+                            <input id="clinicProfilePhone" type="text" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="Reception">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="clinicProfileAfterHours">After hours</label>
+                            <input id="clinicProfileAfterHours" type="text" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="Optional">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="clinicProfileEmail">Email</label>
+                        <input id="clinicProfileEmail" type="email" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="Optional">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="clinicProfileSms">SMS / photo instructions</label>
+                        <input id="clinicProfileSms" type="text" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="e.g. Text photos to 04xx xxx xxx">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="clinicProfileWebsite">Website</label>
+                        <input id="clinicProfileWebsite" type="text" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="Optional">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="clinicProfileUrgent">Urgent care wording</label>
+                        <textarea id="clinicProfileUrgent" rows="3" class="w-full p-2 border border-slate-300 rounded-lg"></textarea>
+                    </div>
+                </div>
+                <div id="clinicSettingsPanelSupplies" class="p-5 space-y-4 text-sm hidden">
+                    <p class="text-[11px] text-slate-500">What is stocked at this clinic for the procedure form dropdowns. Changes save immediately to clinic-supplies.json. Existing local device lists are migrated once.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                        <div>
+                            <h4 class="font-semibold text-slate-700 mb-1.5">Lignocaine / local anaesthetic</h4>
+                            <div id="procSupplyAnesthetics" class="space-y-1.5 mb-2"></div>
+                            <div class="flex gap-1.5">
+                                <input type="text" id="newProcAnesthetic" placeholder="Add anaesthetic" class="flex-1 p-1.5 border border-slate-300 rounded bg-white">
+                                <button type="button" onclick="addProcSupplyItem('anesthetics')" class="px-2 py-1.5 bg-slate-800 text-white font-bold rounded cursor-pointer">Add</button>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-slate-700 mb-1.5">Suture types</h4>
+                            <div id="procSupplySutures" class="space-y-1.5 mb-2"></div>
+                            <div class="flex gap-1.5">
+                                <input type="text" id="newProcSuture" placeholder="Add suture type" class="flex-1 p-1.5 border border-slate-300 rounded bg-white">
+                                <button type="button" onclick="addProcSupplyItem('sutures')" class="px-2 py-1.5 bg-slate-800 text-white font-bold rounded cursor-pointer">Add</button>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-slate-700 mb-1.5">Cleaning / skin prep</h4>
+                            <div id="procSupplyPreps" class="space-y-1.5 mb-2"></div>
+                            <div class="flex gap-1.5">
+                                <input type="text" id="newProcPrep" placeholder="Add cleaning product" class="flex-1 p-1.5 border border-slate-300 rounded bg-white">
+                                <button type="button" onclick="addProcSupplyItem('preps')" class="px-2 py-1.5 bg-slate-800 text-white font-bold rounded cursor-pointer">Add</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="clinicSettingsPanelPdt" class="p-5 space-y-4 text-sm hidden">
+                    <p class="text-[11px] text-slate-500">Clinic PDT body areas and fees for quoting. Add, rename, reprice, or remove rows. Saved as clinic-pdt-prices.json. When quoting a field of AKs, clinicians can tick more than one area on a single lesion.</p>
+                    <div id="pdtPriceEditorList" class="space-y-2"></div>
+                    <div class="grid grid-cols-12 gap-2 pt-2 border-t border-slate-200">
+                        <input type="text" id="newPdtAreaName" placeholder="New area (e.g. Neck)" class="col-span-6 p-1.5 border border-slate-300 rounded bg-white text-[11px]">
+                        <div class="col-span-3 flex items-center gap-1">
+                            <span class="text-[11px] text-slate-700">$</span>
+                            <input type="number" id="newPdtAreaPrice" min="0" step="1" placeholder="Fee" class="w-full p-1.5 border border-slate-300 rounded bg-white text-[11px]">
+                        </div>
+                        <button type="button" onclick="addPdtPriceArea()" class="col-span-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded text-[11px] cursor-pointer">Add area</button>
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 py-3 bg-slate-100 border-t border-slate-200 flex justify-end gap-2">
+                <button type="button" onclick="closeClinicSettingsModal()" class="px-3 py-2 text-xs font-semibold text-slate-600 cursor-pointer">Close</button>
+                <button type="button" id="clinicSettingsSaveClinicBtn" onclick="saveClinicProfileFromModal()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg cursor-pointer">Save clinic details</button>
+            </div>
+        </div>
+    </div>
+
     <div id="closeChartNotesModal" class="fixed inset-0 z-[58] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
             <div class="bg-amber-700 p-4 text-white">
@@ -1192,8 +1292,9 @@
             <div class="p-5 space-y-3 text-sm">
                 <p id="closeChartNotesDetail" class="text-slate-700">Consult or procedure notes have not been copied yet.</p>
                 <div class="flex flex-wrap gap-2">
-                    <button type="button" id="btnCloseChartCopyConsult" onclick="copyPendingChartNotes('consult')" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy consult</button>
-                    <button type="button" id="btnCloseChartCopyProcedure" onclick="copyPendingChartNotes('procedure')" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy procedure</button>
+                    <button type="button" id="btnCloseChartCopyToday" onclick="copyPendingChartNotes('today')" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy today’s note</button>
+                    <button type="button" id="btnCloseChartCopyConsult" onclick="copyPendingChartNotes('consult')" class="hidden px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy consult</button>
+                    <button type="button" id="btnCloseChartCopyProcedure" onclick="copyPendingChartNotes('procedure')" class="hidden px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy procedure</button>
                 </div>
             </div>
             <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-between gap-2">
@@ -1265,7 +1366,7 @@
                 <input type="hidden" id="histologyLesionId">
                 <p id="histologyLesionSummary" class="text-xs text-slate-500"></p>
                 <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider">Result</label>
-                <textarea id="histologyResultText" rows="4" class="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="e.g. BCC, margins clear"></textarea>
+                <textarea id="histologyResultText" rows="4" class="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="e.g. BCC, margins clear" oninput="if (typeof syncHistologyBillingTypeFromResult === 'function') syncHistologyBillingTypeFromResult()"></textarea>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="histologyBillingType">Lesion type *</label>
                     <select id="histologyBillingType" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-sm">
@@ -1501,7 +1602,7 @@
                     <select id="lesionPlan" onchange="handlePlanChange()" class="w-full text-sm p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 font-semibold text-blue-900">
                         <option value="Awaiting Assessment" selected>Awaiting Assessment</option>
                         <option value="Monitor / Reassure (Benign)">Monitor / Reassure (Benign)</option>
-                        <option value="Biopsy Today (On the spot)">Biopsy Today (On the spot)</option>
+                        <option value="Punch / Shave Biopsy">Punch / Shave Biopsy</option>
                         <option value="Formally Book Excision Procedure">Formally Book Excision Procedure</option>
                         <option value="Topical / Field Treatment">Topical / Field Treatment (Cryotherapy / Efudix / PDT)</option>
                     </select>
@@ -1509,6 +1610,7 @@
 
                 <div id="planBiopsyFields" class="hidden p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
                     <label class="block text-xs font-bold uppercase tracking-wider text-blue-900">Biopsy Technique Selection</label>
+                    <p class="text-[11px] text-blue-900">Punch or shave can be done this visit or booked for another day — timing is up to you.</p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <label class="flex items-center p-2.5 bg-white rounded-lg border border-blue-200 cursor-pointer">
                             <input type="radio" name="biopsyType" value="Shave / Deep Saucerisation Biopsy" checked class="text-blue-600" onchange="handleBiopsyTypeChange()">
@@ -1634,37 +1736,87 @@
                     </div>
 
                     <div id="pdtQuotePanel" class="hidden p-3 bg-white border border-teal-300 rounded-lg space-y-3">
-                        <div class="flex justify-between items-center gap-2">
+                        <div class="flex justify-between items-center gap-2 flex-wrap">
                             <span class="font-bold uppercase tracking-wider text-teal-900">Red Light PDT quote</span>
-                            <span class="text-[10px] text-teal-700">Fees are stored on this device</span>
+                            <button type="button" onclick="openClinicSettingsModal('pdt')" class="text-[10px] font-semibold text-teal-800 underline cursor-pointer">Edit clinic PDT prices</button>
                         </div>
                         <div>
-                            <label class="block font-medium text-slate-700 mb-1">PDT body area</label>
-                            <select id="pdtAreaSelect" onchange="updatePdtQuotePreview()" class="w-full p-2 border border-teal-300 rounded bg-white">
-                                <option value="">Select PDT body area...</option>
-                            </select>
-                            <p id="pdtQuotePreview" class="mt-1.5 text-[11px] text-teal-900">Select a saved body area to pull the stored PDT fee.</p>
+                            <label class="block font-medium text-slate-700 mb-1">PDT body areas for this lesion / field</label>
+                            <p class="text-[11px] text-teal-800 mb-2">Tick every region included in this AK field (e.g. Scalp and Face). Fees are summed for the quote.</p>
+                            <div id="pdtAreaChecklist" class="space-y-1.5"></div>
+                            <p id="pdtQuotePreview" class="mt-1.5 text-[11px] text-teal-900">Select one or more body areas for this field.</p>
                         </div>
-                        <details class="rounded border border-teal-200 bg-teal-50/70 p-2.5">
-                            <summary class="cursor-pointer font-semibold text-teal-950">Edit saved PDT prices by body area</summary>
-                            <div class="mt-3 space-y-2">
-                                <div id="pdtPriceEditorList" class="space-y-2"></div>
-                                <div class="grid grid-cols-12 gap-2 pt-2 border-t border-teal-200">
-                                    <input type="text" id="newPdtAreaName" placeholder="New area (e.g. Neck)" class="col-span-6 p-1.5 border border-teal-300 rounded bg-white text-[11px]">
-                                    <div class="col-span-3 flex items-center gap-1">
-                                        <span class="text-[11px] text-teal-900">$</span>
-                                        <input type="number" id="newPdtAreaPrice" min="0" step="1" placeholder="Fee" class="w-full p-1.5 border border-teal-300 rounded bg-white text-[11px]">
-                                    </div>
-                                    <button type="button" onclick="addPdtPriceArea()" class="col-span-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded text-[11px] cursor-pointer">Add area</button>
-                                </div>
+                    </div>
+
+                    <div id="cryoPlanPanel" class="hidden p-3 bg-white border border-sky-300 rounded-lg space-y-3">
+                        <div class="flex justify-between items-start gap-2 flex-wrap">
+                            <div>
+                                <span class="font-bold uppercase tracking-wider text-sky-900">Cryotherapy plan</span>
+                                <p class="text-[10px] text-sky-800 mt-0.5">Defaults from RACGP timed spot-freeze guidance (AFP 2017). Adjust for lesion thickness/site. Freeze time starts once the ice ball covers lesion + margin.</p>
                             </div>
-                        </details>
+                            <button type="button" onclick="applyCryoRecommendationFromImpression({ force: true })" class="text-[10px] font-semibold text-sky-800 underline cursor-pointer">Reset to recommendation</button>
+                        </div>
+                        <div>
+                            <label class="block font-medium text-slate-700 mb-1" for="cryoProtocolSelect">Lesion protocol</label>
+                            <select id="cryoProtocolSelect" onchange="applyCryoProtocolFromSelect()" class="w-full p-2 border border-sky-300 rounded bg-white"></select>
+                            <p id="cryoProtocolHint" class="mt-1 text-[11px] text-sky-900"></p>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <div>
+                                <label class="block font-medium text-slate-700 mb-1" for="cryoFreezeSeconds">Freeze (sec)</label>
+                                <input type="number" id="cryoFreezeSeconds" min="1" max="120" step="1" oninput="markCryoPlanModified()" class="w-full p-2 border border-sky-300 rounded bg-white">
+                            </div>
+                            <div>
+                                <label class="block font-medium text-slate-700 mb-1" for="cryoFreezeThawCycles">FTC</label>
+                                <select id="cryoFreezeThawCycles" onchange="markCryoPlanModified()" class="w-full p-2 border border-sky-300 rounded bg-white">
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block font-medium text-slate-700 mb-1" for="cryoMarginMm">Margin (mm)</label>
+                                <input type="number" id="cryoMarginMm" min="0" max="10" step="0.5" oninput="markCryoPlanModified()" class="w-full p-2 border border-sky-300 rounded bg-white">
+                            </div>
+                            <div>
+                                <label class="block font-medium text-slate-700 mb-1" for="cryoSessionsPlanned">Sessions</label>
+                                <input type="number" id="cryoSessionsPlanned" min="1" max="6" step="1" oninput="onCryoSessionsChanged()" class="w-full p-2 border border-sky-300 rounded bg-white">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                                <label class="block font-medium text-slate-700 mb-1" for="cryoTechnique">Technique</label>
+                                <select id="cryoTechnique" onchange="markCryoPlanModified()" class="w-full p-2 border border-sky-300 rounded bg-white">
+                                    <option value="open-spray">Open-spray (timed spot-freeze)</option>
+                                    <option value="cryoprobe">Cryoprobe</option>
+                                    <option value="dipstick">Cotton-tipped dipstick</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block font-medium text-slate-700 mb-1" for="cryoSessionInterval">Interval if repeat</label>
+                                <select id="cryoSessionInterval" onchange="onCryoRecallFieldsChanged()" class="w-full p-2 border border-sky-300 rounded bg-white">
+                                    <option value="">Not required</option>
+                                    <option value="2 weeks">2 weeks</option>
+                                    <option value="4 weeks">4 weeks</option>
+                                    <option value="6 weeks">6 weeks</option>
+                                    <option value="8 weeks">8 weeks</option>
+                                </select>
+                            </div>
+                        </div>
+                        <label class="flex items-start gap-2 p-2.5 bg-sky-50 border border-sky-200 rounded-lg cursor-pointer">
+                            <input type="checkbox" id="cryoRecallRepeat" onchange="onCryoRecallFieldsChanged()" class="mt-0.5 rounded text-sky-700">
+                            <span>
+                                <span class="block font-semibold text-sky-950">Book recall for further cryotherapy</span>
+                                <span class="block text-[11px] text-sky-800">Adds a reception booking line and sets the follow-up plan when a further session is appropriate (e.g. warts).</span>
+                            </span>
+                        </label>
+                        <p id="cryoPlanPreview" class="text-[11px] text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-2"></p>
                     </div>
 
                     <div>
                         <label class="block font-medium text-slate-700 mb-1">Follow-up plan</label>
                         <select id="topicalFollowUp" class="w-full p-2 border border-teal-300 rounded bg-white">
                             <option value="none">No scheduled follow-up</option>
+                            <option value="2 weeks">Review in 2 weeks</option>
                             <option value="4 weeks">Review in 4 weeks</option>
                             <option value="8 weeks">Review in 8 weeks</option>
                             <option value="3 months">Review in 3 months</option>
@@ -1760,7 +1912,7 @@
                     <div class="flex justify-between items-center">
                         <div>
                             <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700">2. Planned Surgical Procedures & Reconstruction</h4>
-                            <p class="text-[10px] text-slate-500">Excisions, plus shave biopsies that were not verbally consented. Output is a numbered list for BP Premier (not a table).</p>
+                            <p class="text-[10px] text-slate-500">Unconsented lesions only (all selected by default). Untick any to leave off this form. Output is a numbered list for BP Premier.</p>
                         </div>
                         <button onclick="importExcisionLesions()" class="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold rounded border border-purple-300 text-[11px] transition-colors cursor-pointer">
                             Import chart lesions
@@ -1772,6 +1924,7 @@
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
                                 <tr class="bg-purple-100/70 text-purple-900 font-bold border-b border-purple-200 uppercase text-[10px] tracking-wider">
+                                    <th class="p-2 text-center">Incl.</th>
                                     <th class="p-2">#</th>
                                     <th class="p-2">Type</th>
                                     <th class="p-2">Location</th>
@@ -1794,6 +1947,7 @@
                             <select id="addConsentKind" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
                                 <option value="excision">Excision</option>
                                 <option value="shave">Shave biopsy</option>
+                                <option value="punch">Punch biopsy</option>
                             </select>
                             <input type="text" id="addConsentLoc" oninput="updateConsentRiskPreview()" placeholder="Anatomical Location *" class="p-2 border border-slate-300 rounded bg-white">
                             <select id="addConsentDx" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
@@ -1929,11 +2083,11 @@
             </div>
 
             <div class="px-6 py-4 bg-slate-100 border-t border-slate-200 flex justify-between items-center shrink-0 gap-3">
-                <span class="text-[11px] text-slate-500">Copies a numbered list (not a table) for BP Premier. Listed lesions are marked consented.</span>
+                <span class="text-[11px] text-slate-500">Copies a numbered list for BP Premier, saves for 7 days (Admin → Saved notes), and marks selected lesions consented. Email from BP after paste.</span>
                 <div class="flex gap-2 shrink-0">
-                    <button onclick="closeExcisionConsentModal()" class="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-200 font-semibold text-xs rounded-lg transition-colors cursor-pointer">Cancel</button>
-                    <button onclick="printExcisionConsentPDF()" class="px-4 py-2 border border-purple-300 text-purple-800 hover:bg-purple-50 font-semibold text-xs rounded-lg transition-colors cursor-pointer">Print</button>
-                    <button onclick="generateExcisionConsent()" class="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-lg shadow-md transition-colors flex items-center gap-1.5 cursor-pointer">
+                    <button type="button" onclick="closeExcisionConsentModal()" class="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-200 font-semibold text-xs rounded-lg transition-colors cursor-pointer">Cancel</button>
+                    <button type="button" onclick="printExcisionConsentPDF()" class="px-4 py-2 border border-purple-300 text-purple-800 hover:bg-purple-50 font-semibold text-xs rounded-lg transition-colors cursor-pointer">Print</button>
+                    <button type="button" onclick="generateExcisionConsent()" class="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-lg shadow-md transition-colors flex items-center gap-1.5 cursor-pointer">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
                         <span>Generate &amp; Copy Consent</span>
                     </button>
@@ -2016,6 +2170,28 @@
         </div>
     </div>
 
+    <div id="savedConsentModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full border border-slate-200 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-3.5 bg-violet-900 text-white flex justify-between items-center">
+                <div>
+                    <h3 id="savedConsentTitle" class="font-bold text-sm">Saved consent</h3>
+                    <p id="savedConsentMeta" class="text-[11px] text-violet-100 mt-0.5">Generated surgical consent for BP Premier.</p>
+                </div>
+                <button type="button" onclick="closeSavedConsentDoc()" class="text-violet-200 hover:text-white font-bold text-base cursor-pointer" aria-label="Close">&times;</button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-1 space-y-3 bg-slate-50">
+                <div class="flex flex-wrap gap-1.5 justify-end">
+                    <button type="button" onclick="copySavedConsentDocFromModal()" class="mgmt-action-btn mgmt-action-btn-primary">Copy for BP</button>
+                    <button type="button" onclick="printSavedConsentDocFromModal()" class="mgmt-action-btn">Print</button>
+                </div>
+                <textarea id="savedConsentBody" rows="16" readonly class="w-full p-3 border border-slate-200 rounded-lg text-xs font-mono bg-white"></textarea>
+            </div>
+            <div class="px-5 py-3 bg-slate-100 border-t border-slate-200 flex justify-end">
+                <button type="button" onclick="closeSavedConsentDoc()" class="px-3 py-1.5 text-xs font-semibold text-slate-600 cursor-pointer">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div id="akComparisonModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-3 hidden" onclick="if (event.target === this) closeAkComparisonModal()">
         <div class="ak-compare-sheet" role="dialog" aria-modal="true" aria-labelledby="akComparisonTitle">
             <div class="ak-compare-head flex items-start justify-between gap-4">
@@ -2044,25 +2220,27 @@
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=54"></script>
-    <script src="js/crypto.js?v=54"></script>
-    <script src="js/vault.js?v=54"></script>
-    <script src="js/ui.js?v=54"></script>
-    <script src="js/topical.js?v=54"></script>
-    <script src="js/billing.js?v=54"></script>
-    <script src="js/skin-check.js?v=54"></script>
-    <script src="js/consent.js?v=54"></script>
-    <script src="js/aftercare.js?v=54"></script>
-    <script src="js/outputs.js?v=54"></script>
-    <script src="js/excision.js?v=54"></script>
-    <script src="js/lesion-vault.js?v=54"></script>
-    <script src="js/billing-vault.js?v=54"></script>
-    <script src="js/chart-vault.js?v=54"></script>
-    <script src="js/note-vault.js?v=54"></script>
-    <script src="js/auth.js?v=54"></script>
-    <script src="js/management.js?v=54"></script>
-    <script src="js/chart.js?v=54"></script>
-    <script src="js/procedure-session.js?v=54"></script>
-    <script src="js/app.js?v=54"></script>
+    <script src="js/state.js?v=69"></script>
+    <script src="js/crypto.js?v=69"></script>
+    <script src="js/vault.js?v=69"></script>
+    <script src="js/ui.js?v=69"></script>
+    <script src="js/topical.js?v=69"></script>
+    <script src="js/billing.js?v=69"></script>
+    <script src="js/skin-check.js?v=69"></script>
+    <script src="js/consent.js?v=69"></script>
+    <script src="js/clinic-profile.js?v=69"></script>
+    <script src="js/aftercare.js?v=69"></script>
+    <script src="js/outputs.js?v=69"></script>
+    <script src="js/excision.js?v=69"></script>
+    <script src="js/lesion-vault.js?v=69"></script>
+    <script src="js/billing-vault.js?v=69"></script>
+    <script src="js/chart-vault.js?v=69"></script>
+    <script src="js/note-vault.js?v=69"></script>
+    <script src="js/consent-vault.js?v=69"></script>
+    <script src="js/auth.js?v=69"></script>
+    <script src="js/management.js?v=69"></script>
+    <script src="js/chart.js?v=69"></script>
+    <script src="js/procedure-session.js?v=69"></script>
+    <script src="js/app.js?v=69"></script>
 </body>
 </html>
