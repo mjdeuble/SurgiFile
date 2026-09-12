@@ -14,7 +14,7 @@
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=69">
+    <link rel="stylesheet" href="css/app.css?v=80">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -172,7 +172,7 @@
                             <div class="output-action-tooltip" role="tooltip">
                                 <div class="output-action-tooltip-title">Message to Reception</div>
                                 <div id="textRecStatus" class="output-action-tooltip-status">Pending copy</div>
-                                <p class="output-action-tooltip-desc">ROS timeframe and whether billing can be processed now or held. Combines consult and procedure when both happened.</p>
+                                <p class="output-action-tooltip-desc">Consult type, ROS per site, and HOLD or PROCESS. Same-day procedures are billed together.</p>
                             </div>
                         </div>
 
@@ -689,12 +689,13 @@
         </div>
 
         <!-- LEFT COLUMN: EXCISION OPERATIVE FORM ENTRY -->
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+        <div id="procDetailFormCard" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
             <form id="ex-lesion-form" onsubmit="return false;">
                 <div class="border-b border-slate-200 pb-3 flex justify-between items-center">
                     <div>
                         <h2 class="text-xl font-bold text-slate-800" id="ex-form-title">Enter Operative Lesion Details</h2>
                         <p class="text-xs text-slate-500">Dedicated operative note & shorthand pathology request generator</p>
+                        <p id="procFormLockedBanner" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">Procedure started. Change sutures, ROS, or a site event from Finish procedure — not this form.</p>
                     </div>
                     <button type="button" onclick="resetExAll()" class="text-xs text-slate-500 hover:text-slate-800 underline font-medium cursor-pointer">Start Over</button>
                 </div>
@@ -774,15 +775,27 @@
 
                     <!-- Dimensions & Margins -->
                     <div id="ex-lesion-size-container" class="ex-form-section">
-                        <label id="exLesionSizeLabel" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Lesion Dimensions (mm) *</label>
+                        <label id="exLesionSizeLabel" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Lesion Dimensions *</label>
                         <div class="grid grid-cols-2 gap-3">
-                            <input type="number" id="exLesionLength" placeholder="Length" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm">
-                            <input type="number" id="exLesionWidth" placeholder="Width" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm">
+                            <div class="mm-field">
+                                <input type="number" id="exLesionLength" placeholder="Length" min="0" step="0.1" inputmode="decimal" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm">
+                                <span class="mm-unit">mm</span>
+                            </div>
+                            <div class="mm-field">
+                                <input type="number" id="exLesionWidth" placeholder="Width" min="0" step="0.1" inputmode="decimal" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm">
+                                <span class="mm-unit">mm</span>
+                            </div>
                         </div>
                     </div>
                     <div id="ex-margin-container" class="ex-form-section">
-                        <label id="exMarginLabel" for="exMargin" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Clinical Margin (mm) *</label>
-                        <input type="number" id="exMargin" placeholder="e.g. 4" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm">
+                        <label id="exMarginLabel" for="exMargin" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Clinical Margin *</label>
+                        <div class="mm-field-row">
+                            <div class="mm-field">
+                                <input type="number" id="exMargin" placeholder="e.g. 4" min="0" step="0.5" inputmode="decimal" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm">
+                                <span class="mm-unit">mm</span>
+                            </div>
+                            <button type="button" class="btn-margin-suggest" onclick="openMarginSuggestModal('exMargin')">Suggest</button>
+                        </div>
                     </div>
                     <div id="ex-billing-region-container" class="ex-form-section">
                         <label for="exBillingRegion" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Procedure area (excision / biopsy) *</label>
@@ -795,17 +808,23 @@
                         <p class="mt-1 text-[11px] text-slate-500">Used later to suggest MBS item numbers after histology (or for suspected melanoma).</p>
                     </div>
                     <div id="ex-punch-size-container" class="ex-form-section">
-                        <label for="exPunchSize" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Punch Biopsy Size (mm) *</label>
-                        <input type="number" id="exPunchSize" placeholder="e.g. 3" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm">
+                        <label for="exPunchSize" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Punch Biopsy Size *</label>
+                        <div class="mm-field">
+                            <input type="number" id="exPunchSize" placeholder="e.g. 3" min="0" step="0.5" inputmode="decimal" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm">
+                            <span class="mm-unit">mm</span>
+                        </div>
                     </div>
 
                     <!-- Provisional Diagnosis PDx Selector -->
                     <div>
-                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Provisional Diagnosis (PDx) *</label>
-                        <div class="flex items-center gap-2">
-                            <div id="exPathologyDisplay" onclick="openExPathologyModal()" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg p-2.5 min-h-[42px] flex items-center text-slate-500 italic text-xs cursor-pointer hover:border-blue-400">Click to select...</div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1" for="exPathologySearch">Provisional Diagnosis (PDx) *</label>
+                        <div class="dx-typeahead dx-typeahead-multi">
+                            <div id="exPathologyChips" class="dx-chips"></div>
+                            <input type="text" id="exPathologySearch" placeholder="Start typing, e.g. nodular or BCC" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm" autocomplete="off">
+                            <div class="dx-suggest hidden" role="listbox"></div>
                             <input type="hidden" id="exProvisionalDiagnoses">
                         </div>
+                        <p class="mt-1 text-[11px] text-slate-500">Type to add one or more diagnoses. Enter keeps a custom line if nothing matches.</p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-3 text-xs">
@@ -888,7 +907,7 @@
             </form>
 
             <!-- Action Buttons -->
-            <div class="pt-4 flex flex-col sm:flex-row gap-2 border-t border-slate-200">
+            <div id="ex-form-actions" class="pt-4 flex flex-col sm:flex-row gap-2 border-t border-slate-200">
                 <button id="ex-add-lesion-btn" onclick="saveProcedureLesionFromForm()" disabled class="flex-1 bg-blue-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-blue-700 transition shadow disabled:bg-slate-300 text-xs cursor-pointer">
                     Save lesion data
                 </button>
@@ -909,7 +928,7 @@
             <!-- RECORDED LESIONS -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 class="text-base font-bold text-slate-800 mb-3 border-b border-slate-200 pb-2">Recorded Lesions</h3>
-                <p class="text-[11px] text-slate-500 mb-3">Copy the histology request and operative note from Finish procedure after you click Start procedure.</p>
+                <p class="text-[11px] text-slate-500 mb-3">Copy the histology request from Finish procedure after Start. Copy the visit note from Examination when the procedure is complete — not from this screen.</p>
                 <div id="ex-lesions-list" class="space-y-2">
                     <p class="text-xs text-slate-400 italic">No lesions added yet.</p>
                 </div>
@@ -976,25 +995,25 @@
             <div class="px-5 py-3.5 bg-slate-900 text-white flex justify-between items-center">
                 <div>
                     <h3 class="font-bold text-sm">Finish procedure</h3>
-                    <p class="text-[11px] text-slate-300 mt-0.5">Record complications, copy outputs, then complete.</p>
+                    <p class="text-[11px] text-slate-300 mt-0.5">Site events, suture changes, copy outputs, then complete.</p>
                 </div>
                 <button type="button" onclick="closeProcedureCompleteModal()" class="text-slate-400 hover:text-white font-bold text-base cursor-pointer" aria-label="Close">&times;</button>
             </div>
             <div class="p-5 overflow-y-auto flex-1 space-y-4 bg-slate-50">
                 <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Lesions in this procedure</p>
-                    <p class="text-xs text-slate-500">If a lesion cannot be completed, click it to send it back to planned procedure. It will not be billed or sent for histology.</p>
+                    <p class="text-xs text-slate-500">Sutures and a site event sit on each lesion. Return to planned if a lesion was not done. Pots completed together share one lab case number.</p>
                     <div id="procAbortList" class="space-y-2"></div>
                 </div>
                 <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-                    <p class="text-xs font-bold uppercase tracking-wider text-amber-900">Complications</p>
+                    <p class="text-xs font-bold uppercase tracking-wider text-amber-900">Episode / whole procedure</p>
+                    <p class="text-xs text-amber-900/80">Vasovagal or delayed discharge for the sitting. Wound bleeding is recorded on the lesion with Event.</p>
                     <div class="flex flex-wrap gap-3 text-sm">
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompNone" checked onchange="updateProcedureComplications()" class="rounded text-emerald-600"> Uneventful / no complications</label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompBleeding" onchange="updateProcedureComplications()" class="rounded text-amber-700"> Bleeding / haematoma</label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompVasovagal" onchange="updateProcedureComplications()" class="rounded text-amber-700"> Vasovagal</label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompOther" onchange="updateProcedureComplications()" class="rounded text-amber-700"> Other</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompNone" checked onchange="updateProcedureComplications('none')" class="rounded text-emerald-600"> Uneventful / no complications</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompVasovagal" onchange="updateProcedureComplications('flag')" class="rounded text-amber-700"> Vasovagal</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompOther" onchange="updateProcedureComplications('flag')" class="rounded text-amber-700"> Other</label>
                     </div>
-                    <textarea id="procCompNotes" rows="2" oninput="updateProcedureComplications()" class="w-full p-2.5 border border-amber-200 rounded-lg text-sm bg-white" placeholder="Complication details, extra haemostasis, delayed discharge…"></textarea>
+                    <textarea id="procCompNotes" rows="2" oninput="updateProcedureComplications('notes')" class="w-full p-2.5 border border-amber-200 rounded-lg text-sm bg-white" placeholder="Episode details, delayed discharge…"></textarea>
                 </div>
                 <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Histology request</p>
@@ -1005,10 +1024,6 @@
                         <button type="button" id="btnProcCopyHisto" onclick="copyProcedureHistology()" class="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy histology request</button>
                         <button type="button" id="btnProcPrintHisto" onclick="printProcedureHistology()" class="hidden px-3 py-2 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold rounded-lg cursor-pointer">Print attached report</button>
                     </div>
-                </div>
-                <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-700">IEMR notes</p>
-                    <p class="text-xs text-slate-500">Copy the full visit note from Examination (document icon in the chart rail). It always rebuilds exam + procedure. If you already pasted earlier, replace the note in Best Practice rather than appending.</p>
                 </div>
                 <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Patient advice sheet</p>
@@ -1025,7 +1040,7 @@
                 </div>
                 <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Message to reception</p>
-                    <p class="text-xs text-slate-500">ROS timeframe and whether billing can be processed now or must be held. Combines consult and procedure when both happened.</p>
+                    <p class="text-xs text-slate-500">Consult type, ROS per site, and HOLD or PROCESS. Same-day procedures are billed together — HOLD if any item cannot be billed yet. Item codes stay in the billing panel.</p>
                     <textarea id="procReceptionPreview" rows="3" readonly class="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-mono bg-slate-50"></textarea>
                     <button type="button" id="btnProcCopyRec" onclick="copyProcedureReceptionMessage()" class="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg cursor-pointer">Copy message to reception</button>
                 </div>
@@ -1357,16 +1372,39 @@
     </div>
 
     <div id="histologyModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
             <div class="bg-blue-900 p-4 text-white">
                 <h3 class="font-bold text-base">Update result</h3>
                 <p class="text-xs text-blue-100 mt-0.5">Record histology. Management (rebook excision or no further action) is available after billing is confirmed.</p>
             </div>
-            <div class="p-5 space-y-3 text-sm">
+            <div class="p-5 space-y-3 text-sm overflow-y-auto">
                 <input type="hidden" id="histologyLesionId">
                 <p id="histologyLesionSummary" class="text-xs text-slate-500"></p>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider">Result</label>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="histologyDiagnosis">Diagnosis</label>
+                    <div class="dx-typeahead">
+                        <input type="text" id="histologyDiagnosis" placeholder="Start typing, e.g. infiltrative or BCC" class="w-full p-2 border border-slate-300 rounded-lg text-sm" autocomplete="off">
+                        <div class="dx-suggest hidden" role="listbox"></div>
+                    </div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mt-3">Result</label>
                 <textarea id="histologyResultText" rows="4" class="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="e.g. BCC, margins clear" oninput="if (typeof syncHistologyBillingTypeFromResult === 'function') syncHistologyBillingTypeFromResult()"></textarea>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="histologyCaseNumber">Lab case number</label>
+                        <input type="text" id="histologyCaseNumber" placeholder="e.g. S26-04512" class="w-full p-2 border border-slate-300 rounded-lg text-sm" autocomplete="off">
+                        <p class="text-[10px] text-slate-500 mt-1">Optional. Pots from the same Finish procedure share one lab number — type it once.</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="histologyPot">Pot / specimen</label>
+                        <input type="text" id="histologyPot" placeholder="e.g. 2 or B" class="w-full p-2 border border-slate-300 rounded-lg text-sm" autocomplete="off">
+                    </div>
+                </div>
+                <div id="histologyCaseShareWrap" class="hidden text-[11px] text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-1.5">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="checkbox" id="histologyApplyCaseToSiblings" class="mt-0.5 rounded text-blue-600">
+                        <span>Also set this case number on <span id="histologyCaseShareCount">0</span> <span id="histologyCaseShareKind">other pots from this procedure</span>. Each keeps its own pot and result.</span>
+                    </label>
+                    <p id="histologyCaseShareList" class="text-[11px] text-slate-500 pl-6"></p>
+                </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="histologyBillingType">Lesion type *</label>
                     <select id="histologyBillingType" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-sm">
@@ -1381,7 +1419,7 @@
                 <div class="space-y-2">
                     <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyNext" value="stay" checked class="text-blue-600"> Keep awaiting results</label>
                     <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyNext" value="no_followup" class="text-blue-600"> No further action</label>
-                    <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyNext" value="plan_excision" class="text-blue-600"> Rebook for further excision</label>
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyNext" value="plan_excision" class="text-blue-600"> Book re-excision as a new linked lesion</label>
                 </div>
                 <label class="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                     <input type="checkbox" id="histologyAdvisedCall" checked class="rounded text-blue-600">
@@ -1436,11 +1474,26 @@
         <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
             <div class="bg-purple-900 p-4 text-white">
                 <h3 class="font-bold text-base">Excision procedure</h3>
-                <p class="text-xs text-purple-100 mt-0.5">Plan or allocate an excision from a consult, phone call, or operative list.</p>
+                <p class="text-xs text-purple-100 mt-0.5">Plan a first excision, or book a re-excision as a new linked lesion after biopsy / incomplete excision.</p>
             </div>
             <form class="p-5 space-y-3 text-sm overflow-y-auto" onsubmit="event.preventDefault(); submitAssignExcisionModal();">
                 <input type="hidden" id="assignExcisionLesionId">
+                <input type="hidden" id="assignExcisionPriorLesionId">
                 <p id="assignExcisionSummary" class="text-xs text-slate-600"></p>
+                <div id="assignExcisionReexcisionBanner" class="hidden text-[11px] text-purple-950 bg-purple-50 border border-purple-200 rounded-lg p-2.5"></div>
+                <div id="assignExcisionPriorHistoWrap" class="hidden space-y-2">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="assignExcisionPriorCaseNumber">Prior lab case</label>
+                            <input type="text" id="assignExcisionPriorCaseNumber" placeholder="e.g. S26-04512" class="w-full p-2 border border-slate-300 rounded-lg" autocomplete="off">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="assignExcisionPriorPot">Prior pot</label>
+                            <input type="text" id="assignExcisionPriorPot" placeholder="e.g. 2 or B" class="w-full p-2 border border-slate-300 rounded-lg" autocomplete="off">
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-slate-500">Goes on the new pathology request as previous histology. It is not a result for this excision — that gets its own lab number later.</p>
+                </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="assignExcisionLesionSelect">Lesion</label>
                     <select id="assignExcisionLesionSelect" onchange="onExcisionProcedureLesionChange()" class="w-full p-2 border border-slate-300 rounded-lg bg-white">
@@ -1454,12 +1507,21 @@
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="assignExcisionDiagnosis">Diagnosis</label>
-                        <input type="text" id="assignExcisionDiagnosis" placeholder="e.g. BCC" class="w-full p-2 border border-slate-300 rounded-lg">
+                        <div class="dx-typeahead">
+                            <input type="text" id="assignExcisionDiagnosis" placeholder="Start typing, e.g. BCC or nodular" class="w-full p-2 border border-slate-300 rounded-lg" autocomplete="off">
+                            <div class="dx-suggest hidden" role="listbox"></div>
+                        </div>
                     </div>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="assignExcisionMargin">Planned surgical margin</label>
-                    <input type="text" id="assignExcisionMargin" placeholder="e.g. 4 mm" class="w-full p-2 border border-slate-300 rounded-lg">
+                    <div class="mm-field-row">
+                        <div class="mm-field">
+                            <input type="number" id="assignExcisionMargin" placeholder="e.g. 4" min="0" step="0.5" inputmode="decimal" class="w-full p-2 border border-slate-300 rounded-lg" autocomplete="off">
+                            <span class="mm-unit">mm</span>
+                        </div>
+                        <button type="button" class="btn-margin-suggest" onclick="openMarginSuggestModal('assignExcisionMargin')">Suggest</button>
+                    </div>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="assignExcisionClosure">Closure type *</label>
@@ -1580,10 +1642,10 @@
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Clinical Provisional Diagnosis *</label>
-                        <select id="lesionImpression" onchange="handleExamDiagnosisChange()" class="w-full text-sm p-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500">
-                            <option value="BCC">BCC (Basal cell carcinoma)</option>
-                        </select>
-                        <input type="text" id="lesionImpressionOther" class="hidden mt-2 w-full text-sm p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Enter other diagnosis">
+                        <div class="dx-typeahead">
+                            <input type="text" id="lesionImpression" placeholder="Start typing, e.g. BCC or nodular" class="w-full text-sm p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" autocomplete="off">
+                            <div class="dx-suggest hidden" role="listbox"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -1625,14 +1687,27 @@
                     <div id="examShaveMeasureFields" class="p-2.5 bg-white rounded-lg border border-blue-200 space-y-2">
                         <p class="text-[11px] font-semibold text-blue-950">Lesion size / margin (optional — not required for a diagnostic shave)</p>
                         <div class="grid grid-cols-3 gap-2">
-                            <input type="number" id="examLesionLength" placeholder="Length mm" class="w-full p-2 border border-blue-200 rounded bg-white text-xs">
-                            <input type="number" id="examLesionWidth" placeholder="Width mm" class="w-full p-2 border border-blue-200 rounded bg-white text-xs">
-                            <input type="number" id="examLesionMargin" placeholder="Margin mm" class="w-full p-2 border border-blue-200 rounded bg-white text-xs">
+                            <div class="mm-field is-blue">
+                                <input type="number" id="examLesionLength" placeholder="Length" min="0" step="0.1" inputmode="decimal" class="w-full p-2 border border-blue-200 rounded bg-white text-xs">
+                                <span class="mm-unit">mm</span>
+                            </div>
+                            <div class="mm-field is-blue">
+                                <input type="number" id="examLesionWidth" placeholder="Width" min="0" step="0.1" inputmode="decimal" class="w-full p-2 border border-blue-200 rounded bg-white text-xs">
+                                <span class="mm-unit">mm</span>
+                            </div>
+                            <div class="mm-field is-blue">
+                                <input type="number" id="examLesionMargin" placeholder="Margin" min="0" step="0.5" inputmode="decimal" class="w-full p-2 border border-blue-200 rounded bg-white text-xs">
+                                <span class="mm-unit">mm</span>
+                            </div>
                         </div>
+                        <button type="button" class="btn-margin-suggest-link" onclick="openMarginSuggestModal('examLesionMargin')">Suggest margin</button>
                     </div>
                     <div id="examPunchMeasureFields" class="hidden p-2.5 bg-white rounded-lg border border-blue-200">
-                        <label class="block text-[11px] font-semibold text-blue-950 mb-1" for="examPunchSize">Punch size (mm)</label>
-                        <input type="number" id="examPunchSize" placeholder="e.g. 3" class="w-full p-2 border border-blue-200 rounded bg-white text-xs">
+                        <label class="block text-[11px] font-semibold text-blue-950 mb-1" for="examPunchSize">Punch size</label>
+                        <div class="mm-field is-blue">
+                            <input type="number" id="examPunchSize" placeholder="e.g. 3" min="0" step="0.5" inputmode="decimal" class="w-full p-2 border border-blue-200 rounded bg-white text-xs">
+                            <span class="mm-unit">mm</span>
+                        </div>
                     </div>
 
                     <div id="examShaveSafetyPrompt" class="p-3 bg-amber-50 border border-amber-300 rounded-lg space-y-1.5 text-xs text-amber-950">
@@ -1649,8 +1724,14 @@
                     <label class="block font-bold uppercase tracking-wider text-purple-900">Excision Surgical Booking Details</label>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block font-medium text-slate-700 mb-1">Planned Surgical Margin</label>
-                            <input type="text" id="excisionMargin" placeholder="e.g. 2mm, 4mm, 5mm" class="w-full p-2 border border-purple-300 rounded bg-white">
+                            <label class="block font-medium text-slate-700 mb-1" for="excisionMargin">Planned surgical margin</label>
+                            <div class="mm-field-row">
+                                <div class="mm-field is-purple">
+                                    <input type="number" id="excisionMargin" placeholder="e.g. 4" min="0" step="0.5" inputmode="decimal" class="w-full p-2 border border-purple-300 rounded bg-white">
+                                    <span class="mm-unit">mm</span>
+                                </div>
+                                <button type="button" class="btn-margin-suggest" onclick="openMarginSuggestModal('excisionMargin')">Suggest</button>
+                            </div>
                         </div>
                         <div>
                             <label class="block font-medium text-slate-700 mb-1">Closure type</label>
@@ -1774,8 +1855,11 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block font-medium text-slate-700 mb-1" for="cryoMarginMm">Margin (mm)</label>
-                                <input type="number" id="cryoMarginMm" min="0" max="10" step="0.5" oninput="markCryoPlanModified()" class="w-full p-2 border border-sky-300 rounded bg-white">
+                                <label class="block font-medium text-slate-700 mb-1" for="cryoMarginMm">Margin</label>
+                                <div class="mm-field is-sky">
+                                    <input type="number" id="cryoMarginMm" min="0" max="10" step="0.5" inputmode="decimal" oninput="markCryoPlanModified()" class="w-full p-2 border border-sky-300 rounded bg-white">
+                                    <span class="mm-unit">mm</span>
+                                </div>
                             </div>
                             <div>
                                 <label class="block font-medium text-slate-700 mb-1" for="cryoSessionsPlanned">Sessions</label>
@@ -1950,14 +2034,17 @@
                                 <option value="punch">Punch biopsy</option>
                             </select>
                             <input type="text" id="addConsentLoc" oninput="updateConsentRiskPreview()" placeholder="Anatomical Location *" class="p-2 border border-slate-300 rounded bg-white">
-                            <select id="addConsentDx" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
-                                <option value="Basal Cell Carcinoma (BCC)">Basal Cell Carcinoma (BCC)</option>
-                                <option value="Squamous Cell Carcinoma (SCC)">Squamous Cell Carcinoma (SCC)</option>
-                                <option value="Melanoma in situ / Invasive Melanoma">Melanoma in situ / Invasive Melanoma</option>
-                                <option value="Atypical / Dysplastic Nevus">Atypical / Dysplastic Nevus</option>
-                                <option value="Intraepidermal Carcinoma (IEC / Bowen's)">Intraepidermal Carcinoma (IEC / Bowen's)</option>
-                            </select>
-                            <input type="text" id="addConsentMargin" placeholder="Margin (e.g. 3mm-5mm)" value="3mm to 5mm" class="p-2 border border-slate-300 rounded bg-white">
+                            <div class="dx-typeahead">
+                                <input type="text" id="addConsentDx" placeholder="Diagnosis" class="p-2 border border-slate-300 rounded bg-white w-full" autocomplete="off" oninput="updateConsentRiskPreview()">
+                                <div class="dx-suggest hidden" role="listbox"></div>
+                            </div>
+                            <div class="mm-field-row">
+                                <div class="mm-field">
+                                    <input type="number" id="addConsentMargin" placeholder="Margin" min="0" step="0.5" inputmode="decimal" class="w-full p-2 border border-slate-300 rounded bg-white">
+                                    <span class="mm-unit">mm</span>
+                                </div>
+                                <button type="button" class="btn-margin-suggest" onclick="openMarginSuggestModal('addConsentMargin')">Suggest</button>
+                            </div>
                             <select id="addConsentRecon" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
                                 <option value="Direct Linear Closure">Simple ellipse</option>
                                 <option value="Healing by Secondary Intention">Secondary intention</option>
@@ -2214,33 +2301,124 @@
         </div>
     </div>
 
+    <div id="marginSuggestModal" class="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden" onclick="if (event.target === this) closeMarginSuggestModal()">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden max-h-[92vh] flex flex-col">
+            <div class="bg-violet-900 p-4 text-white">
+                <h3 class="font-bold text-base">Clinical margin suggestion</h3>
+                <p class="text-xs text-violet-100 mt-0.5">Australian guideline millimetres. You choose the marked margin — this does not lock the form.</p>
+            </div>
+            <div class="p-5 space-y-3 text-sm overflow-y-auto">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="marginSuggestDiagnosis">Diagnosis</label>
+                        <div class="dx-typeahead">
+                            <input type="text" id="marginSuggestDiagnosis" class="w-full p-2 border border-slate-300 rounded-lg" autocomplete="off">
+                            <div class="dx-suggest hidden" role="listbox"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="marginSuggestLocation">Site</label>
+                        <input type="text" id="marginSuggestLocation" oninput="onMarginSuggestFormChange()" class="w-full p-2 border border-slate-300 rounded-lg" autocomplete="off">
+                    </div>
+                </div>
+                <div>
+                    <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Intent</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[11px]">
+                        <label class="flex items-start gap-1.5 p-2 border border-slate-200 rounded-lg cursor-pointer">
+                            <input type="radio" name="marginSuggestIntent" value="diagnostic" class="mt-0.5 text-violet-700" onchange="onMarginSuggestFormChange()">
+                            <span><span class="font-semibold text-slate-800">Diagnostic</span><span class="block text-slate-500">Pigmented first cut</span></span>
+                        </label>
+                        <label class="flex items-start gap-1.5 p-2 border border-slate-200 rounded-lg cursor-pointer">
+                            <input type="radio" name="marginSuggestIntent" value="kc" class="mt-0.5 text-violet-700" checked onchange="onMarginSuggestFormChange()">
+                            <span><span class="font-semibold text-slate-800">Keratinocyte</span><span class="block text-slate-500">BCC / SCC / IEC</span></span>
+                        </label>
+                        <label class="flex items-start gap-1.5 p-2 border border-slate-200 rounded-lg cursor-pointer">
+                            <input type="radio" name="marginSuggestIntent" value="melanoma_wle" class="mt-0.5 text-violet-700" onchange="onMarginSuggestFormChange()">
+                            <span><span class="font-semibold text-slate-800">Melanoma WLE</span><span class="block text-slate-500">After Breslow</span></span>
+                        </label>
+                    </div>
+                </div>
+                <div id="marginSuggestFlagsWrap" class="space-y-1.5">
+                    <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">High-risk flags (keratinocyte)</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-slate-700">
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="marginFlagIllDefined" class="rounded text-violet-700" onchange="onMarginSuggestFormChange()"> Ill-defined border</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="marginFlagRecurrent" class="rounded text-violet-700" onchange="onMarginSuggestFormChange()"> Recurrent / incomplete</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="marginFlagAggressive" class="rounded text-violet-700" onchange="onMarginSuggestFormChange()"> Aggressive subtype / PNI</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="marginFlagImmuno" class="rounded text-violet-700" onchange="onMarginSuggestFormChange()"> Immunosuppression</label>
+                        <label class="flex items-center gap-2 cursor-pointer sm:col-span-2"><input type="checkbox" id="marginFlagLarge" class="rounded text-violet-700" onchange="onMarginSuggestFormChange()"> Size ≥ 20 mm</label>
+                    </div>
+                </div>
+                <div id="marginSuggestBreslowWrap" class="hidden">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="marginSuggestBreslow">Breslow / in situ</label>
+                    <select id="marginSuggestBreslow" onchange="onMarginSuggestFormChange()" class="w-full p-2 border border-slate-300 rounded-lg bg-white">
+                        <option value="unknown">Unknown — do not guess</option>
+                        <option value="is">In situ (non-LM)</option>
+                        <option value="lm">Lentigo maligna / HMF</option>
+                        <option value="t1">≤ 1.0 mm (pT1)</option>
+                        <option value="t2">1.01–2.00 mm (pT2)</option>
+                        <option value="t3">2.01–4.00 mm (pT3)</option>
+                        <option value="t4">&gt; 4.0 mm (pT4)</option>
+                    </select>
+                    <textarea id="marginSuggestHisto" rows="2" oninput="onMarginSuggestFormChange()" class="mt-2 w-full p-2 border border-slate-200 rounded-lg text-xs" placeholder="Prior histology (used to detect Breslow if present)"></textarea>
+                </div>
+                <p id="marginSuggestSiteNote" class="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2.5"></p>
+                <div class="p-3 bg-violet-50 border border-violet-200 rounded-xl">
+                    <div class="flex items-baseline gap-2">
+                        <p id="marginSuggestValue" class="text-3xl font-bold text-violet-950 leading-none">—</p>
+                        <p class="text-xs font-bold uppercase tracking-wider text-violet-800">mm</p>
+                        <p id="marginSuggestRange" class="text-[11px] text-violet-900 ml-auto"></p>
+                    </div>
+                    <p id="marginSuggestReason" class="mt-2 text-[12px] text-violet-950"></p>
+                    <p id="marginSuggestSource" class="mt-1 text-[10px] text-violet-800"></p>
+                </div>
+                <div id="marginSuggestCaution" class="hidden text-[11px] text-amber-950 bg-amber-50 border border-amber-200 rounded-lg p-2.5 space-y-1"></div>
+                <div>
+                    <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Use this margin</span>
+                    <div class="mm-field-row">
+                        <div class="mm-field">
+                            <input type="number" id="marginSuggestChosen" min="0" step="0.5" inputmode="decimal" class="w-full p-2 border border-slate-300 rounded-lg" oninput="document.getElementById('marginSuggestUseBtn').disabled = !this.value">
+                            <span class="mm-unit">mm</span>
+                        </div>
+                    </div>
+                    <div id="marginSuggestChips" class="flex flex-wrap gap-1.5 mt-2"></div>
+                </div>
+            </div>
+            <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+                <button type="button" onclick="closeMarginSuggestModal()" class="px-3 py-1.5 text-xs font-semibold text-slate-600 cursor-pointer">Cancel</button>
+                <button type="button" id="marginSuggestUseBtn" onclick="useMarginSuggestion()" class="px-4 py-1.5 bg-violet-800 hover:bg-violet-900 disabled:opacity-45 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg cursor-pointer">Use this margin</button>
+            </div>
+        </div>
+    </div>
+
     <!-- TOAST NOTIFICATION CONTAINER -->
     <div id="toastNotification" class="fixed bottom-5 right-5 z-[80] transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-3">
         <div class="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></div>
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=69"></script>
-    <script src="js/crypto.js?v=69"></script>
-    <script src="js/vault.js?v=69"></script>
-    <script src="js/ui.js?v=69"></script>
-    <script src="js/topical.js?v=69"></script>
-    <script src="js/billing.js?v=69"></script>
-    <script src="js/skin-check.js?v=69"></script>
-    <script src="js/consent.js?v=69"></script>
-    <script src="js/clinic-profile.js?v=69"></script>
-    <script src="js/aftercare.js?v=69"></script>
-    <script src="js/outputs.js?v=69"></script>
-    <script src="js/excision.js?v=69"></script>
-    <script src="js/lesion-vault.js?v=69"></script>
-    <script src="js/billing-vault.js?v=69"></script>
-    <script src="js/chart-vault.js?v=69"></script>
-    <script src="js/note-vault.js?v=69"></script>
-    <script src="js/consent-vault.js?v=69"></script>
-    <script src="js/auth.js?v=69"></script>
-    <script src="js/management.js?v=69"></script>
-    <script src="js/chart.js?v=69"></script>
-    <script src="js/procedure-session.js?v=69"></script>
-    <script src="js/app.js?v=69"></script>
+    <script src="js/state.js?v=80"></script>
+    <script src="js/diagnosis-catalogue.js?v=80"></script>
+    <script src="js/crypto.js?v=80"></script>
+    <script src="js/vault.js?v=80"></script>
+    <script src="js/ui.js?v=80"></script>
+    <script src="js/topical.js?v=80"></script>
+    <script src="js/billing.js?v=80"></script>
+    <script src="js/margin-guide.js?v=80"></script>
+    <script src="js/skin-check.js?v=80"></script>
+    <script src="js/consent.js?v=80"></script>
+    <script src="js/clinic-profile.js?v=80"></script>
+    <script src="js/aftercare.js?v=80"></script>
+    <script src="js/outputs.js?v=80"></script>
+    <script src="js/excision.js?v=80"></script>
+    <script src="js/lesion-vault.js?v=80"></script>
+    <script src="js/billing-vault.js?v=80"></script>
+    <script src="js/chart-vault.js?v=80"></script>
+    <script src="js/note-vault.js?v=80"></script>
+    <script src="js/consent-vault.js?v=80"></script>
+    <script src="js/auth.js?v=80"></script>
+    <script src="js/management.js?v=80"></script>
+    <script src="js/chart.js?v=80"></script>
+    <script src="js/procedure-session.js?v=80"></script>
+    <script src="js/app.js?v=80"></script>
 </body>
 </html>

@@ -1,15 +1,17 @@
-const CACHE_NAME = 'dermrecord-v69';
+const CACHE_NAME = 'dermrecord-v80';
 
 const APP_SHELL = [
     './',
     './index.html',
     './css/app.css',
     './js/state.js',
+    './js/diagnosis-catalogue.js',
     './js/crypto.js',
     './js/vault.js',
     './js/ui.js',
     './js/topical.js',
     './js/billing.js',
+    './js/margin-guide.js',
     './js/skin-check.js',
     './js/consent.js',
     './js/clinic-profile.js',
