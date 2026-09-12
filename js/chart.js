@@ -25,7 +25,9 @@ function lesionStatusLabel(lesion) {
     const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : (lesion.managementStatus || deriveLesionStatusFromPlan(lesion));
     const type = typeof lesionType === 'function' ? lesionType(lesion) : '';
     let label = '';
-    if (status === 'planned_procedure' && type === 'excision') label = 'Planned procedure · Excision';
+    if (status === 'planned_procedure' && type === 'excision') {
+        label = lesion?.priorLesionId ? 'Planned procedure · Re-excision' : 'Planned procedure · Excision';
+    }
     else if (status === 'planned_procedure' && type === 'punch') label = 'Planned procedure · Punch';
     else if (status === 'planned_procedure' && type === 'shave') label = 'Planned procedure · Shave';
     else if (status === 'planned_procedure') label = 'Planned procedure';
@@ -231,12 +233,19 @@ function renderChartSidebar() {
         return `
             <button type="button" class="${classes.join(' ')}" onclick="selectChartLesion('${String(lesion.id).replace(/'/g, '')}')">
                 <span class="block text-xs font-semibold text-slate-800 truncate">${escapeHtml(lesion.location || 'No site')}</span>
-                <span class="block text-[10px] text-slate-500 truncate">${escapeHtml(lesion.impression || '')}</span>
+                <span class="block text-[10px] text-slate-500 truncate">${escapeHtml(typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion.impression) : (lesion.impression || ''))}</span>
                 <span class="mt-0.5 flex justify-between gap-1 text-[10px] font-semibold">
                     <span class="text-blue-800">${escapeHtml(lesionStatusLabel(lesion))}</span>
                     <span class="text-slate-400">${tag}</span>
                 </span>
                 ${lesion.currentPlan ? `<span class="mt-0.5 block text-[10px] text-slate-600 truncate">${escapeHtml(lesion.currentPlan)}</span>` : ''}
+                ${typeof formatPriorHistologyCitation === 'function' && lesion.priorLesionId && formatPriorHistologyCitation(lesion)
+                    ? `<span class="mt-0.5 block text-[10px] text-slate-500 truncate">${escapeHtml(formatPriorHistologyCitation(lesion))}</span>`
+                    : (typeof formatHistologyAccession === 'function' && formatHistologyAccession(lesion, 'own')
+                        ? `<span class="mt-0.5 block text-[10px] text-slate-500 truncate">Lab case ${escapeHtml(formatHistologyAccession(lesion, 'own'))}</span>`
+                        : (lesion.histologyPot
+                            ? `<span class="mt-0.5 block text-[10px] text-slate-500 truncate">Pot ${escapeHtml(String(lesion.histologyPot))}${lesion.histologyBatchId ? ' · this procedure' : ''}</span>`
+                            : ''))}
                 ${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(lesion)
                     ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(lesion)))}</span>`
                     : ''}

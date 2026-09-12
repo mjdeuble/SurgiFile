@@ -104,8 +104,8 @@ function receptionBiopsyBillingBit(count, bBilling) {
     if (!count) return '';
     const oopUnit = biopsyOopUnitAmount(bBilling);
     const oopTotal = count * oopUnit;
-    if (oopTotal > 0) return `Biopsy OOP: $${oopTotal} Total`;
-    return 'Biopsy Bulk Bill';
+    if (oopTotal > 0) return 'Biopsy - $' + oopTotal + ' OOP';
+    return '';
 }
 
 function updateChartBillingButtonStatus(consult, biopsy) {
@@ -388,19 +388,23 @@ function clinicalDiagnosisIsMelanoma(lesion) {
 
 function histologyIndicatesMelanoma(lesionOrText) {
     if (lesionOrText == null) return false;
-    const text = typeof lesionOrText === 'string' ? lesionOrText : lesionOrText.histologyResult;
-    return textIndicatesMelanoma(text);
+    if (typeof lesionOrText === 'string') return textIndicatesMelanoma(lesionOrText);
+    return textIndicatesMelanoma([lesionOrText.histologyDiagnosis, lesionOrText.histologyResult].filter(Boolean).join('; '));
 }
 
 function inferBillingLesionType(lesion) {
     if (!lesion) return '';
-    const histology = String(lesion.histologyResult || '').trim();
+    const histology = [lesion.histologyDiagnosis, lesion.histologyResult].filter(Boolean).join('; ').trim();
     if (histology) {
         if (histologyIndicatesMelanoma(lesion)) return 'confirmed_melanoma';
         if (lesion.billingLesionType === 'confirmed_melanoma') return 'confirmed_melanoma';
         const histoLower = histology.toLowerCase();
         if (MALIGNANT_HISTO_RE.test(histoLower)) return 'malignant';
         if (BENIGN_HISTO_RE.test(histoLower)) return 'benign';
+        const bucket = typeof diagnosisBillingBucket === 'function' ? diagnosisBillingBucket(lesion.histologyDiagnosis || '') : '';
+        if (bucket === 'melanoma') return 'confirmed_melanoma';
+        if (bucket === 'malignant') return 'malignant';
+        if (bucket === 'benign') return 'benign';
         if (lesion.billingLesionType && lesion.billingLesionType !== 'suspected_melanoma') {
             return lesion.billingLesionType;
         }
@@ -485,7 +489,7 @@ function lesionNedMm(lesion) {
     const length = lesion?.excisionLengthMm || detail.length;
     const width = lesion?.excisionWidthMm || detail.width;
     const marginRaw = lesion?.excisionMarginMm || lesion?.excisionMargin || detail.margin || '';
-    const margin = String(marginRaw).replace(/[^\d.]/g, '');
+    const margin = typeof parseMarginMm === 'function' ? parseMarginMm(marginRaw) : String(marginRaw).replace(/[^\d.]/g, '');
     const ellipse = necessaryExcisionDiameterMm(length, width, margin);
     if (ellipse != null) return ellipse;
     const punch = parseMm(lesion?.punchSize || detail.punchSize);
@@ -898,19 +902,10 @@ function procedureSessionBillingSummary(lesionList) {
 
 function receptionBillingInstruction(summary) {
     if (!summary || !summary.rows || !summary.rows.length) return '';
-    if (summary.allReady) {
-        const codes = summary.rows.map((row) => row.codes).filter(Boolean).join('; ');
-        return 'Billing: BILLED TODAY — ' + codes + '. Punch/shave, suspected melanoma, or histology-confirmed items.';
-    }
-    if (summary.allProcess) {
-        return 'Billing: PROCESS NOW — all procedures are OK to bill (histology known, suspected melanoma items, or biopsy 30071). Enter codes in Best Practice now.';
-    }
-    if (summary.allHold) {
-        return 'Billing: HOLD — awaiting histology.';
-    }
-    const processSites = summary.processRows.map((row) => row.site).join(', ');
-    const holdSites = summary.holdRows.map((row) => row.site).join(', ');
-    return `Billing: PROCESS NOW for ${processSites}. HOLD for ${holdSites} until histology is known.`;
+    if (summary.holdRows && summary.holdRows.length) return 'Billing: HOLD.';
+    if (summary.allReady) return 'Billing: billed today.';
+    if (summary.allProcess) return 'Billing: PROCESS.';
+    return 'Billing: HOLD.';
 }
 
 async function confirmSameDaySessionBilling(lesionList) {

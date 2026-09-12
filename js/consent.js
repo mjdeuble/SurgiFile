@@ -81,16 +81,32 @@ function consentProcedureFromLesion(item) {
     const shave = isConsentShaveLesion(item);
     const punch = !shave && isConsentPunchLesion(item);
     const kind = shave ? 'shave' : (punch ? 'punch' : 'excision');
-    const marginFromDetail = detail.margin ? String(detail.margin) + (/mm/i.test(String(detail.margin)) ? '' : 'mm') : '';
+    const marginFromDetail = detail.margin
+        ? (typeof formatMarginDisplay === 'function' ? formatMarginDisplay(detail.margin) : (String(detail.margin) + (/mm/i.test(String(detail.margin)) ? '' : 'mm')))
+        : '';
+    let diagnosis = detail.pathology || item.impression || 'Skin Malignancy';
+    if (typeof formatDiagnosisDisplay === 'function') {
+        diagnosis = formatDiagnosisDisplay(diagnosis) || diagnosis;
+    }
+    if (item.priorLesionId) {
+        const priorKind = typeof priorProcedureKindForReexcision === 'function'
+            ? priorProcedureKindForReexcision(item)
+            : (item.priorProcedureKind || 'prior procedure');
+        diagnosis += ' (re-excision after ' + priorKind + ')';
+    }
     return {
         lesionId: item.id || '',
         procedureKind: kind,
         includeOnConsent: true,
         location: detail.location || item.location || '',
-        diagnosis: detail.pathology || item.impression || 'Skin Malignancy',
+        diagnosis,
         margin: (shave || punch)
-            ? (item.margin ? item.margin + (/mm/i.test(String(item.margin)) ? '' : 'mm') : marginFromDetail)
-            : (item.excisionMargin || marginFromDetail || '3mm to 5mm'),
+            ? (item.margin
+                ? (typeof formatMarginDisplay === 'function' ? formatMarginDisplay(item.margin) : (item.margin + (/mm/i.test(String(item.margin)) ? '' : 'mm')))
+                : marginFromDetail)
+            : (typeof formatMarginDisplay === 'function'
+                ? (formatMarginDisplay(item.excisionMarginMm || item.excisionMargin || marginFromDetail) || marginFromDetail)
+                : (item.excisionMargin || marginFromDetail || '3mm to 5mm')),
         reconstruction: shave
             ? 'Shave / saucerisation'
             : (punch
@@ -117,9 +133,11 @@ function importExcisionLesions(options) {
     if (source.length && !options?.silent) {
         const shaves = source.filter(isConsentShaveLesion).length;
         const punches = source.filter((item) => !isConsentShaveLesion(item) && isConsentPunchLesion(item)).length;
+        const reex = source.filter((item) => item.priorLesionId).length;
         const excisions = source.length - shaves - punches;
         const bits = [];
-        if (excisions) bits.push(excisions + ' excision' + (excisions === 1 ? '' : 's'));
+        if (reex) bits.push(reex + ' re-excision' + (reex === 1 ? '' : 's') + ' needing written consent');
+        if (excisions - reex > 0) bits.push((excisions - reex) + ' excision' + (excisions - reex === 1 ? '' : 's'));
         if (shaves) bits.push(shaves + ' shave' + (shaves === 1 ? '' : 's') + ' without verbal consent');
         if (punches) bits.push(punches + ' punch' + (punches === 1 ? '' : 'es') + ' without consent');
         showToast('Loaded ' + (bits.join(', ') || (source.length + ' procedure' + (source.length === 1 ? '' : 's'))) + ' (all selected).');
@@ -137,8 +155,20 @@ function addProcedureToConsent() {
     }
     const kindRaw = document.getElementById('addConsentKind')?.value || 'excision';
     const kind = kindRaw === 'shave' || kindRaw === 'punch' ? kindRaw : 'excision';
-    const dx = document.getElementById('addConsentDx')?.value || 'Skin Malignancy';
-    const margin = document.getElementById('addConsentMargin')?.value.trim() || (kind === 'excision' ? '3mm to 5mm' : '');
+    const dxRaw = typeof readDiagnosisTypeahead === 'function'
+        ? readDiagnosisTypeahead('addConsentDx')
+        : (document.getElementById('addConsentDx')?.value || '');
+    const dx = (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(dxRaw) : dxRaw) || 'Skin Malignancy';
+    const marginNum = typeof readMmInputValue === 'function'
+        ? readMmInputValue('addConsentMargin')
+        : (document.getElementById('addConsentMargin')?.value.trim() || '');
+    if (kind === 'excision' && !marginNum) {
+        showToast('Enter the planned margin as a number. mm is added automatically.');
+        return;
+    }
+    const margin = marginNum
+        ? (typeof formatMarginDisplay === 'function' ? formatMarginDisplay(marginNum) : marginNum)
+        : '';
     const recon = kind === 'shave'
         ? 'Shave / saucerisation'
         : (kind === 'punch'
@@ -155,6 +185,13 @@ function addProcedureToConsent() {
         reconstruction: recon
     });
     if (locInput) locInput.value = '';
+    const marginEl = document.getElementById('addConsentMargin');
+    if (marginEl) marginEl.value = '';
+    if (typeof setDiagnosisTypeahead === 'function') setDiagnosisTypeahead('addConsentDx', '');
+    else {
+        const dxEl = document.getElementById('addConsentDx');
+        if (dxEl) dxEl.value = '';
+    }
     renderConsentProceduresTable();
     updateConsentRiskPreview();
 }
@@ -330,9 +367,12 @@ function getConsentProceduresForRisks() {
 
     const kindRaw = document.getElementById('addConsentKind')?.value || 'excision';
     const kind = kindRaw === 'shave' || kindRaw === 'punch' ? kindRaw : 'excision';
+    const draftDxRaw = typeof readDiagnosisTypeahead === 'function'
+        ? readDiagnosisTypeahead('addConsentDx')
+        : (document.getElementById('addConsentDx')?.value || '');
     listed.push({
         location: draftLoc,
-        diagnosis: document.getElementById('addConsentDx')?.value || '',
+        diagnosis: (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(draftDxRaw) : draftDxRaw) || '',
         procedureKind: kind,
         reconstruction: kind === 'shave'
             ? 'Shave / saucerisation'
@@ -349,10 +389,12 @@ function getNonTreatmentRisks(diagnosisStr) {
 
     if (dx.includes('basal cell') || dx.includes('bcc')) {
         risks.push("Risks of non-treatment (BCC): Tumor growth deeper into surrounding skin, cartilage, or bone, causing increasing tissue destruction and requiring much larger surgery later.");
-    } else if (dx.includes('squamous cell') || dx.includes('scc')) {
-        risks.push("Risks of non-treatment (SCC): Tumor growth into deep tissues and potential spread (metastasis) to regional lymph nodes or other body sites if untreated.");
     } else if (dx.includes('melanoma')) {
         risks.push("CRITICAL RISKS OF NON-TREATMENT (Melanoma): High risk of rapid spread through lymphatic and blood vessels to lymph nodes and internal organs, presenting a serious threat to life if surgery is delayed or refused.");
+    } else if (/\biec\b|bowen|intraepidermal/.test(dx)) {
+        risks.push("Risks of non-treatment (IEC): Expansion of in-situ disease, possible progression to invasive SCC, and a larger procedure later.");
+    } else if (dx.includes('squamous cell') || /\bscc\b/.test(dx)) {
+        risks.push("Risks of non-treatment (SCC): Tumor growth into deep tissues and potential spread (metastasis) to regional lymph nodes or other body sites if untreated.");
     } else {
         risks.push("Risks of non-treatment: Continued growth, bleeding, ulceration, and potential malignant transformation or future complex surgery.");
     }

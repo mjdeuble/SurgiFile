@@ -6,7 +6,7 @@ function bootDermRecord() {
     initBillingModule();
     initExcisionGeneratorModule();
     initTopicalModule();
-    if (typeof populateExamDiagnosisSelect === 'function') populateExamDiagnosisSelect();
+    if (typeof initDiagnosisTypeaheads === 'function') initDiagnosisTypeaheads();
     initAuthModule();
     initManagementModule();
     if (typeof renderChartSidebar === 'function') renderChartSidebar();

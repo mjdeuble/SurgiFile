@@ -850,7 +850,7 @@ function getTopicalReceptionBits() {
         if (l.topicalDecision === 'pdt') {
             const summary = summarizePdtRegions(normalizePdtRegions(l));
             const quote = summary.total > 0 ? ` ${formatPdtMoney(summary.total)} OOP` : '';
-            return `PDT ${summary.names || 'area TBC'}${quote}`.trim();
+            return `Book PDT ${summary.names || 'area TBC'}${quote}`.trim();
         }
         if (l.topicalDecision === 'cryotherapy') {
             const bits = ['Cryotherapy'];
@@ -868,7 +868,6 @@ function getTopicalReceptionBits() {
         if (l.topicalDecision === 'efudix') return 'Efudix script';
         if (l.topicalDecision === 'efudix-calcipotriol') return 'Efudix + Calcipotriol script';
         if (l.topicalDecision === 'aldara') return 'Aldara script';
-        if (l.topicalDecision === TOPICAL_DECISION_DECLINED) return 'Topical Rx declined';
         return '';
     }).filter(Boolean);
 }

@@ -160,6 +160,10 @@ async function initProcedureSupplies() {
 }
 
 function setProcedurePathologyDisplay(value) {
+    if (typeof setDiagnosisTypeahead === 'function' && document.getElementById('exPathologySearch')) {
+        setDiagnosisTypeahead('exPathologySearch', value || '');
+        return;
+    }
     const displayEl = document.getElementById('exPathologyDisplay');
     if (!displayEl) return;
     const text = typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(value) : String(value || '').replace(/;/g, ', ');
@@ -180,20 +184,6 @@ function syncExDermoscopyButtons() {
 }
 
 function initExcisionGeneratorModule() {
-    const container = document.getElementById('ex-pathology-checkboxes');
-    if (container) {
-        container.innerHTML = '';
-        Object.entries(exPathologyOptions).forEach(([key, value]) => {
-            const label = document.createElement('label');
-            label.className = 'flex items-center space-x-2 text-xs font-medium cursor-pointer p-1 hover:bg-slate-100 rounded';
-            label.innerHTML = `
-                <input type="checkbox" value="${key}" class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-1.5">
-                <span><strong>${key}</strong> (${value})</span>
-            `;
-            container.appendChild(label);
-        });
-    }
-
     drawExOrientationClock();
     setupExcisionEventListeners();
     initProcedureSupplies();
@@ -384,6 +374,10 @@ function isExFormComplete() {
         default:
             return false;
     }
+    const closureVal = document.getElementById('exExcisionClosureType')?.value || '';
+    const needsRos = proc !== 'Shave' && closureVal !== 'Secondary Intention'
+        && !!document.getElementById('exUseNonDissolvable')?.checked;
+    if (needsRos && !filled('exRemovalOfSkinSutures')) return false;
     return true;
 }
 
@@ -422,7 +416,15 @@ function checkExFormCompleteness() {
     }
 
     isAllValid &= validateAndHighlight(document.getElementById('exLesionLocation'), true);
-    isAllValid &= validateAndHighlight(document.getElementById('exProvisionalDiagnoses'), true);
+    const dxHidden = document.getElementById('exProvisionalDiagnoses');
+    const dxSearch = document.getElementById('exPathologySearch');
+    const dxFilled = !!(dxHidden?.value || '').trim();
+    if (dxSearch) {
+        dxSearch.classList.toggle('missing-field', !dxFilled);
+        isAllValid &= dxFilled;
+    } else {
+        isAllValid &= validateAndHighlight(dxHidden, true);
+    }
     isAllValid &= validateAndHighlight(document.getElementById('exDermoscopyUsed'), true);
 
     switch (proc) {
@@ -460,6 +462,11 @@ function checkExFormCompleteness() {
             break;
     }
 
+    const closureForRos = document.getElementById('exExcisionClosureType')?.value || '';
+    const needsRos = proc !== 'Shave' && closureForRos !== 'Secondary Intention'
+        && !!document.getElementById('exUseNonDissolvable')?.checked;
+    isAllValid &= validateAndHighlight(document.getElementById('exRemovalOfSkinSutures'), needsRos);
+
     addBtn.disabled = !isAllValid;
     updateExAllOutputs({ skipVisitSave: true });
 }
@@ -469,7 +476,7 @@ function collectExLesionFromForm(id, sourceLesionId) {
     const getChk = (elId) => document.getElementById(elId)?.checked || false;
     const procedure = getVal('exProcedureType');
     const punchType = procedure === 'Punch' ? (getVal('exPunchType') || 'Punch Biopsy') : '';
-    return {
+    const lesionData = {
         id,
         sourceLesionId: sourceLesionId || '',
         procedure,
@@ -503,6 +510,9 @@ function collectExLesionFromForm(id, sourceLesionId) {
         skinSutureRemoval: getChk('exUseNonDissolvable') ? getVal('exRemovalOfSkinSutures') : null,
         isDraft: false
     };
+    return typeof attachPriorHistologyToExLesion === 'function'
+        ? attachPriorHistologyToExLesion(lesionData, sourceLesionId)
+        : lesionData;
 }
 
 function draftExLesionFromForm() {
@@ -519,7 +529,15 @@ function draftExLesionFromForm() {
     return draft;
 }
 
+function shouldMergeExFormDraft() {
+    if (typeof procedureSession === 'undefined') return true;
+    if (procedureSession.started || procedureSession.completedAt) return false;
+    return true;
+}
+
 function exLesionsForOutput() {
+    if (typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
+    if (!shouldMergeExFormDraft()) return exLesions.slice();
     const draft = draftExLesionFromForm();
     if (!draft) return exLesions.slice();
     const idx = exLesions.findIndex((item) => {
@@ -556,6 +574,10 @@ function addOrUpdateExLesion() {
 }
 
 function startEditExLesion(id) {
+    if (typeof procedureSession !== 'undefined' && procedureSession.started) {
+        showToast('Lesion details are locked once the procedure has started. Change sutures from Finish procedure.');
+        return;
+    }
     const lesion = exLesions.find(l => l.id === id);
     if (!lesion) return;
     editingExLesionId = id;
@@ -588,7 +610,6 @@ function startEditExLesion(id) {
     populateProcSupplySelects(lesion);
     setVal('exLocalAnesthetic', lesion.anesthetic);
     setVal('exSkinPrep', lesion.prep);
-    setVal('exProvisionalDiagnoses', lesion.pathology);
     setProcedurePathologyDisplay(lesion.pathology);
 
     setVal('exLesionLength', lesion.length);
@@ -639,9 +660,8 @@ function resetExLesionForm(resetProcType = true) {
 
     document.getElementById('exOrientationType').value = 'None';
     document.getElementById('exOrientationDescription').value = '';
-    document.getElementById('exProvisionalDiagnoses').value = '';
-    document.getElementById('exDermoscopyUsed').value = '';
     setProcedurePathologyDisplay('');
+    document.getElementById('exDermoscopyUsed').value = '';
 
     document.querySelectorAll('#ex-dermoscopy-btn-container .dermoscopy-btn').forEach(btn => btn.classList.remove('selected'));
     document.querySelectorAll('#ex-justification-buttons .justification-btn').forEach(btn => btn.classList.remove('selected'));
@@ -660,6 +680,10 @@ function resetExLesionForm(resetProcType = true) {
 }
 
 function resetExAll() {
+    if (typeof procedureSession !== 'undefined' && procedureSession.started) {
+        showToast('Lesion details are locked once the procedure has started. Change sutures from Finish procedure.');
+        return;
+    }
     exLesions = [];
     exLesionCounter = 0;
     resetExLesionForm();
@@ -667,6 +691,10 @@ function resetExAll() {
 }
 
 function removeExLesion(id) {
+    if (typeof procedureSession !== 'undefined' && procedureSession.started) {
+        showToast('Return a lesion from Finish procedure instead of removing it here.');
+        return;
+    }
     exLesions = exLesions.filter(l => l.id !== id);
     exLesions.forEach((lesion, index) => { lesion.id = index + 1; });
     exLesionCounter = exLesions.length;
@@ -692,11 +720,11 @@ function updateExLesionsList() {
         item.innerHTML = `
             <div>
                 <p class="font-bold text-slate-800">${lesion.id}. ${lesion.location}</p>
-                <p class="text-slate-500">${lesion.pathology.replace(/;/g, ', ')} (${lesion.procedure} - ${lesion.excisionClosureType || lesion.punchType || 'Shave'})</p>
+                <p class="text-slate-500">${typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion.pathology) : lesion.pathology.replace(/;/g, ', ')} (${lesion.procedure} - ${lesion.excisionClosureType || lesion.punchType || 'Shave'})</p>
             </div>
             <div class="flex items-center gap-1.5">
-                <button onclick="startEditExLesion(${lesion.id})" class="text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 cursor-pointer">Edit</button>
-                <button onclick="removeExLesion(${lesion.id})" class="text-red-500 hover:text-red-700 font-semibold px-2 py-1 cursor-pointer">&times; Remove</button>
+                ${typeof procedureSession !== 'undefined' && procedureSession.started ? '' : `<button onclick="startEditExLesion(${lesion.id})" class="text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 cursor-pointer">Edit</button>
+                <button onclick="removeExLesion(${lesion.id})" class="text-red-500 hover:text-red-700 font-semibold px-2 py-1 cursor-pointer">&times; Remove</button>`}
             </div>
         `;
         listEl.appendChild(item);
@@ -710,7 +738,7 @@ function generateExClinicalRequest() {
     }
 
     return items.map((lesion, index) => {
-        const n = lesion.id && lesion.id !== 'draft' ? lesion.id : index + 1;
+        const n = lesion.histologyPot || (lesion.id && lesion.id !== 'draft' ? lesion.id : index + 1);
         const auditParts = [];
         auditParts.push(lesion.location || 'Unspecified site');
         auditParts.push(lesion.pathology || 'Unspecified');
@@ -762,7 +790,7 @@ function exRequestDimensionString(lesion) {
         if (lesion.length && lesion.width) dimensionParts.push(`${lesion.length}x${lesion.width}mm`);
         else if (lesion.length) dimensionParts.push(`${lesion.length}mm`);
         else if (lesion.width) dimensionParts.push(`${lesion.width}mm`);
-        if (lesion.margin) dimensionParts.push(`Margin: ${lesion.margin}mm`);
+        if (lesion.margin) dimensionParts.push(`Margin: ${typeof formatMarginCompact === 'function' ? formatMarginCompact(lesion.margin) : (lesion.margin + 'mm')}`);
     }
 
     const diameter = exClinicalDiameterMm(lesion);
@@ -792,7 +820,9 @@ function exFindingsSizeText(lesion) {
     const size = (lesion.length && lesion.width)
         ? `${lesion.length}x${lesion.width}mm`
         : (lesion.length ? `${lesion.length}mm` : (lesion.width ? `${lesion.width}mm` : ''));
-    const margin = lesion.margin ? `${lesion.margin}mm clinical margins` : '';
+    const margin = lesion.margin
+        ? `${typeof formatMarginCompact === 'function' ? formatMarginCompact(lesion.margin) : (lesion.margin + 'mm')} clinical margins`
+        : '';
     if (size && margin) return `A ${size} lesion excised with ${margin}.`;
     if (size) return `A ${size} lesion excised.`;
     if (margin) return `Lesion excised with ${margin}.`;
@@ -803,7 +833,9 @@ function exShaveFindingsText(lesion) {
     const size = (lesion.length && lesion.width)
         ? `${lesion.length}x${lesion.width}mm`
         : (lesion.length ? `${lesion.length}mm` : (lesion.width ? `${lesion.width}mm` : ''));
-    const margin = lesion.margin ? `${lesion.margin}mm clinical margin` : '';
+    const margin = lesion.margin
+        ? `${typeof formatMarginCompact === 'function' ? formatMarginCompact(lesion.margin) : (lesion.margin + 'mm')} clinical margin`
+        : '';
     if (size && margin) return `A ${size} lesion removed via shave biopsy with ${margin}.`;
     if (size) return `A ${size} lesion removed via shave biopsy.`;
     if (margin) return `Shave biopsy with ${margin}.`;
@@ -815,6 +847,15 @@ function exPrepNoteText(lesion) {
     return 'Site prepped and draped in a sterile manner.';
 }
 
+function exSkinClosureSentence(lesion) {
+    const size = String(lesion.skinSutureSize || '').trim();
+    const type = String(lesion.skinSutureType || '').trim();
+    if (size && type) return `Skin closed with ${size} ${type}.`;
+    if (type) return `Skin closed with ${type}.`;
+    if (size) return `Skin closed with ${size}.`;
+    return 'Skin closed.';
+}
+
 function generateExEntryNote() {
     const items = exLesionsForOutput();
     if (items.length === 0) {
@@ -822,7 +863,7 @@ function generateExEntryNote() {
     }
 
     const procedureDetails = items.map((lesion, index) => {
-        const n = lesion.id && lesion.id !== 'draft' ? lesion.id : index + 1;
+        const n = lesion.histologyPot || (lesion.id && lesion.id !== 'draft' ? lesion.id : index + 1);
         let procedureTitle = '';
         const closureParts = [];
         const findingsParts = [];
@@ -851,7 +892,7 @@ function generateExEntryNote() {
                             closureParts[closureParts.length - 1] += ' and a flap.';
                         }
                     }
-                    closureParts.push(`Skin closed with ${lesion.skinSutureSize} ${lesion.skinSutureType}.`);
+                    closureParts.push(exSkinClosureSentence(lesion));
                 }
                 break;
             case 'Punch':
@@ -863,7 +904,7 @@ function generateExEntryNote() {
                 } else {
                     findingsParts.push(exFindingsSizeText(lesion).replace('excised.', 'excised via punch technique.'));
                 }
-                closureParts.push(`Skin closed with ${lesion.skinSutureSize} ${lesion.skinSutureType}.`);
+                closureParts.push(exSkinClosureSentence(lesion));
                 break;
             case 'Shave':
                 procedureTitle = 'Shave Biopsy';
@@ -880,13 +921,15 @@ function generateExEntryNote() {
         if (lesion.orientationType && lesion.orientationType !== 'None') {
             specimenText += ` Orientation marker (${lesion.orientationType}) at ${lesion.orientationDescription}.`;
         }
+        const priorCite = typeof formatPriorHistologyCitation === 'function' ? formatPriorHistologyCitation(lesion) : '';
+        if (priorCite) specimenText += ` ${priorCite}.`;
 
         return `PROCEDURE ${n}: ${procedureTitle} of the ${lesion.location || 'unspecified site'}\n- Consent: Obtained after discussion of risks, benefits, and alternatives.\n- Anesthetic: ${lesion.anesthetic} administered.\n- Prep: ${exPrepNoteText(lesion)}\n- Findings: ${findingsParts.join(' ')}\n- Closure: ${closureParts.join(' ')}\n- Specimen: ${specimenText}`;
     }).join('\n\n');
 
     const planItems = [];
     items.forEach((l, index) => {
-        const n = l.id && l.id !== 'draft' ? l.id : index + 1;
+        const n = l.histologyPot || (l.id && l.id !== 'draft' ? l.id : index + 1);
         let needsPlan = false;
         let planText = '';
 
@@ -898,6 +941,8 @@ function generateExEntryNote() {
                 planText = `- Wound for lesion ${n} (${l.location || 'unspecified site'}) closed with dissolvable skin sutures which do not require removal.`;
             } else if (l.skinSutureRemoval) {
                 planText = `- Sutures for lesion ${n} (${l.location || 'unspecified site'}) to be removed in ${l.skinSutureRemoval} days.`;
+            } else {
+                planText = `- Sutures for lesion ${n} (${l.location || 'unspecified site'}) — removal date to be confirmed.`;
             }
             if (planText) planItems.push(planText);
         }
@@ -965,38 +1010,12 @@ function updateExOutputVisibility() {
 }
 
 function openExPathologyModal() {
-    const raw = document.getElementById('exProvisionalDiagnoses')?.value || '';
-    const selected = (typeof normalizePathologyString === 'function' ? normalizePathologyString(raw) : raw).split(';').filter(Boolean);
-    const container = document.getElementById('ex-pathology-checkboxes');
-    if (container) {
-        container.querySelectorAll('input').forEach(input => {
-            input.checked = selected.includes(input.value);
-        });
-    }
-    const otherVal = selected.find(s => !exPathologyOptions[s]);
-    const otherInput = document.getElementById('exOtherPathologyInput');
-    if (otherInput) otherInput.value = otherVal || '';
-
-    const modal = document.getElementById('exPathologyModal');
-    if (modal) modal.classList.remove('hidden');
+    document.getElementById('exPathologySearch')?.focus();
 }
 
 function confirmExPathologySelection() {
-    const selected = [];
-    const container = document.getElementById('ex-pathology-checkboxes');
-    if (container) {
-        container.querySelectorAll('input:checked').forEach(input => {
-            selected.push(input.value);
-        });
-    }
-    const otherVal = document.getElementById('exOtherPathologyInput')?.value.trim();
-    if (otherVal) selected.push(otherVal);
-
     const hiddenInput = document.getElementById('exProvisionalDiagnoses');
-
-    if (hiddenInput) hiddenInput.value = selected.join(';');
-    setProcedurePathologyDisplay(selected.join(';'));
-
+    setProcedurePathologyDisplay(hiddenInput?.value || '');
     const modal = document.getElementById('exPathologyModal');
     if (modal) modal.classList.add('hidden');
     checkExFormCompleteness();

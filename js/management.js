@@ -292,6 +292,14 @@ function renderManagedLesionCard(lesion) {
                 ? `<p class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(lesion)))}</p>`
                 : ''}
             ${lesion.histologyResult ? `<p class="text-[11px] text-slate-600">Result: ${escapeHtml(lesion.histologyResult)}</p>` : ''}
+            ${typeof formatHistologyAccession === 'function' && formatHistologyAccession(lesion, 'own')
+                ? `<p class="text-[11px] text-slate-600">Lab case: ${escapeHtml(formatHistologyAccession(lesion, 'own'))}</p>`
+                : (lesion.histologyPot
+                    ? `<p class="text-[11px] text-slate-600">Pot ${escapeHtml(String(lesion.histologyPot))}${lesion.histologyBatchId ? ' (this procedure)' : ''}</p>`
+                    : '')}
+            ${typeof formatPriorHistologyCitation === 'function' && lesion.priorLesionId && formatPriorHistologyCitation(lesion)
+                ? `<p class="text-[11px] text-slate-600">${escapeHtml(formatPriorHistologyCitation(lesion))}</p>`
+                : ''}
             <div class="flex flex-wrap gap-1.5">${renderManagedLesionActions(lesion)}</div>
         </article>`;
 }
@@ -323,13 +331,16 @@ function renderManagedLesionActions(lesion) {
     }
     if (status === 'awaiting_histology') {
         if (billingDone) {
-            btns.push(`<button type="button" onclick="openAssignExcisionModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Rebook excision</button>`);
+            btns.push(`<button type="button" onclick="openAssignExcisionModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Book re-excision</button>`);
             btns.push(actionBtn(id, 'no_followup', 'No further action'));
         } else {
             btns.push(`<span class="text-[11px] text-amber-800">Billing must be confirmed before closing this lesion.</span>`);
         }
     } else if (canAssignExcision(lesion)) {
-        const label = status === 'planned_procedure' && type === 'excision' ? 'Update excision' : 'Assign excision';
+        const isReexcisionChild = !!lesion.priorLesionId;
+        const label = status === 'planned_procedure' && type === 'excision'
+            ? (isReexcisionChild ? 'Update re-excision' : 'Update excision')
+            : 'Assign excision';
         const action = status === 'planned_procedure' && type === 'excision'
             ? `openChartFromLesion('${id}')`
             : `openAssignExcisionModal('${id}')`;
@@ -612,6 +623,9 @@ function billingCardMeta(lesion) {
         margin,
         closure,
         lesion.histologyResult ? 'Histo: ' + lesion.histologyResult : '',
+        (typeof formatHistologyAccession === 'function' && formatHistologyAccession(lesion, 'own'))
+            ? 'Case ' + formatHistologyAccession(lesion, 'own')
+            : '',
         lesion.punchSize ? 'Punch ' + lesion.punchSize + ' mm' : ''
     ].filter(Boolean).join(' · ');
 }
@@ -1347,27 +1361,108 @@ function printBillingSheet(views, options) {
     printWin.document.close();
 }
 
+function fillHistologyCaseShareUI(lesion) {
+    const wrap = document.getElementById('histologyCaseShareWrap');
+    const countEl = document.getElementById('histologyCaseShareCount');
+    const listEl = document.getElementById('histologyCaseShareList');
+    const kindEl = document.getElementById('histologyCaseShareKind');
+    const box = document.getElementById('histologyApplyCaseToSiblings');
+    const fromBatch = !!(typeof histologyBatchIdOf === 'function' && histologyBatchIdOf(lesion));
+    const siblings = typeof histologyCaseShareSiblings === 'function' && lesion
+        ? histologyCaseShareSiblings(lesion)
+        : (typeof sameDayHistologyCaseSiblings === 'function' && lesion ? sameDayHistologyCaseSiblings(lesion) : []);
+    if (!wrap) return;
+    if (!siblings.length) {
+        wrap.classList.add('hidden');
+        if (box) box.checked = false;
+        if (countEl) countEl.textContent = '0';
+        if (listEl) listEl.textContent = '';
+        return;
+    }
+    wrap.classList.remove('hidden');
+    if (countEl) countEl.textContent = String(siblings.length);
+    if (kindEl) {
+        kindEl.textContent = fromBatch
+            ? ('other pot' + (siblings.length === 1 ? '' : 's') + ' from this procedure')
+            : ('other same-day biops' + (siblings.length === 1 ? 'y' : 'ies'));
+    }
+    if (box) box.checked = fromBatch;
+    if (listEl) {
+        listEl.textContent = siblings.map((item) => {
+            const site = item.location || 'No site';
+            const pot = typeof normalizeHistologyPot === 'function' ? normalizeHistologyPot(item.histologyPot) : (item.histologyPot || '');
+            const label = pot ? (site + ', pot ' + pot) : site;
+            const existing = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(item, 'own') : (item.histologyCaseNumber || '');
+            return existing ? (label + ' (currently ' + existing + ')') : label;
+        }).join('; ');
+    }
+}
+
+function fillAssignExcisionPriorHistoFields(lesion) {
+    const wrap = document.getElementById('assignExcisionPriorHistoWrap');
+    const caseEl = document.getElementById('assignExcisionPriorCaseNumber');
+    const potEl = document.getElementById('assignExcisionPriorPot');
+    const resolved = typeof resolveExcisionAssignTarget === 'function'
+        ? resolveExcisionAssignTarget(lesion)
+        : { mode: 'create', lesion: null, prior: null };
+    const child = (resolved.lesion && resolved.lesion.priorLesionId)
+        ? resolved.lesion
+        : (lesion?.priorLesionId ? lesion : null);
+    const prior = resolved.prior || null;
+    const isReex = resolved.mode === 'spawn' || !!(child || (resolved.mode === 'update' && prior));
+    if (wrap) wrap.classList.toggle('hidden', !isReex);
+    if (!isReex) {
+        if (caseEl) caseEl.value = '';
+        if (potEl) potEl.value = '';
+        return;
+    }
+    const cited = child && typeof lesionWithPriorHistologyCitation === 'function'
+        ? lesionWithPriorHistologyCitation(child)
+        : null;
+    if (caseEl) {
+        caseEl.value = cited?.priorHistologyCaseNumber
+            || child?.priorHistologyCaseNumber
+            || prior?.histologyCaseNumber
+            || '';
+    }
+    if (potEl) {
+        potEl.value = cited?.priorHistologyPot
+            || child?.priorHistologyPot
+            || prior?.histologyPot
+            || '';
+    }
+}
+
 function syncHistologyBillingTypeFromResult() {
     const resultEl = document.getElementById('histologyResultText');
     const typeEl = document.getElementById('histologyBillingType');
     if (!typeEl) return;
     const id = document.getElementById('histologyLesionId')?.value;
     const lesion = managedLesions.find((item) => String(item.id) === String(id)) || {};
+    const structured = typeof readDiagnosisTypeahead === 'function'
+        ? readDiagnosisTypeahead('histologyDiagnosis')
+        : (document.getElementById('histologyDiagnosis')?.value || '');
     const result = String(resultEl?.value || '').trim();
-    if (result && typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma(result)) {
+    const combined = [structured, result].filter(Boolean).join('\n');
+    if (combined && typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma(combined)) {
         typeEl.value = 'confirmed_melanoma';
         return;
     }
-    if (result && typeof inferBillingLesionType === 'function') {
-        const inferred = inferBillingLesionType({ ...lesion, histologyResult: result, billingLesionType: '' });
+    if (combined && typeof inferBillingLesionType === 'function') {
+        const inferred = inferBillingLesionType({
+            ...lesion,
+            histologyDiagnosis: structured,
+            histologyResult: result,
+            billingLesionType: ''
+        });
         if (inferred) {
             typeEl.value = inferred;
             return;
         }
     }
-    if (!result) {
+    if (!combined) {
         const inferred = typeof inferBillingLesionType === 'function'
-            ? inferBillingLesionType({ ...lesion, histologyResult: '' })
+            ? inferBillingLesionType({ ...lesion, histologyResult: '', histologyDiagnosis: '' })
             : '';
         typeEl.value = inferred || lesion.billingLesionType || '';
     }
@@ -1384,6 +1479,21 @@ function openHistologyModal(id) {
     const advisedEl = document.getElementById('histologyAdvisedCall');
     if (idEl) idEl.value = id;
     if (resultEl) resultEl.value = lesion?.histologyResult || '';
+    if (typeof setDiagnosisTypeahead === 'function') {
+        setDiagnosisTypeahead('histologyDiagnosis', lesion?.histologyDiagnosis || '');
+    } else {
+        const dxEl = document.getElementById('histologyDiagnosis');
+        if (dxEl) dxEl.value = lesion?.histologyDiagnosis || '';
+    }
+    const caseEl = document.getElementById('histologyCaseNumber');
+    const potEl = document.getElementById('histologyPot');
+    if (caseEl) {
+        caseEl.value = lesion?.histologyCaseNumber
+            || (typeof histologyBatchSharedCaseNumber === 'function' ? histologyBatchSharedCaseNumber(lesion) : '')
+            || '';
+    }
+    if (potEl) potEl.value = lesion?.histologyPot || '';
+    fillHistologyCaseShareUI(lesion);
     if (summaryEl) {
         summaryEl.textContent = lesion
             ? `${lesion.patientName || currentPatient.name || ''} — ${lesion.location || 'site'} · ${lesion.impression || ''}`
@@ -1426,16 +1536,22 @@ function closeHistologyModal() {
 async function submitHistologyModal() {
     const id = document.getElementById('histologyLesionId')?.value;
     const result = document.getElementById('histologyResultText')?.value.trim();
+    const histologyDiagnosis = typeof readDiagnosisTypeahead === 'function'
+        ? readDiagnosisTypeahead('histologyDiagnosis')
+        : (document.getElementById('histologyDiagnosis')?.value.trim() || '');
     let billingType = document.getElementById('histologyBillingType')?.value || '';
     const next = document.querySelector('input[name="histologyNext"]:checked')?.value || 'stay';
     const callNote = document.getElementById('histologyCallNote')?.value.trim() || '';
     const advised = document.getElementById('histologyAdvisedCall')?.checked;
+    const caseNumber = document.getElementById('histologyCaseNumber')?.value.trim() || '';
+    const pot = document.getElementById('histologyPot')?.value.trim() || '';
+    const applySiblings = !!document.getElementById('histologyApplyCaseToSiblings')?.checked;
     if (!id) return;
     if (!result) {
         showToast('Enter the histology result.');
         return;
     }
-    if (typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma(result)) {
+    if (typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma({ histologyDiagnosis, histologyResult: result })) {
         billingType = 'confirmed_melanoma';
         const typeEl = document.getElementById('histologyBillingType');
         if (typeEl) typeEl.value = 'confirmed_melanoma';
@@ -1448,14 +1564,32 @@ async function submitHistologyModal() {
         showToast('Process billing before choosing management.');
         return;
     }
-    await recordHistologyOutcome(id, result, next, billingType, { callNote, advised });
+    await recordHistologyOutcome(id, result, next, billingType, {
+        callNote,
+        advised,
+        histologyCaseNumber: caseNumber,
+        histologyPot: pot,
+        histologyDiagnosis
+    });
+    let siblingNote = '';
+    if (applySiblings && caseNumber && typeof applyHistologyCaseToSiblings === 'function') {
+        const share = await applyHistologyCaseToSiblings(id, caseNumber);
+        const applied = typeof share === 'number' ? share : (share?.applied || 0);
+        const skipped = typeof share === 'object' ? (share?.skipped || 0) : 0;
+        if (applied) {
+            siblingNote = ' Case number also set on ' + applied + ' other pot' + (applied === 1 ? '' : 's') + ' from this procedure.';
+        }
+        if (skipped) {
+            siblingNote += ' Left ' + skipped + ' pot' + (skipped === 1 ? '' : 's') + ' that already had a different lab number.';
+        }
+    }
     closeHistologyModal();
     const messages = {
-        plan_excision: 'Result saved. Rebook the excision next.',
+        plan_excision: 'Result saved. Book the re-excision as a new linked procedure next.',
         no_followup: 'Result saved. No further action.',
         stay: 'Result saved. Lesion remains awaiting histology until billing is confirmed and management is chosen.'
     };
-    showToast(messages[next] || 'Result saved.');
+    showToast((messages[next] || 'Result saved.') + siblingNote);
     if (next === 'plan_excision') openExcisionProcedureModal(id);
 }
 
@@ -1502,11 +1636,25 @@ function fillExcisionProcedureForm(lesion) {
     const graftEl = document.getElementById('assignExcisionGraftType');
     const noteEl = document.getElementById('assignExcisionNote');
     const idEl = document.getElementById('assignExcisionLesionId');
+    const priorEl = document.getElementById('assignExcisionPriorLesionId');
     const summaryEl = document.getElementById('assignExcisionSummary');
     if (idEl) idEl.value = lesion?.id || '';
+    if (priorEl) priorEl.value = lesion?.priorLesionId || '';
     if (locEl) locEl.value = lesion?.location || '';
-    if (dxEl) dxEl.value = lesion?.impression || '';
-    if (marginEl) marginEl.value = lesion?.excisionMargin || (lesion?.excisionMarginMm ? lesion.excisionMarginMm + ' mm' : '');
+    if (typeof setDiagnosisTypeahead === 'function') {
+        setDiagnosisTypeahead('assignExcisionDiagnosis', lesion?.impression || '');
+    } else if (dxEl) {
+        dxEl.value = lesion?.impression || '';
+    }
+    if (marginEl) {
+        if (typeof setMmInputValue === 'function') {
+            setMmInputValue(marginEl, lesion?.excisionMarginMm || lesion?.excisionMargin);
+        } else {
+            marginEl.value = typeof parseMarginMm === 'function'
+                ? parseMarginMm(lesion?.excisionMarginMm || lesion?.excisionMargin)
+                : (lesion?.excisionMarginMm || '');
+        }
+    }
     if (closureEl) closureEl.value = normalizeExcisionClosure(lesion);
     if (graftEl) graftEl.value = lesion?.graftType || lesion?.billingGraftType || 'Full-Thickness Skin Graft (FTSG)';
     if (noteEl) noteEl.value = lesion?.adminCallNote || '';
@@ -1516,6 +1664,50 @@ function fillExcisionProcedureForm(lesion) {
             : (lesion?.patientName ? `${lesion.patientName} · ${lesion.patientDob || ''}` : '');
     }
     updateExcisionProcedureClosureUI();
+    updateAssignExcisionReexcisionBanner(lesion);
+    fillAssignExcisionPriorHistoFields(lesion);
+}
+
+function resolveExcisionAssignTarget(source) {
+    if (!source?.id) return { mode: 'create', lesion: null, prior: null };
+    if (source.priorLesionId) return { mode: 'update', lesion: source, prior: findLesionForExcisionProcedure(source.priorLesionId) };
+    const child = typeof findLinkedReexcisionChild === 'function' ? findLinkedReexcisionChild(source.id) : null;
+    if (child) return { mode: 'update', lesion: child, prior: source };
+    if (typeof lesionNeedsNewReexcisionRecord === 'function' && lesionNeedsNewReexcisionRecord(source)) {
+        return { mode: 'spawn', lesion: null, prior: source };
+    }
+    return { mode: 'update', lesion: source, prior: null };
+}
+
+function updateAssignExcisionReexcisionBanner(lesion) {
+    const banner = document.getElementById('assignExcisionReexcisionBanner');
+    const priorEl = document.getElementById('assignExcisionPriorLesionId');
+    const resolved = resolveExcisionAssignTarget(lesion);
+    if (priorEl) {
+        priorEl.value = resolved.prior?.id || lesion?.priorLesionId || '';
+    }
+    if (!banner) return;
+    if (resolved.mode === 'spawn' && resolved.prior) {
+        const kind = typeof priorProcedureKindForReexcision === 'function'
+            ? priorProcedureKindForReexcision(resolved.prior)
+            : 'procedure';
+        banner.classList.remove('hidden');
+        banner.innerHTML = '<p class="font-semibold text-purple-950">This books a <span class="underline">new</span> re-excision lesion.</p>'
+            + '<p class="mt-1">The original ' + escapeHtml(kind) + ' at ' + escapeHtml(resolved.prior.location || 'this site')
+            + ' stays closed (histology / billing unchanged). Written consent is required for the new excision — prior verbal or written consent is not reused.</p>';
+        fillAssignExcisionPriorHistoFields(resolved.prior);
+        return;
+    }
+    if (resolved.mode === 'update' && (resolved.lesion?.priorLesionId || resolved.prior)) {
+        banner.classList.remove('hidden');
+        banner.innerHTML = '<p class="font-semibold text-purple-950">Updating the linked re-excision.</p>'
+            + '<p class="mt-1">Start Procedure only after written consent is generated for this new lesion.</p>';
+        fillAssignExcisionPriorHistoFields(resolved.lesion || lesion);
+        return;
+    }
+    banner.classList.add('hidden');
+    banner.innerHTML = '';
+    fillAssignExcisionPriorHistoFields(lesion);
 }
 
 function updateExcisionProcedureClosureUI() {
@@ -1526,7 +1718,10 @@ function updateExcisionProcedureClosureUI() {
 
 function onExcisionProcedureLesionChange() {
     const id = document.getElementById('assignExcisionLesionSelect')?.value || '';
-    fillExcisionProcedureForm(findLesionForExcisionProcedure(id));
+    const source = findLesionForExcisionProcedure(id);
+    const resolved = resolveExcisionAssignTarget(source);
+    if (resolved.mode === 'update' && resolved.lesion) fillExcisionProcedureForm(resolved.lesion);
+    else fillExcisionProcedureForm(source);
 }
 
 function openAssignExcisionModal(id) {
@@ -1538,7 +1733,7 @@ function openExcisionProcedureModal(id) {
         requireCurrentPatient('Select a patient first so the excision is saved to their chart.');
         return;
     }
-    const lesion = findLesionForExcisionProcedure(id);
+    let lesion = findLesionForExcisionProcedure(id);
     if (lesion?.patientName && lesion?.patientDob && !hasCurrentPatient()) {
         setCurrentPatient({
             name: lesion.patientName,
@@ -1546,8 +1741,17 @@ function openExcisionProcedureModal(id) {
             clinician: lesion.clinician || ''
         });
     }
-    populateExcisionProcedureLesionSelect(lesion?.id || '');
-    fillExcisionProcedureForm(lesion);
+    const resolved = resolveExcisionAssignTarget(lesion);
+    const formLesion = resolved.mode === 'update' && resolved.lesion ? resolved.lesion : lesion;
+    populateExcisionProcedureLesionSelect(formLesion?.id || lesion?.id || '');
+    fillExcisionProcedureForm(formLesion);
+    if (resolved.mode === 'spawn' && resolved.prior) {
+        const idEl = document.getElementById('assignExcisionLesionId');
+        if (idEl) idEl.value = '';
+        const select = document.getElementById('assignExcisionLesionSelect');
+        if (select && resolved.prior.id) select.value = String(resolved.prior.id);
+        updateAssignExcisionReexcisionBanner(resolved.prior);
+    }
     const modal = document.getElementById('assignExcisionModal');
     if (modal) modal.classList.remove('hidden');
     document.getElementById('assignExcisionLocation')?.focus();
@@ -1565,12 +1769,25 @@ function syncSessionLesionFromProcedure(lesion) {
         location: lesion.location,
         impression: lesion.impression,
         plan: lesion.plan,
+        type: lesion.type || 'excision',
+        priorLesionId: lesion.priorLesionId || '',
+        reexcisionOf: lesion.reexcisionOf || '',
+        priorProcedureKind: lesion.priorProcedureKind || '',
         excisionMargin: lesion.excisionMargin,
         excisionClosureType: lesion.excisionClosureType,
         excisionReconstruction: lesion.excisionReconstruction,
         graftType: lesion.graftType,
         macroscopic: lesion.macroscopic || 'Unspecified',
-        dermoscopy: lesion.dermoscopy || 'Unspecified'
+        dermoscopy: lesion.dermoscopy || 'Unspecified',
+        consentStatus: lesion.consentStatus || '',
+        procedureCompletedAt: lesion.procedureCompletedAt || '',
+        procedureDetail: lesion.procedureDetail || null,
+        priorHistologyCaseNumber: lesion.priorHistologyCaseNumber || '',
+        priorHistologyPot: lesion.priorHistologyPot || '',
+        priorHistologyResult: lesion.priorHistologyResult || '',
+        excisionMarginMm: lesion.excisionMarginMm || '',
+        suggestedMarginMm: lesion.suggestedMarginMm || '',
+        marginSuggestionReason: lesion.marginSuggestionReason || ''
     };
     if (idx === -1) lesions.push(sessionFields);
     else lesions[idx] = { ...lesions[idx], ...sessionFields };
@@ -1591,55 +1808,134 @@ async function submitAssignExcisionModal() {
     const selectedId = document.getElementById('assignExcisionLesionSelect')?.value
         || document.getElementById('assignExcisionLesionId')?.value
         || '';
-    let lesion = findLesionForExcisionProcedure(selectedId);
-    const diagnosis = document.getElementById('assignExcisionDiagnosis')?.value.trim() || '';
-    const margin = document.getElementById('assignExcisionMargin')?.value.trim() || '';
+    const source = findLesionForExcisionProcedure(selectedId);
+    const resolved = resolveExcisionAssignTarget(source);
+    const diagnosis = typeof readDiagnosisTypeahead === 'function'
+        ? readDiagnosisTypeahead('assignExcisionDiagnosis')
+        : (document.getElementById('assignExcisionDiagnosis')?.value.trim() || '');
+    const marginNum = typeof readMmInputValue === 'function'
+        ? readMmInputValue('assignExcisionMargin')
+        : (document.getElementById('assignExcisionMargin')?.value.trim() || '');
+    const marginMeta = typeof plannedMarginFieldsFromNumber === 'function'
+        ? plannedMarginFieldsFromNumber(marginNum, typeof suggestionMetaIfMatches === 'function' ? suggestionMetaIfMatches('assignExcisionMargin') : null)
+        : { excisionMarginMm: marginNum, excisionMargin: marginNum };
+    const margin = marginMeta.excisionMargin;
     const closure = document.getElementById('assignExcisionClosure')?.value || 'Ellipse';
     const reconstruction = closureToReconstruction(closure);
     const graftType = closureNeedsGraftType(closure)
         ? (document.getElementById('assignExcisionGraftType')?.value || 'Full-Thickness Skin Graft (FTSG)')
         : '';
     const note = document.getElementById('assignExcisionNote')?.value.trim() || '';
+    const priorCaseNumber = document.getElementById('assignExcisionPriorCaseNumber')?.value.trim() || '';
+    const priorPot = document.getElementById('assignExcisionPriorPot')?.value.trim() || '';
     const now = new Date().toISOString();
+    const planAfter = note || (resolved.mode === 'spawn' ? 'Re-excision planned' : 'Excision planned');
 
-    if (!lesion) {
-        lesion = {
+    const applyPlanning = (lesion) => {
+        lesion.location = location;
+        lesion.impression = diagnosis || lesion.impression || '';
+        lesion.excisionMargin = marginMeta.excisionMargin;
+        lesion.excisionMarginMm = marginMeta.excisionMarginMm;
+        if (marginMeta.suggestedMarginMm) lesion.suggestedMarginMm = marginMeta.suggestedMarginMm;
+        if (marginMeta.marginSuggestionReason) lesion.marginSuggestionReason = marginMeta.marginSuggestionReason;
+        lesion.excisionClosureType = closure;
+        lesion.excisionReconstruction = reconstruction;
+        lesion.graftType = graftType;
+        lesion.billingGraftType = graftType;
+        lesion.billingReconstruction = inferBillingReconstruction({
+            excisionReconstruction: reconstruction,
+            excisionClosureType: closure
+        });
+        lesion.type = 'excision';
+        lesion.excisionAssignedAt = now;
+        lesion.plan = 'Formally Book Excision Procedure';
+        lesion.currentPlan = planAfter;
+        return lesion;
+    };
+
+    let lesion;
+    let spawned = false;
+    if (resolved.mode === 'spawn' && resolved.prior && typeof buildReexcisionLesionFromPrior === 'function') {
+        lesion = applyPlanning(buildReexcisionLesionFromPrior(resolved.prior, {
+            location,
+            impression: diagnosis,
+            excisionMargin: margin,
+            excisionClosureType: closure,
+            excisionReconstruction: reconstruction,
+            graftType,
+            billingReconstruction: inferBillingReconstruction({
+                excisionReconstruction: reconstruction,
+                excisionClosureType: closure
+            }),
+            currentPlan: planAfter
+        }));
+        const histo = typeof copyPriorHistologyFromLesion === 'function'
+            ? copyPriorHistologyFromLesion(resolved.prior, {
+                priorHistologyCaseNumber: priorCaseNumber,
+                priorHistologyPot: priorPot
+            })
+            : {
+                priorHistologyCaseNumber: priorCaseNumber,
+                priorHistologyPot: priorPot,
+                priorHistologyResult: resolved.prior.histologyResult || ''
+            };
+        Object.assign(lesion, histo);
+        spawned = true;
+    } else if (resolved.mode === 'update' && resolved.lesion) {
+        lesion = applyPlanning(resolved.lesion);
+        if (lesion.priorLesionId || resolved.prior) {
+            const histo = typeof copyPriorHistologyFromLesion === 'function'
+                ? copyPriorHistologyFromLesion(resolved.prior || {}, {
+                    priorHistologyCaseNumber: priorCaseNumber,
+                    priorHistologyPot: priorPot,
+                    priorHistologyResult: lesion.priorHistologyResult || resolved.prior?.histologyResult || ''
+                })
+                : {
+                    priorHistologyCaseNumber: priorCaseNumber,
+                    priorHistologyPot: priorPot,
+                    priorHistologyResult: lesion.priorHistologyResult || resolved.prior?.histologyResult || ''
+                };
+            Object.assign(lesion, histo);
+        }
+    } else {
+        lesion = applyPlanning({
             id: newLesionId(),
             macroscopic: 'Unspecified',
             dermoscopy: 'Unspecified',
             createdAt: now
-        };
+        });
     }
-
-    lesion.location = location;
-    lesion.impression = diagnosis || lesion.impression || '';
-    lesion.excisionMargin = margin;
-    lesion.excisionClosureType = closure;
-    lesion.excisionReconstruction = reconstruction;
-    lesion.graftType = graftType;
-    lesion.billingGraftType = graftType;
-    lesion.billingReconstruction = inferBillingReconstruction({
-        excisionReconstruction: reconstruction,
-        excisionClosureType: closure
-    });
-    lesion.type = 'excision';
-    lesion.excisionAssignedAt = now;
-    lesion.plan = 'Formally Book Excision Procedure';
-    const planAfter = note || 'Excision planned';
-    lesion.currentPlan = planAfter;
 
     syncSessionLesionFromProcedure(lesion);
 
     try {
-        if (typeof persistSessionLesionToVault === 'function' && isVaultLoggedIn()) {
+        if (spawned && typeof persistReexcisionChild === 'function' && isVaultLoggedIn()) {
+            await persistReexcisionChild(lesion);
+        } else if (typeof persistSessionLesionToVault === 'function' && isVaultLoggedIn()) {
             await persistSessionLesionToVault(lesion);
         }
         if (typeof setManagedLesionStatus === 'function' && isVaultLoggedIn()) {
             const summary = [margin && ('margin ' + margin), closure, note].filter(Boolean).join(' · ');
-            await setManagedLesionStatus(lesion.id, 'planned_procedure', summary || 'Excision planned', {
+            await setManagedLesionStatus(lesion.id, 'planned_procedure', summary || planAfter, {
                 type: 'excision',
                 currentPlan: planAfter
             });
+        }
+        if (spawned && resolved.prior && typeof closePriorLesionAfterReexcision === 'function') {
+            await closePriorLesionAfterReexcision(resolved.prior, lesion);
+        }
+        if ((spawned || lesion.priorLesionId) && resolved.prior && (priorCaseNumber || priorPot) && typeof writeManagedLesion === 'function') {
+            const prior = managedLesions.find((item) => String(item.id) === String(resolved.prior.id));
+            if (prior) {
+                if (priorCaseNumber && !normalizeHistologyCaseNumber(prior.histologyCaseNumber)) {
+                    prior.histologyCaseNumber = priorCaseNumber;
+                }
+                if (priorPot && !normalizeHistologyPot(prior.histologyPot)) {
+                    prior.histologyPot = priorPot;
+                }
+                await writeManagedLesion(prior);
+                upsertManagedLesionMemory(prior);
+            }
         }
     } catch (err) {
         showToast(err.message || 'Excision planned in this session, but the encrypted file was not written.');
@@ -1648,11 +1944,17 @@ async function submitAssignExcisionModal() {
     }
 
     closeAssignExcisionModal();
-    showToast('Excision plan saved.');
+    if (spawned) {
+        showToast('Re-excision planned as a new lesion. Generate written consent before starting Procedure.');
+    } else {
+        showToast('Excision plan saved.');
+    }
     if (activeWorkspaceTab === 'management') {
         if (hasCurrentPatient()) setMgmtFilter('active');
         else setMgmtFilter('planned_procedure');
     }
+    if (typeof renderLesionsTable === 'function') renderLesionsTable();
+    if (typeof renderChartSidebar === 'function') renderChartSidebar();
 }
 
 async function allocateManagedLesionAsCurrentCase(id) {
@@ -1679,15 +1981,16 @@ function applyManagedLesionToExcisionForm(lesion) {
         if (el) el.value = val || '';
     };
     setVal('exLesionLocation', lesion.location);
-    setVal('exProvisionalDiagnoses', lesion.impression);
-    const displayEl = document.getElementById('exPathologyDisplay');
-    if (displayEl && lesion.impression) {
-        displayEl.textContent = lesion.impression;
-        displayEl.classList.remove('italic', 'text-slate-500');
+    if (typeof setProcedurePathologyDisplay === 'function') {
+        setProcedurePathologyDisplay(lesion.impression);
+    } else {
+        setVal('exProvisionalDiagnoses', lesion.impression);
     }
     if (lesion.excisionLengthMm) setVal('exLesionLength', lesion.excisionLengthMm);
     if (lesion.excisionWidthMm) setVal('exLesionWidth', lesion.excisionWidthMm);
-    const marginNum = String(lesion.excisionMargin || lesion.excisionMarginMm || '').replace(/[^\d.]/g, '');
+    const marginNum = typeof parseMarginMm === 'function'
+        ? parseMarginMm(lesion.excisionMarginMm || lesion.excisionMargin)
+        : String(lesion.excisionMargin || lesion.excisionMarginMm || '').replace(/[^\d.]/g, '');
     if (marginNum) setVal('exMargin', marginNum);
     const region = lesion.billingRegion || billingRegionFromBodyArea(lesion.bodyAreaId);
     if (region) setVal('exBillingRegion', String(region));

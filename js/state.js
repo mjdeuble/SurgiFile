@@ -24,11 +24,13 @@ let procedureSession = {
     detailLesionId: '',
     complications: {
         none: true,
-        bleeding: false,
         vasovagal: false,
         other: false
     },
-    complicationNotes: ''
+    complicationNotes: '',
+    siteComplications: {},
+    amendLesionId: '',
+    amendPanel: ''
 };
 
 // Skin Check View State

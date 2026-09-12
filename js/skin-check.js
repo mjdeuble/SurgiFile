@@ -544,7 +544,10 @@ function openLesionModal(lesionId = null) {
             });
             const marginEl = document.getElementById('excisionMargin');
             const reconEl = document.getElementById('excisionReconstruction');
-            if (marginEl) marginEl.value = item.excisionMargin || '';
+            if (marginEl) {
+                if (typeof setMmInputValue === 'function') setMmInputValue(marginEl, item.excisionMarginMm || item.excisionMargin);
+                else marginEl.value = item.excisionMargin || '';
+            }
             if (reconEl) reconEl.value = normalizeExcisionClosure(item);
             const graftEl = document.getElementById('consultExcisionGraftType');
             if (graftEl) graftEl.value = item.graftType || item.billingGraftType || 'Full-Thickness Skin Graft (FTSG)';
@@ -552,10 +555,13 @@ function openLesionModal(lesionId = null) {
             const examWid = document.getElementById('examLesionWidth');
             const examMar = document.getElementById('examLesionMargin');
             const examPunch = document.getElementById('examPunchSize');
-            if (examLen) examLen.value = item.length || '';
-            if (examWid) examWid.value = item.width || '';
-            if (examMar) examMar.value = item.margin || '';
-            if (examPunch) examPunch.value = item.punchSize || '';
+            if (examLen) examLen.value = typeof parseMarginMm === 'function' ? (parseMarginMm(item.length) || item.length || '') : (item.length || '');
+            if (examWid) examWid.value = typeof parseMarginMm === 'function' ? (parseMarginMm(item.width) || item.width || '') : (item.width || '');
+            if (examMar) {
+                if (typeof setMmInputValue === 'function') setMmInputValue(examMar, item.margin);
+                else examMar.value = item.margin || '';
+            }
+            if (examPunch) examPunch.value = typeof parseMarginMm === 'function' ? (parseMarginMm(item.punchSize) || item.punchSize || '') : (item.punchSize || '');
             populateTopicalForm(item);
         }
     } else {
@@ -594,22 +600,10 @@ function closeLesionModal() {
 }
 
 function populateExamDiagnosisSelect() {
-    const sel = document.getElementById('lesionImpression');
-    if (!sel || typeof exPathologyOptions === 'undefined') return;
-    const current = sel.value;
-    sel.innerHTML = Object.entries(exPathologyOptions).map(([code, label]) => {
-        return `<option value="${escapeHtml(code)}">${escapeHtml(code)} (${escapeHtml(label)})</option>`;
-    }).join('') + '<option value="OTHER">Other (manual entry)</option>';
-    if (current && [...sel.options].some((opt) => opt.value === current)) sel.value = current;
+    if (typeof initDiagnosisTypeaheads === 'function') initDiagnosisTypeaheads();
 }
 
 function handleExamDiagnosisChange() {
-    const sel = document.getElementById('lesionImpression');
-    const other = document.getElementById('lesionImpressionOther');
-    if (!other) return;
-    const isOther = sel?.value === 'OTHER';
-    other.classList.toggle('hidden', !isOther);
-    if (isOther) other.focus();
     if (typeof isCryoRelevant === 'function' && isCryoRelevant()) {
         const panel = document.getElementById('cryoPlanPanel');
         if (panel && panel.dataset.modified !== '1' && typeof applyCryoRecommendationFromImpression === 'function') {
@@ -619,40 +613,19 @@ function handleExamDiagnosisChange() {
 }
 
 function applyExamImpressionValue(raw) {
-    const sel = document.getElementById('lesionImpression');
-    const other = document.getElementById('lesionImpressionOther');
-    if (!sel) return;
-    populateExamDiagnosisSelect();
     const t = String(raw || '').trim();
-    if (!t || t === 'Pending Assessment') {
-        sel.value = 'BCC';
-        if (other) {
-            other.value = '';
-            other.classList.add('hidden');
-        }
+    const next = (!t || t === 'Pending Assessment') ? 'BCC' : t;
+    if (typeof setDiagnosisTypeahead === 'function') {
+        setDiagnosisTypeahead('lesionImpression', next);
         return;
     }
-    const code = typeof diagnosisCodeFromText === 'function' ? diagnosisCodeFromText(t) : '';
-    if (code && [...sel.options].some((opt) => opt.value === code)) {
-        sel.value = code;
-        if (other) {
-            other.value = '';
-            other.classList.add('hidden');
-        }
-        return;
-    }
-    sel.value = 'OTHER';
-    if (other) {
-        other.value = t;
-        other.classList.remove('hidden');
-    }
+    const el = document.getElementById('lesionImpression');
+    if (el) el.value = next;
 }
 
 function readExamImpression() {
-    const sel = document.getElementById('lesionImpression');
-    if (!sel) return '';
-    if (sel.value === 'OTHER') return document.getElementById('lesionImpressionOther')?.value.trim() || '';
-    return sel.value;
+    if (typeof readDiagnosisTypeahead === 'function') return readDiagnosisTypeahead('lesionImpression');
+    return document.getElementById('lesionImpression')?.value.trim() || '';
 }
 
 function selectedExamBiopsyType() {
@@ -708,7 +681,7 @@ function saveLesion() {
     const editId = document.getElementById('editLesionId').value;
     const impression = readExamImpression();
     if (!impression) {
-        showToast('Please choose a diagnosis, or enter one under Other.');
+        showToast('Please choose or enter a diagnosis.');
         return;
     }
     const macroscopic = document.getElementById('lesionMacroscopic').value.trim() || 'Unspecified';
@@ -732,9 +705,15 @@ function saveLesion() {
         if (biopsyType.includes('Punch')) {
             punchSize = document.getElementById('examPunchSize')?.value.trim() || '';
         } else {
-            length = document.getElementById('examLesionLength')?.value.trim() || '';
-            width = document.getElementById('examLesionWidth')?.value.trim() || '';
-            margin = document.getElementById('examLesionMargin')?.value.trim() || '';
+            length = typeof parseMarginMm === 'function'
+                ? (parseMarginMm(document.getElementById('examLesionLength')?.value) || document.getElementById('examLesionLength')?.value.trim() || '')
+                : (document.getElementById('examLesionLength')?.value.trim() || '');
+            width = typeof parseMarginMm === 'function'
+                ? (parseMarginMm(document.getElementById('examLesionWidth')?.value) || document.getElementById('examLesionWidth')?.value.trim() || '')
+                : (document.getElementById('examLesionWidth')?.value.trim() || '');
+            margin = typeof readMmInputValue === 'function'
+                ? readMmInputValue('examLesionMargin')
+                : (document.getElementById('examLesionMargin')?.value.trim() || '');
         }
 
         if (biopsyType.includes('Shave')) {
@@ -750,7 +729,13 @@ function saveLesion() {
             }
         }
     } else if (plan.includes('Formally Book Excision')) {
-        excisionMargin = document.getElementById('excisionMargin')?.value.trim() || '3mm to 5mm';
+        const excisionMarginNum = typeof readMmInputValue === 'function'
+            ? readMmInputValue('excisionMargin')
+            : (document.getElementById('excisionMargin')?.value.trim() || '');
+        const excisionMeta = typeof plannedMarginFieldsFromNumber === 'function'
+            ? plannedMarginFieldsFromNumber(excisionMarginNum, typeof suggestionMetaIfMatches === 'function' ? suggestionMetaIfMatches('excisionMargin') : null)
+            : { excisionMargin: excisionMarginNum, excisionMarginMm: excisionMarginNum };
+        excisionMargin = excisionMeta.excisionMargin;
         excisionClosureType = document.getElementById('excisionReconstruction')?.value || 'Ellipse';
         excisionReconstruction = closureToReconstruction(excisionClosureType);
         graftType = document.getElementById('consultExcisionGraftType')?.value || '';
@@ -786,6 +771,7 @@ function saveLesion() {
         margin,
         punchSize,
         excisionMargin,
+        excisionMarginMm: typeof parseMarginMm === 'function' ? parseMarginMm(excisionMargin) : excisionMargin,
         excisionReconstruction,
         excisionClosureType,
         graftType,
@@ -795,6 +781,14 @@ function saveLesion() {
             : '',
         ...topicalFields
     };
+
+    const suggestMeta = typeof suggestionMetaIfMatches === 'function'
+        ? (suggestionMetaIfMatches('excisionMargin') || suggestionMetaIfMatches('examLesionMargin'))
+        : null;
+    if (suggestMeta) {
+        lesionRecord.suggestedMarginMm = suggestMeta.suggestedMm || suggestMeta.mm || '';
+        lesionRecord.marginSuggestionReason = suggestMeta.reason || '';
+    }
 
     if (biopsyType.includes('Shave') && pendingShaveConsentAction === 'verbal') {
         const existingConsent = editId && typeof lesionConsentStatus === 'function'
@@ -880,7 +874,11 @@ function renderLesionsTable() {
             <td class="p-3"><span class="text-[11px] font-semibold text-blue-800">${escapeHtml(status)}</span>${l.currentPlan ? `<div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(l.currentPlan)}</div>` : ''}${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(l) ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(l)))}</span>` : ''}</td>
             <td class="p-3">
                         <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${(l.plan || '').includes('Biopsy') ? 'bg-blue-100 text-blue-800' : (l.plan || '').includes('Excision') ? 'bg-purple-100 text-purple-800' : isTopicalPlan(l.plan) ? 'bg-teal-100 text-teal-800' : (l.plan || '').includes('Awaiting') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'}">
-                            ${isTopicalPlan(l.plan) ? formatTopicalTableBadge(l) : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`}
+                            ${isTopicalPlan(l.plan)
+                                ? formatTopicalTableBadge(l)
+                                : (l.priorLesionId
+                                    ? 'Re-excision'
+                                    : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`)}
                         </span>
             </td>
             <td class="p-3 text-right space-x-2">
