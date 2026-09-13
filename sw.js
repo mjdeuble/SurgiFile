@@ -1,33 +1,37 @@
-const CACHE_NAME = 'dermrecord-v80';
+const CACHE_VERSION = '100';
+const CACHE_NAME = 'dermrecord-v' + CACHE_VERSION;
+const CACHE_QUERY = '?v=' + CACHE_VERSION;
 
 const APP_SHELL = [
     './',
     './index.html',
-    './css/app.css',
-    './js/state.js',
-    './js/diagnosis-catalogue.js',
-    './js/crypto.js',
-    './js/vault.js',
-    './js/ui.js',
-    './js/topical.js',
-    './js/billing.js',
-    './js/margin-guide.js',
-    './js/skin-check.js',
-    './js/consent.js',
-    './js/clinic-profile.js',
-    './js/aftercare.js',
-    './js/outputs.js',
-    './js/excision.js',
-    './js/lesion-vault.js',
-    './js/billing-vault.js',
-    './js/chart-vault.js',
-    './js/note-vault.js',
-    './js/consent-vault.js',
-    './js/auth.js',
-    './js/management.js',
-    './js/chart.js',
-    './js/procedure-session.js',
-    './js/app.js',
+    './index.html' + CACHE_QUERY,
+    './css/tailwind.css' + CACHE_QUERY,
+    './css/app.css' + CACHE_QUERY,
+    './js/state.js' + CACHE_QUERY,
+    './js/diagnosis-catalogue.js' + CACHE_QUERY,
+    './js/crypto.js' + CACHE_QUERY,
+    './js/vault.js' + CACHE_QUERY,
+    './js/ui.js' + CACHE_QUERY,
+    './js/topical.js' + CACHE_QUERY,
+    './js/billing.js' + CACHE_QUERY,
+    './js/margin-guide.js' + CACHE_QUERY,
+    './js/skin-check.js' + CACHE_QUERY,
+    './js/consent.js' + CACHE_QUERY,
+    './js/clinic-profile.js' + CACHE_QUERY,
+    './js/aftercare.js' + CACHE_QUERY,
+    './js/outputs.js' + CACHE_QUERY,
+    './js/excision.js' + CACHE_QUERY,
+    './js/lesion-vault.js' + CACHE_QUERY,
+    './js/billing-vault.js' + CACHE_QUERY,
+    './js/chart-vault.js' + CACHE_QUERY,
+    './js/note-vault.js' + CACHE_QUERY,
+    './js/consent-vault.js' + CACHE_QUERY,
+    './js/auth.js' + CACHE_QUERY,
+    './js/management.js' + CACHE_QUERY,
+    './js/chart.js' + CACHE_QUERY,
+    './js/procedure-session.js' + CACHE_QUERY,
+    './js/app.js' + CACHE_QUERY,
     './manifest.json',
     './icons/icon.svg',
     './icons/icon-192.png',
@@ -35,6 +39,55 @@ const APP_SHELL = [
     './icons/icon-192-maskable.png',
     './icons/icon-512-maskable.png'
 ];
+
+function sameOriginUrl(request) {
+    try {
+        return new URL(request.url).origin === self.location.origin;
+    } catch (err) {
+        return false;
+    }
+}
+
+function cacheCandidates(request) {
+    const url = new URL(request.url);
+    const path = url.pathname || '/';
+    const relative = '.' + (path.endsWith('/') ? path : path);
+    const names = [
+        request.url,
+        path + url.search,
+        path,
+        path + CACHE_QUERY,
+        relative,
+        relative + CACHE_QUERY
+    ];
+    if (path === '/' || path.endsWith('/index.html') || path.endsWith('/')) {
+        names.push('./', './index.html', './index.html' + CACHE_QUERY);
+    }
+    return [...new Set(names)];
+}
+
+async function matchAppCache(request) {
+    const cache = await caches.open(CACHE_NAME);
+    const exact = await cache.match(request);
+    if (exact) return exact;
+    if (!sameOriginUrl(request)) return undefined;
+    for (const candidate of cacheCandidates(request)) {
+        const hit = await cache.match(candidate);
+        if (hit) return hit;
+    }
+    return undefined;
+}
+
+function isAppShellRequest(request) {
+    if (!sameOriginUrl(request)) return false;
+    const url = new URL(request.url);
+    return APP_SHELL.some((entry) => {
+        const listed = new URL(entry, self.location.href);
+        if (listed.pathname !== url.pathname) return false;
+        if (!listed.search) return !url.search || url.search === CACHE_QUERY;
+        return listed.search === url.search || url.search === '' || url.search === CACHE_QUERY;
+    });
+}
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
@@ -62,13 +115,19 @@ self.addEventListener('fetch', (event) => {
     const request = event.request;
     if (request.method !== 'GET') return;
 
-    event.respondWith(
-        fetch(request).then((response) => {
-            if (response && response.status === 200 && (response.type === 'basic' || response.type === 'cors')) {
+    event.respondWith((async () => {
+        try {
+            const response = await fetch(request);
+            if (response && response.status === 200 && response.type === 'basic' && isAppShellRequest(request)) {
                 const copy = response.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+                const cache = await caches.open(CACHE_NAME);
+                await cache.put(request, copy);
             }
             return response;
-        }).catch(() => caches.match(request))
-    );
+        } catch (err) {
+            const cached = await matchAppCache(request);
+            if (cached) return cached;
+            throw err;
+        }
+    })());
 });

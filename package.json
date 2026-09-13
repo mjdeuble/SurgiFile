@@ -1,0 +1,10 @@
+{
+  "name": "dermrecord",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i css/tailwind-src.css -o css/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}
