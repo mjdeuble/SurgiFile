@@ -3,13 +3,10 @@
 const VISIT_NOTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 let visitNoteSaveTimer = null;
 
-function visitNoteFileName(chartId, visitDate) {
-    const stem = String(chartId || 'patient')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 50) || 'patient';
-    return 'visit-' + stem + '-' + visitDate + '.json.enc';
+function visitNoteFileName() {
+    return typeof newOpaqueEncFileName === 'function'
+        ? newOpaqueEncFileName('visit')
+        : 'visit-' + Date.now() + '-' + Math.random().toString(16).slice(2) + '.json.enc';
 }
 
 function visitNoteExpiresAt(fromIso) {
@@ -101,34 +98,37 @@ function adminVisitNotes() {
 async function writeManagedVisitNote(note) {
     if (!isVaultLoggedIn() || !note?.id) return;
     const dir = await getUserNotesDir(vaultAuth.username, true);
-    const name = note.fileName || visitNoteFileName(note.chartId, note.visitDate);
-    note.fileName = name;
-    const payload = await encryptJson(vaultAuth.key, note);
-    await writeTextFile(dir, name, JSON.stringify(payload));
+    await writeOpaqueEncryptedJson(dir, note, 'visit', vaultAuth.key);
 }
 
 async function deleteManagedVisitNoteFile(note) {
-    if (!isVaultLoggedIn() || !note) return;
+    if (!isVaultLoggedIn() || !note?.fileName) return false;
     const dir = await getUserNotesDir(vaultAuth.username, true);
-    await deleteTextFile(dir, note.fileName || visitNoteFileName(note.chartId, note.visitDate));
+    return await deleteTextFile(dir, note.fileName);
 }
 
 async function pruneExpiredVisitNotes() {
     const keep = [];
+    let failed = 0;
     for (const note of managedVisitNotes.slice()) {
         if (!visitNoteIsExpired(note)) {
             keep.push(note);
             continue;
         }
-        await deleteManagedVisitNoteFile(note);
+        const ok = await deleteManagedVisitNoteFile(note);
+        if (ok) continue;
+        keep.push(note);
+        failed += 1;
     }
     managedVisitNotes = keep;
+    if (failed && typeof toastVaultDeleteFailure === 'function') toastVaultDeleteFailure('notes');
 }
 
 async function loadManagedVisitNotesFromVault() {
     managedVisitNotes = [];
     if (!isVaultLoggedIn()) return;
     const dir = await getUserNotesDir(vaultAuth.username, true);
+    if (typeof recoverIncompleteVaultWrites === 'function') await recoverIncompleteVaultWrites(dir);
     for await (const [name, handle] of dir.entries()) {
         if (handle.kind !== 'file' || !name.endsWith('.json.enc')) continue;
         try {
@@ -143,6 +143,15 @@ async function loadManagedVisitNotesFromVault() {
         }
     }
     await pruneExpiredVisitNotes();
+    if (typeof dedupeVaultRecordsById === 'function') {
+        managedVisitNotes = await dedupeVaultRecordsById(managedVisitNotes, 'visit', dir);
+    }
+    if (typeof migrateIdentifyingEncFilenames === 'function') {
+        await migrateIdentifyingEncFilenames(managedVisitNotes, 'visit', dir, vaultAuth.key);
+    }
+    if (typeof migrateIdentifyingRecordIds === 'function') {
+        await migrateIdentifyingRecordIds(managedVisitNotes, 'visit', (note) => writeManagedVisitNote(note));
+    }
     managedVisitNotes.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
@@ -164,7 +173,7 @@ async function saveCurrentVisitNotes() {
     let note = findVisitNoteForDay(chartId, visitDate);
     if (!note) {
         note = {
-            id: 'visit-' + chartId + '-' + visitDate,
+            id: (typeof newOpaqueRecordId === 'function' ? newOpaqueRecordId('visit') : 'visit-' + Date.now()),
             chartId,
             patientName: patient.patientName || currentPatient.name || '',
             patientDob: patient.patientDob || currentPatient.dob || '',
@@ -175,7 +184,7 @@ async function saveCurrentVisitNotes() {
             expiresAt: visitNoteExpiresAt(now),
             consultText: '',
             procedureText: '',
-            fileName: visitNoteFileName(chartId, visitDate),
+            fileName: visitNoteFileName(),
             owner: (typeof vaultAuth !== 'undefined' && vaultAuth.username) || ''
         };
     }
@@ -199,6 +208,11 @@ function scheduleVisitNoteSave() {
     visitNoteSaveTimer = setTimeout(() => {
         saveCurrentVisitNotes().catch((err) => {
             console.warn('Could not autosave visit notes', err);
+            if (typeof toastVaultWriteError === 'function') {
+                toastVaultWriteError('Visit notes could not be saved to the clinic folder. Check folder access.');
+            } else if (typeof showToast === 'function') {
+                showToast('Visit notes could not be saved to the clinic folder. Check folder access.');
+            }
         });
     }, 1200);
 }
@@ -231,9 +245,10 @@ function renderSavedVisitNoteCard(note) {
         ? formatLesionWhen(note.updatedAt || note.createdAt)
         : (note.updatedAt || '');
     const days = visitNoteDaysLeft(note);
-    const id = String(note.id || '').replace(/'/g, '');
+    const id = String(note.id || '');
     const hasConsult = consultNoteIsSavable(note.consultText);
     const hasProc = procedureNoteIsSavable(note.procedureText);
+    const idAttr = escapeHtml(id);
     return `
         <article class="p-4 space-y-2">
             <div class="flex flex-wrap justify-between gap-2">
@@ -248,9 +263,9 @@ function renderSavedVisitNoteCard(note) {
                 </div>
             </div>
             <div class="flex flex-wrap gap-1.5">
-                <button type="button" onclick="openSavedVisitNote('${id}')" class="mgmt-action-btn">View</button>
-                ${hasConsult ? `<button type="button" onclick="copySavedVisitNote('${id}', 'consult')" class="mgmt-action-btn mgmt-action-btn-primary">Copy consult</button>` : ''}
-                ${hasProc ? `<button type="button" onclick="copySavedVisitNote('${id}', 'procedure')" class="mgmt-action-btn">Copy procedure</button>` : ''}
+                <button type="button" data-note-action="open" data-note-id="${idAttr}" class="mgmt-action-btn">View</button>
+                ${hasConsult ? `<button type="button" data-note-action="copy-consult" data-note-id="${idAttr}" class="mgmt-action-btn mgmt-action-btn-primary">Copy consult</button>` : ''}
+                ${hasProc ? `<button type="button" data-note-action="copy-procedure" data-note-id="${idAttr}" class="mgmt-action-btn">Copy procedure</button>` : ''}
             </div>
         </article>`;
 }

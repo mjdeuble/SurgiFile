@@ -72,6 +72,19 @@ function findActiveProcedureChart() {
     return charts.find((chart) => isStoredProcedureSessionActive(chart.procedureSession)) || null;
 }
 
+function catchProcedureVaultWrite(promise, kind) {
+    const message = kind === 'lesion'
+        ? 'Procedure lesion could not be saved to the clinic folder. Check folder access.'
+        : 'Procedure session could not be saved to the clinic folder. Check folder access.';
+    return Promise.resolve(promise).catch((err) => {
+        if (typeof warnVaultWriteFailure === 'function') warnVaultWriteFailure(err, message);
+        else {
+            console.warn(message, err);
+            if (typeof showToast === 'function') showToast(message);
+        }
+    });
+}
+
 async function persistProcedureSessionToChart() {
     if (typeof hasCurrentPatient === 'function' && !hasCurrentPatient()) return;
     if (typeof saveCurrentChartFromDom === 'function') {
@@ -169,7 +182,7 @@ function isSameDayBiopsy(lesion) {
     if (!lesion || (typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : lesion.procedureCompletedAt)) return false;
     if (typeof isDiagnosticBiopsyType === 'function' && !isDiagnosticBiopsyType(lesion)) return false;
     const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : (lesion.managementStatus || '');
-    if (status === 'no_followup' || status === 'topical_followup' || status === 'awaiting_histology') return false;
+    if (typeof isInactiveForProcedureStatus === 'function' ? isInactiveForProcedureStatus(status) : (status === 'no_followup' || status === 'topical_followup' || status === 'awaiting_histology')) return false;
     if (typeof isVisitLesion === 'function' && isVisitLesion(lesion.id)) return true;
     return typeof isLesionCreatedToday === 'function' && isLesionCreatedToday(lesion);
 }
@@ -178,33 +191,44 @@ function isShaveProcedureCandidate(lesion) {
     if (!lesion || (typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : lesion.procedureCompletedAt)) return false;
     if (typeof lesionType === 'function' ? lesionType(lesion) !== 'shave' : !(typeof isShaveBiopsyLesion === 'function' && isShaveBiopsyLesion(lesion))) return false;
     const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : (lesion.managementStatus || '');
-    if (status === 'no_followup' || status === 'topical_followup' || status === 'awaiting_histology') return false;
+    if (typeof isInactiveForProcedureStatus === 'function' ? isInactiveForProcedureStatus(status) : (status === 'no_followup' || status === 'topical_followup' || status === 'awaiting_histology')) return false;
     return true;
 }
 
 function isFormalExcisionCandidate(lesion) {
     if (!lesion || (typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : lesion.procedureCompletedAt)) return false;
     const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : (lesion.managementStatus || '');
-    if (status === 'no_followup' || status === 'topical_followup' || status === 'awaiting_histology') return false;
+    if (typeof isInactiveForProcedureStatus === 'function' ? isInactiveForProcedureStatus(status) : (status === 'no_followup' || status === 'topical_followup' || status === 'awaiting_histology')) return false;
     if (typeof lesionType === 'function' && lesionType(lesion) === 'excision') return true;
     return String(lesion.plan || '').includes('Excision');
 }
 
 function offerLesionToProcedureSession(lesion) {
     if (!lesion) return;
-    if (procedureSession.chartId !== (currentPatient.chartId || '')) return;
+    if (typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(lesion)) return;
+    if (typeof hasCurrentPatient === 'function' && !hasCurrentPatient()) return;
+    const chartId = currentPatient.chartId || '';
+    if (!procedureSession.chartId) procedureSession.chartId = chartId;
+    if (chartId && procedureSession.chartId !== chartId) {
+        if (procedureSession.started) return;
+        procedureSession.chartId = chartId;
+    }
     const id = String(lesion.id);
-    const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : (lesion.managementStatus || '');
-    const t = typeof lesionType === 'function' ? lesionType(lesion) : '';
-    const isPlanned = t === 'punch' || t === 'shave' || t === 'excision'
-        || status === 'planned_procedure' || status === 'current_case'
-        || isShaveProcedureCandidate(lesion) || isFormalExcisionCandidate(lesion) || isSameDayBiopsy(lesion);
+    const isPlanned = typeof lesionIsOpenForProcedure === 'function'
+        ? lesionIsOpenForProcedure(lesion)
+        : (() => {
+            const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : (lesion.managementStatus || '');
+            const t = typeof lesionType === 'function' ? lesionType(lesion) : '';
+            return t === 'punch' || t === 'shave' || t === 'excision'
+                || status === 'planned_procedure' || status === 'current_case'
+                || isShaveProcedureCandidate(lesion) || isFormalExcisionCandidate(lesion) || isSameDayBiopsy(lesion);
+        })();
     if (isPlanned && !isProcedureDeselected(id) && !isProcedureSelected(id)) {
         procedureSession.selectedIds.push(id);
     }
     if (typeof renderProcedureWorkspace === 'function') renderProcedureWorkspace();
     if (procedureSession.started && typeof persistProcedureSessionToChart === 'function') {
-        persistProcedureSessionToChart().catch(() => {});
+        catchProcedureVaultWrite(persistProcedureSessionToChart());
     }
     if (procedureSession.started && typeof refreshProcedureCompleteOutputs === 'function') {
         refreshProcedureCompleteOutputs();
@@ -212,18 +236,39 @@ function offerLesionToProcedureSession(lesion) {
 }
 
 function procedureCandidateLesions() {
-    if (typeof chartLesions !== 'function' || !hasCurrentPatient()) return [];
-    return chartLesions().filter((item) => {
-        if (typeof lesionProcedureDone === 'function' ? lesionProcedureDone(item) : item.procedureCompletedAt) return false;
-        const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(item) : (item.managementStatus || '');
-        if (status === 'no_followup' || status === 'topical_followup' || status === 'awaiting_assessment' || status === 'awaiting_histology') {
-            return false;
+    if (!hasCurrentPatient()) return [];
+    const seen = new Set();
+    const out = [];
+    const add = (item) => {
+        if (!item?.id) return;
+        const id = String(item.id);
+        if (seen.has(id)) return;
+        if (typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(item)) return;
+        if (typeof lesionIsOpenForProcedure === 'function') {
+            if (!lesionIsOpenForProcedure(item)) return;
+        } else {
+            if (typeof lesionProcedureDone === 'function' ? lesionProcedureDone(item) : item.procedureCompletedAt) return;
+            const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(item) : (item.managementStatus || '');
+            if (status === 'awaiting_assessment' || (typeof isInactiveForProcedureStatus === 'function' ? isInactiveForProcedureStatus(status) : (status === 'no_followup' || status === 'topical_followup' || status === 'awaiting_histology'))) {
+                return;
+            }
+            const t = typeof lesionType === 'function' ? lesionType(item) : '';
+            if (!(t === 'punch' || t === 'shave' || t === 'excision'
+                || status === 'planned_procedure' || status === 'current_case'
+                || isSameDayBiopsy(item) || isFormalExcisionCandidate(item) || isShaveProcedureCandidate(item))) {
+                return;
+            }
         }
-        const t = typeof lesionType === 'function' ? lesionType(item) : '';
-        return t === 'punch' || t === 'shave' || t === 'excision'
-            || status === 'planned_procedure' || status === 'current_case'
-            || isSameDayBiopsy(item) || isFormalExcisionCandidate(item) || isShaveProcedureCandidate(item);
+        seen.add(id);
+        out.push(item);
+    };
+    if (typeof chartLesions === 'function') chartLesions().forEach(add);
+    if (typeof lesionsForCurrentChart === 'function') lesionsForCurrentChart().forEach(add);
+    (Array.isArray(lesions) ? lesions : []).forEach(add);
+    (typeof managedLesions !== 'undefined' ? managedLesions : []).forEach((item) => {
+        if (typeof lesionBelongsToOpenChart === 'function' && lesionBelongsToOpenChart(item)) add(item);
     });
+    return out;
 }
 
 function procedureSelectedLesions() {
@@ -263,7 +308,7 @@ function toggleProcedureAllocation(id, checked) {
     }
     renderProcedureWorkspace();
     if (procedureSession.started && typeof persistProcedureSessionToChart === 'function') {
-        persistProcedureSessionToChart().catch(() => {});
+        catchProcedureVaultWrite(persistProcedureSessionToChart());
     }
 }
 
@@ -704,9 +749,18 @@ function loadProcedureLesionIntoForm(lesion) {
     if (typeof checkExFormCompleteness === 'function') checkExFormCompleteness();
 }
 
+function findProcedureWorkspaceLesion(id) {
+    if (!id) return null;
+    const fromChart = (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(id));
+    if (fromChart) return fromChart;
+    const fromCandidates = procedureCandidateLesions().find((item) => String(item.id) === String(id));
+    if (fromCandidates) return fromCandidates;
+    return typeof findLesionRecordById === 'function' ? findLesionRecordById(id) : null;
+}
+
 function openProcedureLesionDetail(id) {
     ensureProcedureSession();
-    const lesion = (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(id));
+    const lesion = findProcedureWorkspaceLesion(id);
     if (!lesion) return;
     procedureSession.detailLesionId = String(id);
     loadProcedureLesionIntoForm(lesion);
@@ -716,7 +770,7 @@ function openProcedureLesionDetail(id) {
 
 function syncProcedureFormToChart(id) {
     if (!id) return;
-    let lesion = (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(id));
+    let lesion = findProcedureWorkspaceLesion(id);
     if (!lesion) return;
     const detail = collectProcedureDetailFromForm();
     lesion.procedureDetail = detail;
@@ -773,7 +827,7 @@ function syncProcedureFormToChart(id) {
     const managedIdx = managedLesions.findIndex((item) => String(item.id) === String(id));
     if (managedIdx !== -1) managedLesions[managedIdx] = { ...managedLesions[managedIdx], ...lesion };
     if (typeof persistSessionLesionToVault === 'function') {
-        persistSessionLesionToVault(lesion).catch(() => {});
+        catchProcedureVaultWrite(persistSessionLesionToVault(lesion), 'lesion');
     }
 }
 
@@ -942,7 +996,7 @@ async function abortProcedureLesion(id) {
     renderProcedureWorkspace();
     refreshProcedureCompleteOutputs();
     if (typeof persistProcedureSessionToChart === 'function') {
-        persistProcedureSessionToChart().catch(() => {});
+        catchProcedureVaultWrite(persistProcedureSessionToChart());
     }
 }
 
@@ -1096,7 +1150,7 @@ function commitProcedureLesion(lesion) {
     else if (typeof lesions !== 'undefined') lesions.push({ ...lesion });
     const managedIdx = (typeof managedLesions !== 'undefined' ? managedLesions : []).findIndex((item) => String(item.id) === id);
     if (managedIdx !== -1) managedLesions[managedIdx] = { ...managedLesions[managedIdx], ...lesion };
-    if (typeof persistSessionLesionToVault === 'function') persistSessionLesionToVault(lesion).catch(() => {});
+    if (typeof persistSessionLesionToVault === 'function') catchProcedureVaultWrite(persistSessionLesionToVault(lesion), 'lesion');
 }
 
 function applyProcIntraOpAmend(id) {
@@ -1172,7 +1226,7 @@ function applyProcIntraOpAmend(id) {
     if (typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
     refreshProcedureCompleteOutputs();
     renderProcedureAbortList();
-    if (typeof persistProcedureSessionToChart === 'function') persistProcedureSessionToChart().catch(() => {});
+    if (typeof persistProcedureSessionToChart === 'function') catchProcedureVaultWrite(persistProcedureSessionToChart());
     showToast('Closure / sutures updated.');
 }
 
@@ -1283,7 +1337,7 @@ function startProcedureSession() {
     if (typeof updateOutput === 'function') updateOutput();
     renderProcedureWorkspace();
     if (typeof persistProcedureSessionToChart === 'function') {
-        persistProcedureSessionToChart().catch(() => {});
+        catchProcedureVaultWrite(persistProcedureSessionToChart());
     }
     openProcedureCompleteModal();
 }
@@ -1364,12 +1418,6 @@ function refreshProcedureCompleteOutputs(options) {
     if (limitNote) {
         limitNote.classList.toggle('hidden', !data.requiresAttachment);
     }
-    const printHint = document.getElementById('procHistoPrintHint');
-    if (printHint) {
-        printHint.textContent = data.requiresAttachment
-            ? 'The request is too long for the pathology pad. Copy the short pad line, then print the attached report and staple it to the slip.'
-            : 'Short enough for the pathology pad. Copy onto the pad.';
-    }
     const printBtn = document.getElementById('btnProcPrintHisto');
     if (printBtn) {
         printBtn.classList.toggle('hidden', !data.requiresAttachment);
@@ -1385,17 +1433,6 @@ function refreshProcedureCompleteOutputs(options) {
             : 'px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg cursor-pointer';
     }
     refreshProcedureBillingPanel();
-    const recPreview = document.getElementById('procReceptionPreview');
-    const recText = typeof generateReceptionMessage === 'function' ? generateReceptionMessage() : '';
-    if (recPreview) recPreview.value = recText;
-    const recCopied = outputCopyState.rec.copied && outputCopyState.rec.lastCopiedText === recText;
-    const recBtn = document.getElementById('btnProcCopyRec');
-    if (recBtn) {
-        recBtn.textContent = recCopied ? 'Reception message copied' : 'Copy message to reception';
-        recBtn.className = recCopied
-            ? 'px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer'
-            : 'px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg cursor-pointer';
-    }
 }
 
 function procedureRosLine(lesion) {
@@ -1584,7 +1621,7 @@ async function endProcedureSession() {
         closeProcedureCompleteModal();
         renderProcedureWorkspace();
         if (typeof persistProcedureSessionToChart === 'function') {
-            persistProcedureSessionToChart().catch(() => {});
+            catchProcedureVaultWrite(persistProcedureSessionToChart());
         }
         return;
     }
@@ -1634,16 +1671,17 @@ async function endProcedureSession() {
             }
         } catch (err) {
             lesion.managementStatus = 'awaiting_histology';
+            if (typeof warnVaultWriteFailure === 'function') {
+                warnVaultWriteFailure(err, 'Procedure lesion could not be saved to the clinic folder. Check folder access.');
+            } else {
+                console.warn('Procedure lesion persist failed', err);
+            }
             if (typeof createOrUpdateBillingFromLesion === 'function') {
                 try { await createOrUpdateBillingFromLesion(lesion); } catch (billErr) { /* in-memory billing still attempted */ }
             }
         }
     }
     const finishedLesions = ids.map((id) => managedLesions.find((item) => String(item.id) === String(id))).filter(Boolean);
-    let billedSameDay = null;
-    if (typeof confirmSameDaySessionBilling === 'function') {
-        billedSameDay = await confirmSameDaySessionBilling(finishedLesions);
-    }
     procedureSession.started = false;
     procedureSession.completedAt = new Date().toISOString();
     procedureSession.selectedIds = [];
@@ -1652,16 +1690,12 @@ async function endProcedureSession() {
     const billed = typeof procedureSessionBillingSummary === 'function'
         ? procedureSessionBillingSummary(finishedLesions)
         : null;
-    if (billedSameDay?.confirmed) {
-        showToast('Procedure finished. Billing marked billed: ' + billedSameDay.codes.join(' · '));
-    } else if (billed?.allProcess) {
-        showToast('Procedure finished. Billing is OK to enter in Best Practice now.');
-    } else if (billed?.allHold) {
-        showToast('Procedure finished. Ask reception to HOLD billing until histology is back.');
-    } else if (billed?.mixed) {
-        showToast('Procedure finished. Ask reception to HOLD billing for the whole session.');
+    if (billed?.allReady) {
+        showToast('Procedure finished. Copy item numbers and mark billing processed when you finalise the visit.');
+    } else if (billed?.allHold || billed?.mixed) {
+        showToast('Procedure finished. Hold billing when you finalise the visit.');
     } else {
-        showToast('Procedure finished. Lesions moved to awaiting histology for results, billing, and management planning.');
+        showToast('Procedure finished. Copy IEMR, reception, and billing when you finalise the visit.');
     }
     if (typeof renderLesionsTable === 'function') renderLesionsTable();
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
@@ -1672,7 +1706,7 @@ async function endProcedureSession() {
         saveCurrentVisitNotes().catch(() => { /* snapshot is best-effort */ });
     }
     if (typeof persistProcedureSessionToChart === 'function') {
-        persistProcedureSessionToChart().catch(() => {});
+        catchProcedureVaultWrite(persistProcedureSessionToChart());
     }
     renderProcedureWorkspace();
 }
@@ -1691,7 +1725,7 @@ function renderProcedureWorkspace() {
 
     if (hint) {
         if (procedureSession.started) {
-            hint.textContent = 'Procedure started. In Finish: change sutures, record a site event, or return a lesion to planned. Vasovagal belongs under Episode.';
+            hint.textContent = 'Procedure started. Finish: sutures, site event, histology pad, and advice. IEMR, reception, and billing are at Finalise visit.';
         } else if (!selected.length) {
             hint.textContent = 'Tick the lesions for this procedure. Planned punch, shave, and excision start selected; untick any you are not doing now.';
         } else if (detailsIncomplete.length) {
@@ -1699,7 +1733,7 @@ function renderProcedureWorkspace() {
         } else if (missingConsent.length) {
             hint.textContent = 'Purple lesions still need consent. Open Surgical Consent, generate for those sites, then start.';
         } else {
-            hint.textContent = 'Selected lesions are ready. Start procedure to record events, change sutures if needed, and copy outputs.';
+            hint.textContent = 'Selected lesions are ready. Start procedure to record events and change sutures if needed. Copy IEMR, reception, and billing at Finalise visit.';
         }
     }
     if (btn) {
@@ -1708,7 +1742,7 @@ function renderProcedureWorkspace() {
             btn.disabled = false;
             btn.className = 'px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg cursor-pointer';
             btn.setAttribute('aria-pressed', 'true');
-            btn.title = 'Open Finish procedure to change sutures, record events, and copy notes';
+            btn.title = 'Open Finish procedure to change sutures and record events. IEMR, reception, and billing are at Finalise visit.';
         } else {
             const ready = canStartProcedure();
             btn.textContent = 'Start procedure';

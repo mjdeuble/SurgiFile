@@ -149,10 +149,18 @@ function smsNormalResultsConsentIsSet() {
     return smsNormalResultsConsent === 'yes' || smsNormalResultsConsent === 'no';
 }
 
-function smsNormalResultsConsentLabel() {
-    if (smsNormalResultsConsent === 'yes') return 'Yes — happy to receive normal results by text';
-    if (smsNormalResultsConsent === 'no') return 'No — do not send normal results by text';
+function smsNormalResultsConsentLabelFor(value, options) {
+    const v = typeof normalizeSmsNormalResultsConsent === 'function'
+        ? normalizeSmsNormalResultsConsent(value)
+        : String(value || '').trim().toLowerCase();
+    const short = !!(options && options.short);
+    if (v === 'yes') return short ? 'Text OK for normal results' : 'Yes — happy to receive normal results by text';
+    if (v === 'no') return short ? 'Do not text results' : 'No — do not send normal results by text';
     return '';
+}
+
+function smsNormalResultsConsentLabel() {
+    return smsNormalResultsConsentLabelFor(smsNormalResultsConsent);
 }
 
 function updateSmsNormalResultsButtons() {
@@ -335,7 +343,7 @@ function renderPatientConcerns() {
 
     list.innerHTML = patientConcerns.map((c, i) => `
         <div class="flex justify-between items-center p-2 rounded bg-blue-50 border border-blue-200 text-xs">
-            <span class="font-semibold text-blue-900">• ${c}</span>
+            <span class="font-semibold text-blue-900">• ${typeof escapeHtml === 'function' ? escapeHtml(c) : c}</span>
             <button onclick="removeConcern(${i})" class="text-red-500 hover:text-red-700 font-bold cursor-pointer">&times;</button>
         </div>
     `).join('');
@@ -569,7 +577,7 @@ function openLesionModal(lesionId = null) {
         document.getElementById('lesionLocation').value = '';
         document.getElementById('lesionMacroscopic').value = '';
         document.getElementById('lesionDermoscopy').value = '';
-        applyExamImpressionValue('BCC');
+        applyExamImpressionValue('');
         document.getElementById('lesionPlan').value = 'Awaiting Assessment';
         const examLen = document.getElementById('examLesionLength');
         const examWid = document.getElementById('examLesionWidth');
@@ -614,7 +622,7 @@ function handleExamDiagnosisChange() {
 
 function applyExamImpressionValue(raw) {
     const t = String(raw || '').trim();
-    const next = (!t || t === 'Pending Assessment') ? 'BCC' : t;
+    const next = (!t || /^pending assessment$/i.test(t)) ? '' : t;
     if (typeof setDiagnosisTypeahead === 'function') {
         setDiagnosisTypeahead('lesionImpression', next);
         return;
@@ -856,7 +864,9 @@ function deleteLesion(id) {
 function renderLesionsTable() {
     const tbody = document.getElementById('lesionsTableBody');
     if (!tbody) return;
-    const rows = typeof chartLesions === 'function' ? chartLesions() : lesions;
+    const rows = typeof clinicalChartLesions === 'function'
+        ? clinicalChartLesions()
+        : (typeof chartLesions === 'function' ? chartLesions() : lesions);
 
     if (rows.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400 italic">No lesions on this chart yet. Click "+ Add Lesion" to record a spot.</td></tr>`;
@@ -874,11 +884,11 @@ function renderLesionsTable() {
             <td class="p-3"><span class="text-[11px] font-semibold text-blue-800">${escapeHtml(status)}</span>${l.currentPlan ? `<div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(l.currentPlan)}</div>` : ''}${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(l) ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(l)))}</span>` : ''}</td>
             <td class="p-3">
                         <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${(l.plan || '').includes('Biopsy') ? 'bg-blue-100 text-blue-800' : (l.plan || '').includes('Excision') ? 'bg-purple-100 text-purple-800' : isTopicalPlan(l.plan) ? 'bg-teal-100 text-teal-800' : (l.plan || '').includes('Awaiting') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'}">
-                            ${isTopicalPlan(l.plan)
+                            ${escapeHtml(isTopicalPlan(l.plan)
                                 ? formatTopicalTableBadge(l)
                                 : (l.priorLesionId
                                     ? 'Re-excision'
-                                    : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`)}
+                                    : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`))}
                         </span>
             </td>
             <td class="p-3 text-right space-x-2">

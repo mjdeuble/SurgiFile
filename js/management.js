@@ -3,15 +3,49 @@
 let mgmtActiveFilter = 'open';
 
 function initManagementModule() {
+    bindSavedVaultQueueClicks();
+    bindProcessBillingClaimChips();
     renderManagedLesions();
     updateCurrentCaseBanner();
     if (typeof updateChartChrome === 'function') updateChartChrome();
 }
 
+function bindProcessBillingClaimChips() {
+    const wrap = document.getElementById('processBillingClaimChips');
+    if (!wrap || wrap.dataset.claimChipsBound === '1') return;
+    wrap.dataset.claimChipsBound = '1';
+    wrap.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-claim-code]');
+        if (!btn || !wrap.contains(btn)) return;
+        removeProcessBillingClaimCode(btn.getAttribute('data-claim-code') || '');
+    });
+}
+
+function bindSavedVaultQueueClicks() {
+    const board = document.getElementById('mgmtBoard');
+    if (!board || board.dataset.vaultQueueBound === '1') return;
+    board.dataset.vaultQueueBound = '1';
+    board.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-note-action],[data-consent-action]');
+        if (!btn || !board.contains(btn)) return;
+        const noteAction = btn.getAttribute('data-note-action') || '';
+        const consentAction = btn.getAttribute('data-consent-action') || '';
+        const noteId = btn.getAttribute('data-note-id') || '';
+        const consentId = btn.getAttribute('data-consent-id') || '';
+        if (noteAction === 'open' && typeof openSavedVisitNote === 'function') openSavedVisitNote(noteId);
+        else if (noteAction === 'copy-consult' && typeof copySavedVisitNote === 'function') copySavedVisitNote(noteId, 'consult');
+        else if (noteAction === 'copy-procedure' && typeof copySavedVisitNote === 'function') copySavedVisitNote(noteId, 'procedure');
+        else if (consentAction === 'open' && typeof openSavedConsentDoc === 'function') openSavedConsentDoc(consentId);
+        else if (consentAction === 'copy' && typeof copySavedConsentDoc === 'function') copySavedConsentDoc(consentId);
+        else if (consentAction === 'print' && typeof printSavedConsentDoc === 'function') printSavedConsentDoc(consentId);
+    });
+}
+
 function lesionsForCurrentChart() {
     if (!hasCurrentPatient()) return managedLesions;
-    const id = currentPatient.chartId;
-    return managedLesions.filter((item) => lesionChartId(item) === id);
+    return managedLesions.filter((item) => (typeof lesionBelongsToOpenChart === 'function'
+        ? lesionBelongsToOpenChart(item)
+        : lesionChartId(item) === currentPatient.chartId));
 }
 
 function adminLesions() {
@@ -36,6 +70,7 @@ function managedLesionsByStatus(status) {
 }
 
 function lesionMatchesFilter(lesion, filter) {
+    if (typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(lesion)) return false;
     const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus;
     if (filter === 'open' || filter === 'active') {
         return typeof isActiveManagementStatus === 'function'
@@ -64,10 +99,12 @@ function renderPatientChartSummary() {
     }
     wrap.classList.remove('hidden');
 
-    const items = typeof adminLesions === 'function' ? adminLesions() : [];
+    const items = (typeof adminLesions === 'function' ? adminLesions() : []).filter((item) => !(typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(item)));
     const bills = typeof adminBillings === 'function' ? adminBillings() : [];
     const planned = items.filter((item) => (typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(item) : item.managementStatus) === 'planned_procedure');
     const awaitingHisto = items.filter((item) => (typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(item) : item.managementStatus) === 'awaiting_histology');
+    const needsContact = items.filter((item) => (typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(item) : item.managementStatus) === 'needs_contact');
+    const apptRequested = items.filter((item) => (typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(item) : item.managementStatus) === 'appointment_requested');
     const awaitingBill = bills.filter((item) => item.status === 'awaiting' || !item.status);
     const confirmedBill = bills.filter((item) => item.status === 'confirmed');
 
@@ -134,6 +171,9 @@ function renderPatientChartSummary() {
                     <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Patient summary</p>
                     <p class="text-sm font-bold text-slate-900 mt-0.5">${esc(currentPatient.name || '')}</p>
                     <p class="text-[11px] text-slate-600">${esc([currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · '))}</p>
+                    ${typeof formatScratchpadExpiry === 'function' && formatScratchpadExpiry(currentPatient.chartId)
+                        ? `<p class="text-[11px] text-amber-800 mt-1">No open lesions or billing. Kept 14 days, then deleted (${esc(formatScratchpadExpiry(currentPatient.chartId))}). Official record is Best Practice.</p>`
+                        : ''}
                 </div>
                 <div class="mgmt-summary-recall ${recallReady && recallInterval ? 'is-ready' : 'is-pending'}">
                     <p class="text-[10px] font-bold uppercase tracking-wider">${recallReady && recallInterval ? 'Recommended review' : 'Review interval'}</p>
@@ -153,12 +193,36 @@ function renderPatientChartSummary() {
             <div class="mgmt-summary-queues">
                 ${queueBlock('Awaiting procedure', planned, 'No planned procedures.', 'planned_procedure')}
                 ${queueBlock('Awaiting histology', awaitingHisto, 'No lesions awaiting results.', 'awaiting_histology')}
+                ${queueBlock('Needs contact', needsContact, 'No patients waiting for a result call.', 'needs_contact')}
+                ${queueBlock('Appointment requested', apptRequested, 'No result discussions to book.', 'appointment_requested')}
                 ${billingBlock}
             </div>
         </div>`;
 }
 
 function renderManagedLesions() {
+    const billsNeedPrune = !renderManagedLesions._pruning
+        && typeof billingIsProcessedExpired === 'function'
+        && typeof pruneExpiredProcessedBillings === 'function'
+        && (typeof managedBillings !== 'undefined' ? managedBillings : []).some(billingIsProcessedExpired);
+    const chartsNeedPrune = !renderManagedLesions._pruning
+        && typeof scratchpadChartIsExpired === 'function'
+        && typeof pruneExpiredIdleCharts === 'function'
+        && typeof collectScratchpadChartIds === 'function'
+        && collectScratchpadChartIds().some((id) => scratchpadChartIsExpired(id));
+    if (billsNeedPrune || chartsNeedPrune) {
+        renderManagedLesions._pruning = true;
+        Promise.resolve()
+            .then(() => (billsNeedPrune ? pruneExpiredProcessedBillings() : 0))
+            .then(() => (chartsNeedPrune ? pruneExpiredIdleCharts() : 0))
+            .then(() => {
+                renderManagedLesions._pruning = false;
+                renderManagedLesions();
+            })
+            .catch(() => {
+                renderManagedLesions._pruning = false;
+            });
+    }
     const root = document.getElementById('mgmtBoard');
     const empty = document.getElementById('mgmtEmptyState');
     const counts = document.getElementById('mgmtCounts');
@@ -172,7 +236,12 @@ function renderManagedLesions() {
 
     const chart = adminLesions();
     const bills = adminBillings();
-    const open = chart.filter((item) => (typeof isActiveManagementStatus === 'function' ? isActiveManagementStatus(item.managementStatus) : ACTIVE_MANAGEMENT_STATUSES.includes(item.managementStatus))).length;
+    const open = chart.filter((item) => {
+        if (typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(item)) return false;
+        return typeof isActiveManagementStatus === 'function'
+            ? isActiveManagementStatus(item.managementStatus)
+            : ACTIVE_MANAGEMENT_STATUSES.includes(item.managementStatus);
+    }).length;
     const awaitingBill = bills.filter((item) => item.status === 'awaiting' || !item.status).length;
     const confirmedBill = bills.filter((item) => item.status === 'confirmed').length;
     const processedBill = bills.filter((item) => item.status === 'processed').length;
@@ -224,6 +293,8 @@ function renderManagedLesions() {
 
 function renderOpenLesionBoard(items) {
     const groups = [
+        { title: 'Needs contact', match: (item) => lesionLifecycleStatus(item) === 'needs_contact' },
+        { title: 'Appointment requested', match: (item) => lesionLifecycleStatus(item) === 'appointment_requested' },
         { title: 'Awaiting results', match: (item) => lesionLifecycleStatus(item) === 'awaiting_histology' },
         { title: 'Planned procedure', match: (item) => lesionLifecycleStatus(item) === 'planned_procedure' },
         { title: 'Current case', match: (item) => lesionLifecycleStatus(item) === 'current_case' },
@@ -254,8 +325,48 @@ function renderNamedStatusColumn(title, items) {
 function renderStatusColumn(status, items) {
     const title = (status === 'planned_excision' || status === 'planned_procedure')
         ? 'Planned procedure'
-        : status === 'awaiting_histology' ? 'Awaiting results' : (LESION_STATUSES[status] || status);
+        : status === 'awaiting_histology' ? 'Awaiting results'
+        : status === 'needs_contact' ? 'Needs contact'
+        : status === 'appointment_requested' ? 'Appointment requested'
+        : (LESION_STATUSES[status] || status);
     return renderNamedStatusColumn(title, items);
+}
+
+function phoneTelHref(phone) {
+    const digits = String(phone || '').trim().replace(/[^\d+]/g, '');
+    return digits ? 'tel:' + digits : '';
+}
+
+function lesionPatientContactInnerHtml(lesion) {
+    const details = typeof patientContactForLesion === 'function'
+        ? patientContactForLesion(lesion)
+        : { phone: '', sms: '', smsLabel: '' };
+    const parts = [];
+    if (details.phone) {
+        const href = phoneTelHref(details.phone);
+        const number = `<span class="font-semibold text-slate-800 select-all">${escapeHtml(details.phone)}</span>`;
+        parts.push(href
+            ? `<a href="${escapeHtml(href)}" class="lesion-contact-phone" onclick="event.stopPropagation()">${number}</a>`
+            : number);
+    }
+    if (details.smsLabel) {
+        const cls = details.sms === 'yes' ? 'text-emerald-800' : 'text-slate-800';
+        parts.push(`<span class="${cls} font-semibold">${escapeHtml(details.smsLabel)}</span>`);
+    }
+    if (!parts.length) return '';
+    return parts.join('<span class="text-slate-400"> · </span>');
+}
+
+function renderLesionPatientContactHtml(lesion) {
+    const inner = lesionPatientContactInnerHtml(lesion);
+    return inner ? `<p class="lesion-contact-line">${inner}</p>` : '';
+}
+
+function fillLesionPatientContactEl(el, lesion) {
+    if (!el) return;
+    const inner = lesionPatientContactInnerHtml(lesion);
+    el.innerHTML = inner;
+    el.classList.toggle('hidden', !inner);
 }
 
 function renderManagedLesionCard(lesion) {
@@ -272,6 +383,7 @@ function renderManagedLesionCard(lesion) {
     const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
     const billLabel = bill ? billingStatusLabel(bill) : '';
     const safeId = String(lesion.id || '').replace(/'/g, '');
+    const contactHtml = renderLesionPatientContactHtml(lesion);
     const nameHtml = canFocus
         ? `<button type="button" onclick="openChartFromLesion('${safeId}')" class="text-left min-w-0 cursor-pointer group">
                 <span class="text-sm font-semibold text-slate-800 truncate group-hover:text-blue-700">${escapeHtml(patient)}</span>${hasCurrentPatient() ? '' : ' <span class="text-[10px] font-semibold text-blue-700">Open chart</span>'}
@@ -283,6 +395,7 @@ function renderManagedLesionCard(lesion) {
                 <div class="min-w-0">
                     ${nameHtml}
                     <p class="text-xs text-slate-600">${escapeHtml(lesion.location || 'No site')} · ${escapeHtml(lesion.impression || '')}</p>
+                    ${contactHtml}
                 </div>
                 <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(formatLesionWhen(lesion.updatedAt))}</span>
             </div>
@@ -305,14 +418,21 @@ function renderManagedLesionCard(lesion) {
 }
 
 function canUpdateResult(lesion) {
-    return lesionLifecycleStatus(lesion) === 'awaiting_histology' || !!lesion.procedureCompletedAt || !!lesion.histologyResult;
+    const status = lesionLifecycleStatus(lesion);
+    return status === 'awaiting_histology' || status === 'needs_contact' || status === 'appointment_requested'
+        || !!lesion.procedureCompletedAt || !!lesion.histologyResult;
 }
 
 function canAssignExcision(lesion) {
-    if (lesionLifecycleStatus(lesion) === 'awaiting_histology') {
-        return typeof isLesionBillingProcessed === 'function' && isLesionBillingProcessed(lesion.id);
+    const status = lesionLifecycleStatus(lesion);
+    if (status === 'needs_contact' || status === 'appointment_requested') return false;
+    if (lesion.resultAdvisedAt && lesion.resultPlan === 'plan_excision' && typeof findLinkedReexcisionChild === 'function' && !findLinkedReexcisionChild(lesion.id)) {
+        return true;
     }
-    return ['awaiting_assessment', 'planned_procedure', 'topical_followup'].includes(lesionLifecycleStatus(lesion));
+    if (status === 'awaiting_histology') {
+        return !!(lesion.resultAdvisedAt && lesion.resultPlan === 'plan_excision');
+    }
+    return ['awaiting_assessment', 'planned_procedure', 'topical_followup'].includes(status);
 }
 
 function renderManagedLesionActions(lesion) {
@@ -320,7 +440,7 @@ function renderManagedLesionActions(lesion) {
     const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus;
     const type = typeof lesionType === 'function' ? lesionType(lesion) : '';
     const bill = typeof billingForLesion === 'function' ? billingForLesion(id) : null;
-    const billingDone = typeof billingHasBeenSent === 'function' ? billingHasBeenSent(bill) : bill?.status === 'confirmed' || bill?.status === 'processed';
+    const advised = !!lesion.resultAdvisedAt;
     const btns = [];
     btns.push(`<button type="button" onclick="openLesionCommsModal('${id}')" class="mgmt-action-btn">Log contact</button>`);
     if (canUpdateResult(lesion)) {
@@ -329,21 +449,23 @@ function renderManagedLesionActions(lesion) {
     if (bill && bill.status !== 'confirmed' && bill.status !== 'processed') {
         btns.push(`<button type="button" onclick="openProcessBillingModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Process billing</button>`);
     }
-    if (status === 'awaiting_histology') {
-        if (billingDone) {
+    if (status === 'needs_contact' || status === 'appointment_requested') {
+        if (advised && lesion.resultPlan === 'plan_excision' && !(typeof findLinkedReexcisionChild === 'function' && findLinkedReexcisionChild(lesion.id))) {
             btns.push(`<button type="button" onclick="openAssignExcisionModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Book re-excision</button>`);
-            btns.push(actionBtn(id, 'no_followup', 'No further action'));
-        } else {
-            btns.push(`<span class="text-[11px] text-amber-800">Billing must be confirmed before closing this lesion.</span>`);
+        }
+    } else if (status === 'awaiting_histology') {
+        if (advised && lesion.resultPlan === 'plan_excision' && !(typeof findLinkedReexcisionChild === 'function' && findLinkedReexcisionChild(lesion.id))) {
+            btns.push(`<button type="button" onclick="openAssignExcisionModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Book re-excision</button>`);
+            if (typeof lesionCanCloseNoFollowup === 'function' ? lesionCanCloseNoFollowup(lesion) : true) {
+                btns.push(actionBtn(id, 'no_followup', 'No further action'));
+            }
         }
     } else if (canAssignExcision(lesion)) {
         const isReexcisionChild = !!lesion.priorLesionId;
         const label = status === 'planned_procedure' && type === 'excision'
             ? (isReexcisionChild ? 'Update re-excision' : 'Update excision')
             : 'Assign excision';
-        const action = status === 'planned_procedure' && type === 'excision'
-            ? `openChartFromLesion('${id}')`
-            : `openAssignExcisionModal('${id}')`;
+        const action = `openAssignExcisionModal('${id}')`;
         btns.push(`<button type="button" onclick="${action}" class="mgmt-action-btn mgmt-action-btn-primary">${label}</button>`);
     }
     if (status === 'planned_procedure') {
@@ -441,6 +563,10 @@ async function openLesionForProcedure(id) {
         return;
     }
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('excision-generator');
+    if (typeof offerLesionToProcedureSession === 'function') {
+        const lesion = typeof findLesionRecordById === 'function' ? findLesionRecordById(id) : null;
+        if (lesion) offerLesionToProcedureSession(lesion);
+    }
     if (typeof openProcedureLesionDetail === 'function') openProcedureLesionDetail(id);
 }
 
@@ -500,6 +626,7 @@ function openLesionCommsModal(id) {
     if (summaryEl) {
         summaryEl.textContent = `${lesion.patientName || currentPatient?.name || ''} — ${lesion.location || 'site'} · ${lesion.impression || ''}`;
     }
+    fillLesionPatientContactEl(document.getElementById('lesionCommsContact'), lesion);
     if (planEl) planEl.textContent = lesion.currentPlan || 'No current plan recorded.';
     const events = typeof lesionTimelineNewestFirst === 'function' ? lesionTimelineNewestFirst(lesion) : [];
     if (listEl) {
@@ -550,6 +677,31 @@ async function submitLesionCommsModal() {
     if (newPlan) lesion.currentPlan = newPlan;
     await saveManagedLesionRecord(lesion, 'comms:' + type, note || planAfter);
     closeLesionCommsModal();
+    const advised = type === 'spoke' || type === 'result_advised' || outcome === 'spoke';
+    if (advised && typeof applyAdviceFromContact === 'function') {
+        const follow = await applyAdviceFromContact(lesion);
+        if (follow?.openExcision) {
+            showToast('Patient advised. Book the re-excision as a new linked procedure next.');
+            openExcisionProcedureModal(lesion.id);
+            if (typeof renderChartSidebar === 'function') renderChartSidebar();
+            return;
+        }
+        if (follow?.closed) {
+            showToast('Patient advised. No further action.');
+            if (typeof renderChartSidebar === 'function') renderChartSidebar();
+            return;
+        }
+        if (follow?.billingHold) {
+            showToast('Patient advised. Confirm billing before the lesion can leave the board.');
+            if (typeof renderChartSidebar === 'function') renderChartSidebar();
+            return;
+        }
+        if (follow?.needPlan) {
+            showToast('Patient advised. Record the plan in Update result.');
+            if (typeof renderChartSidebar === 'function') renderChartSidebar();
+            return;
+        }
+    }
     showToast('Communication saved.');
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
 }
@@ -599,7 +751,7 @@ function renderProcessedBillingQueue(items) {
             <header class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
                 <div>
                     <h3 class="text-sm font-bold text-slate-800">Processed billings</h3>
-                    <p class="text-[11px] text-slate-500 mt-0.5">Entered by the practice manager. Print again if you need a record.</p>
+                    <p class="text-[11px] text-slate-500 mt-0.5">Entered by the practice manager. Kept 14 days, then deleted. Print if you need a copy for Best Practice.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-1.5">
                     <span class="text-[11px] font-semibold text-slate-500">${items.length}</span>
@@ -639,6 +791,7 @@ function renderBillingQueueCard(view) {
             <div class="min-w-0">
                 <p class="text-sm font-semibold text-slate-800">${escapeHtml(view.patientName || '')}</p>
                 <p class="text-xs text-slate-600">${escapeHtml(view.location || '')} · ${escapeHtml(view.impression || '')}</p>
+                ${renderLesionPatientContactHtml(view)}
                 <p class="text-[11px] text-slate-500">${escapeHtml(billingCardMeta(view))}</p>
             </div>
             ${view.billWhen === 'hold' || (typeof lesionCanBillAtProcedure === 'function' && lesionCanBillAtProcedure(view).hold)
@@ -702,7 +855,7 @@ function renderProcessedBillingCard(lesion) {
                     <p class="text-xs text-slate-600">${escapeHtml(lesion.location || '')} · ${escapeHtml(lesion.impression || '')}</p>
                     <p class="text-[11px] text-slate-500">${escapeHtml(billingCardMeta(lesion))}${type ? ' · ' + escapeHtml(type) : ''}</p>
                 </div>
-                <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(formatLesionWhen(lesion.processedAt))}</span>
+                <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(formatLesionWhen(lesion.processedAt))}${typeof formatBillingProcessedExpiry === 'function' && formatBillingProcessedExpiry(lesion) ? ' · ' + escapeHtml(formatBillingProcessedExpiry(lesion)) : ''}</span>
             </div>
             <div class="flex flex-wrap items-center gap-1.5">${renderBillingCodeChips(codes)}</div>
             <div class="flex flex-wrap gap-1.5">
@@ -775,6 +928,15 @@ async function persistProcessedBilling(bill, codes, extra) {
         }
     }
     await saveManagedBillingRecord(bill, 'confirmed', codes);
+    if (lesion
+        && typeof lesionCanCloseNoFollowup === 'function'
+        && lesionCanCloseNoFollowup(lesion)
+        && lesion.resultPlan === 'no_followup'
+        && (lesion.resultAdvisedAt || lesion.contactState === 'file_no_call' || lesion.contactState === 'advised_now')
+        && (typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus) !== 'no_followup'
+        && typeof setManagedLesionStatus === 'function') {
+        await setManagedLesionStatus(lesion.id, 'no_followup', 'Billing confirmed', { currentPlan: 'No follow-up' });
+    }
     if (!silentToast) {
         showToast('Billing confirmed: ' + codes + '. Print for the practice manager from Billing.');
     }
@@ -849,7 +1011,7 @@ function renderProcessBillingClaimChips(codes) {
         return;
     }
     wrap.innerHTML = codes.map((code) =>
-        `<button type="button" class="billing-claim-chip" onclick="removeProcessBillingClaimCode('${escapeHtml(code)}')" title="Remove ${escapeHtml(code)}">${escapeHtml(code)}</button>`
+        `<button type="button" class="billing-claim-chip" data-claim-code="${escapeHtml(code)}" title="Remove ${escapeHtml(code)}">${escapeHtml(code)}</button>`
     ).join('');
 }
 
@@ -1067,8 +1229,8 @@ function refreshProcessBillingPreview() {
     const note = document.getElementById('processBillingGateNote');
     if (note) {
         note.textContent = claimCodesFromBox().length
-            ? 'Confirm to add this claim to Confirmed billings for the practice manager. You can then review management.'
-            : 'Accept or reject each suggested item. After billing is confirmed you can review management.';
+            ? 'Confirm to add this claim to Confirmed billings for the practice manager.'
+            : 'Accept or reject each suggested item. Confirm when the claim is ready.';
     }
     updateProcessBillingSendState();
 }
@@ -1132,6 +1294,7 @@ async function returnBillingToAwaiting(id) {
     bill.status = 'awaiting';
     bill.confirmedAt = '';
     bill.processedAt = '';
+    bill.expiresAt = '';
     await saveManagedBillingRecord(bill, 'returned', 'Returned to awaiting processing');
     showToast('Billing returned to awaiting processing. Management is locked until it is confirmed again.');
     renderManagedLesions();
@@ -1142,7 +1305,16 @@ async function returnBillingToConfirmed(id) {
     if (!bill || bill.status !== 'processed') return;
     bill.status = 'confirmed';
     bill.processedAt = '';
+    bill.expiresAt = '';
     if (!bill.confirmedAt) bill.confirmedAt = new Date().toISOString();
+    const lesion = managedLesions.find((item) => String(item.id) === String(bill.lesionId));
+    if (lesion) {
+        lesion.billingStatus = 'confirmed';
+        lesion.billingProcessedAt = '';
+        if (isVaultLoggedIn()) {
+            try { await saveManagedLesionRecord(lesion, 'billing:returned', 'Returned to confirmed', { silent: true }); } catch (err) { /* bill is source of truth */ }
+        }
+    }
     await saveManagedBillingRecord(bill, 'returned:confirmed', 'Returned to confirmed queue');
     showToast('Returned to confirmed billings.');
     renderManagedLesions();
@@ -1201,20 +1373,27 @@ async function processSelectedBilling() {
     await markBillingsAsProcessed(ids);
 }
 
-async function markBillingsAsProcessed(ids) {
+async function markBillingsAsProcessed(ids, extra) {
+    const silentToast = !!(extra && extra.silentToast);
     const list = (ids || []).map((id) => findManagedBilling(id)).filter((bill) => bill && bill.status === 'confirmed');
     if (!list.length) {
-        showToast('Select confirmed billings to mark processed.');
+        if (!silentToast) showToast('Select confirmed billings to mark processed.');
         return;
     }
     const now = new Date().toISOString();
     for (const bill of list) {
         bill.status = 'processed';
         bill.processedAt = now;
+        bill.expiresAt = typeof billingProcessedExpiresAt === 'function' ? billingProcessedExpiresAt(now) : '';
         if (!bill.confirmedAt) bill.confirmedAt = now;
         await saveManagedBillingRecord(bill, 'processed', bill.assignedMbsItems || '');
+        if (typeof stampLesionBillingProcessed === 'function') {
+            await stampLesionBillingProcessed(bill.lesionId, now);
+        }
     }
-    showToast(list.length === 1 ? 'Moved to processed billings.' : list.length + ' billings moved to processed.');
+    if (!silentToast) {
+        showToast(list.length === 1 ? 'Moved to processed billings.' : list.length + ' billings moved to processed.');
+    }
     renderManagedLesions();
 }
 
@@ -1446,26 +1625,110 @@ function syncHistologyBillingTypeFromResult() {
     const combined = [structured, result].filter(Boolean).join('\n');
     if (combined && typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma(combined)) {
         typeEl.value = 'confirmed_melanoma';
-        return;
-    }
-    if (combined && typeof inferBillingLesionType === 'function') {
+    } else if (combined && typeof inferBillingLesionType === 'function') {
         const inferred = inferBillingLesionType({
             ...lesion,
             histologyDiagnosis: structured,
             histologyResult: result,
             billingLesionType: ''
         });
-        if (inferred) {
-            typeEl.value = inferred;
-            return;
-        }
-    }
-    if (!combined) {
+        if (inferred) typeEl.value = inferred;
+    } else if (!combined) {
         const inferred = typeof inferBillingLesionType === 'function'
             ? inferBillingLesionType({ ...lesion, histologyResult: '', histologyDiagnosis: '' })
             : '';
         typeEl.value = inferred || lesion.billingLesionType || '';
     }
+    if (typeof syncHistologyFollowUpUi === 'function') syncHistologyFollowUpUi();
+}
+
+function histologyDraftLesion() {
+    const id = document.getElementById('histologyLesionId')?.value;
+    return managedLesions.find((item) => String(item.id) === String(id)) || null;
+}
+
+function syncHistologyFollowUpUi() {
+    const lesion = histologyDraftLesion();
+    const plan = document.querySelector('input[name="histologyNext"]:checked')?.value || '';
+    const contact = document.querySelector('input[name="histologyContact"]:checked')?.value || 'mark_for_contact';
+    const melanoma = !!(lesion && typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma({
+        ...lesion,
+        histologyDiagnosis: typeof readDiagnosisTypeahead === 'function'
+            ? readDiagnosisTypeahead('histologyDiagnosis')
+            : (document.getElementById('histologyDiagnosis')?.value || ''),
+        histologyResult: document.getElementById('histologyResultText')?.value || lesion.histologyResult
+    }));
+    const urgent = document.getElementById('histologyUrgentNote');
+    if (urgent) urgent.classList.toggle('hidden', !melanoma);
+    const fileWrap = document.getElementById('histologyFileNoCallWrap');
+    const fileEl = document.getElementById('histologyFileNoCall');
+    const showFile = plan === 'no_followup' && contact === 'mark_for_contact' && !melanoma;
+    if (fileWrap) {
+        fileWrap.classList.toggle('hidden', !showFile);
+        fileWrap.classList.toggle('flex', showFile);
+    }
+    if (fileEl && !showFile) fileEl.checked = false;
+    refreshHistologyBillingRow(lesion);
+}
+
+function refreshHistologyBillingRow(lesion) {
+    const summary = document.getElementById('histologyBillingSummary');
+    const confirmWrap = document.getElementById('histologyConfirmBillingWrap');
+    const confirmLabel = document.getElementById('histologyConfirmBillingLabel');
+    const openBtn = document.getElementById('btnHistologyOpenBilling');
+    const bill = lesion && typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
+    const sent = !!(bill && typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill));
+    const suggestion = lesion && typeof suggestMbsItems === 'function' ? suggestMbsItems(lesion) : null;
+    if (summary) {
+        if (sent) summary.textContent = 'Billing already confirmed.';
+        else if (suggestion?.ready && suggestion.summary) summary.textContent = 'Suggested claim: ' + suggestion.summary + '. Can confirm now even if the patient has not been contacted.';
+        else summary.textContent = 'Billing can be confirmed now even if the patient has not been contacted. Open Process billing if item numbers still need size or region.';
+    }
+    const showConfirm = !sent && !!(suggestion?.ready && suggestion.summary);
+    if (confirmWrap) {
+        confirmWrap.classList.toggle('hidden', !showConfirm);
+        confirmWrap.classList.toggle('flex', showConfirm);
+    }
+    if (confirmLabel && suggestion?.summary) confirmLabel.textContent = 'Confirm billing now (' + suggestion.summary + ')';
+    if (openBtn) openBtn.classList.toggle('hidden', sent);
+}
+
+function openProcessBillingFromHistology() {
+    const id = document.getElementById('histologyLesionId')?.value;
+    if (id && typeof openProcessBillingModal === 'function') openProcessBillingModal(id);
+}
+
+function copyHistologyResultNote() {
+    const lesion = histologyDraftLesion();
+    const text = typeof generateResultIemrNote === 'function' ? generateResultIemrNote(lesion, histologyModalDraft()) : '';
+    if (!text) {
+        showToast('Enter the result first.');
+        return;
+    }
+    copyTextToClipboard(text, 'Result note copied.');
+}
+
+function copyHistologyReceptionMessage() {
+    const lesion = histologyDraftLesion();
+    const text = typeof generateResultReceptionMessage === 'function' ? generateResultReceptionMessage(lesion, histologyModalDraft()) : '';
+    if (!text) {
+        showToast('No reception line for this contact choice.');
+        return;
+    }
+    copyTextToClipboard(text, 'Reception message copied.');
+}
+
+function histologyModalDraft() {
+    return {
+        plan: document.querySelector('input[name="histologyNext"]:checked')?.value || '',
+        contact: document.querySelector('input[name="histologyContact"]:checked')?.value || 'mark_for_contact',
+        fileNoCall: !!document.getElementById('histologyFileNoCall')?.checked,
+        result: document.getElementById('histologyResultText')?.value.trim() || '',
+        diagnosis: typeof readDiagnosisTypeahead === 'function'
+            ? readDiagnosisTypeahead('histologyDiagnosis')
+            : (document.getElementById('histologyDiagnosis')?.value.trim() || ''),
+        callNote: document.getElementById('histologyCallNote')?.value.trim() || ''
+    };
 }
 
 function openHistologyModal(id) {
@@ -1476,7 +1739,6 @@ function openHistologyModal(id) {
     const typeEl = document.getElementById('histologyBillingType');
     const summaryEl = document.getElementById('histologyLesionSummary');
     const noteEl = document.getElementById('histologyCallNote');
-    const advisedEl = document.getElementById('histologyAdvisedCall');
     if (idEl) idEl.value = id;
     if (resultEl) resultEl.value = lesion?.histologyResult || '';
     if (typeof setDiagnosisTypeahead === 'function') {
@@ -1499,32 +1761,33 @@ function openHistologyModal(id) {
             ? `${lesion.patientName || currentPatient.name || ''} — ${lesion.location || 'site'} · ${lesion.impression || ''}`
             : '';
     }
+    fillLesionPatientContactEl(document.getElementById('histologyPatientContact'), lesion);
     if (typeof syncHistologyBillingTypeFromResult === 'function') {
         syncHistologyBillingTypeFromResult();
     } else if (typeEl) {
         typeEl.value = lesion?.billingLesionType || inferBillingLesionType(lesion || {}) || '';
     }
     if (noteEl) noteEl.value = lesion?.adminCallNote || '';
-    if (advisedEl) advisedEl.checked = true;
-    const billingDone = !!(lesion && typeof isLesionBillingProcessed === 'function' && isLesionBillingProcessed(lesion.id));
-    const gate = document.getElementById('histologyBillingGateNote');
-    if (gate) {
-        gate.textContent = billingDone
-            ? 'Billing has been confirmed. You can close this lesion with no further action, or rebook excision.'
-            : 'Billing has not been confirmed yet. You can save the result, but management stays as awaiting histology until billing is confirmed.';
-        gate.className = billingDone
-            ? 'text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5'
-            : 'text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5';
+    const planVal = lesion?.resultPlan === 'plan_excision' ? 'plan_excision' : 'no_followup';
+    const planEl = document.querySelector('input[name="histologyNext"][value="' + planVal + '"]');
+    if (planEl) planEl.checked = true;
+    const contactVal = lesion?.contactState === 'advised_now' || lesion?.resultAdvisedAt
+        ? 'advised_now'
+        : (lesion?.contactState === 'appointment_requested' ? 'appointment_requested'
+            : (lesion?.contactState === 'not_reached' ? 'not_reached' : 'mark_for_contact'));
+    const contactEl = document.querySelector('input[name="histologyContact"][value="' + contactVal + '"]');
+    if (contactEl) contactEl.checked = true;
+    else {
+        const mark = document.querySelector('input[name="histologyContact"][value="mark_for_contact"]');
+        if (mark) mark.checked = true;
     }
-    const stay = document.querySelector('input[name="histologyNext"][value="stay"]');
-    const none = document.querySelector('input[name="histologyNext"][value="no_followup"]');
-    const excision = document.querySelector('input[name="histologyNext"][value="plan_excision"]');
-    if (stay) stay.checked = true;
-    [none, excision].forEach((el) => {
-        if (!el) return;
-        el.disabled = !billingDone;
-        el.closest('label')?.classList.toggle('opacity-40', !billingDone);
-    });
+    const fileEl = document.getElementById('histologyFileNoCall');
+    if (fileEl) fileEl.checked = lesion?.contactState === 'file_no_call';
+    syncHistologyFollowUpUi();
+    const confirmEl = document.getElementById('histologyConfirmBilling');
+    if (confirmEl && !document.getElementById('histologyConfirmBillingWrap')?.classList.contains('hidden')) {
+        confirmEl.checked = true;
+    }
     if (modal) modal.classList.remove('hidden');
 }
 
@@ -1540,33 +1803,60 @@ async function submitHistologyModal() {
         ? readDiagnosisTypeahead('histologyDiagnosis')
         : (document.getElementById('histologyDiagnosis')?.value.trim() || '');
     let billingType = document.getElementById('histologyBillingType')?.value || '';
-    const next = document.querySelector('input[name="histologyNext"]:checked')?.value || 'stay';
+    const next = document.querySelector('input[name="histologyNext"]:checked')?.value || '';
+    const contact = document.querySelector('input[name="histologyContact"]:checked')?.value || 'mark_for_contact';
+    const fileNoCall = !!document.getElementById('histologyFileNoCall')?.checked;
     const callNote = document.getElementById('histologyCallNote')?.value.trim() || '';
-    const advised = document.getElementById('histologyAdvisedCall')?.checked;
     const caseNumber = document.getElementById('histologyCaseNumber')?.value.trim() || '';
     const pot = document.getElementById('histologyPot')?.value.trim() || '';
     const applySiblings = !!document.getElementById('histologyApplyCaseToSiblings')?.checked;
+    const confirmBilling = !!document.getElementById('histologyConfirmBilling')?.checked
+        && !document.getElementById('histologyConfirmBillingWrap')?.classList.contains('hidden');
     if (!id) return;
     if (!result) {
         showToast('Enter the histology result.');
+        return;
+    }
+    if (next !== 'no_followup' && next !== 'plan_excision') {
+        showToast('Choose no further action, or further procedure after advised.');
         return;
     }
     if (typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma({ histologyDiagnosis, histologyResult: result })) {
         billingType = 'confirmed_melanoma';
         const typeEl = document.getElementById('histologyBillingType');
         if (typeEl) typeEl.value = 'confirmed_melanoma';
+        if (fileNoCall) {
+            showToast('File, no call cannot be used for melanoma.');
+            return;
+        }
     }
     if (!billingType) {
         showToast('Assign the lesion type from histology (or suspected melanoma).');
         return;
     }
-    if ((next === 'plan_excision' || next === 'no_followup') && typeof isLesionBillingProcessed === 'function' && !isLesionBillingProcessed(id)) {
-        showToast('Process billing before choosing management.');
+    if (fileNoCall && next !== 'no_followup') {
+        showToast('File, no call is only for no further action.');
         return;
     }
-    await recordHistologyOutcome(id, result, next, billingType, {
+    const lesion = managedLesions.find((item) => String(item.id) === String(id));
+    if (lesion) lesion.billingLesionType = billingType;
+    if (confirmBilling && lesion && typeof suggestMbsItems === 'function') {
+        const suggestion = suggestMbsItems(lesion);
+        if (suggestion.ready && suggestion.summary) {
+            let bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
+            if (!bill && typeof createOrUpdateBillingFromLesion === 'function') {
+                bill = await createOrUpdateBillingFromLesion(lesion);
+            }
+            if (bill && typeof billingHasBeenSent === 'function' && !billingHasBeenSent(bill) && typeof persistProcessedBilling === 'function') {
+                await persistProcessedBilling(bill, suggestion.summary, { silentToast: true });
+            }
+        }
+    }
+    const saved = await recordHistologyOutcome(id, result, next, billingType, {
         callNote,
-        advised,
+        contact,
+        fileNoCall,
+        urgent: billingType === 'confirmed_melanoma',
         histologyCaseNumber: caseNumber,
         histologyPot: pot,
         histologyDiagnosis
@@ -1585,12 +1875,21 @@ async function submitHistologyModal() {
     }
     closeHistologyModal();
     const messages = {
-        plan_excision: 'Result saved. Book the re-excision as a new linked procedure next.',
-        no_followup: 'Result saved. No further action.',
-        stay: 'Result saved. Lesion remains awaiting histology until billing is confirmed and management is chosen.'
+        advised_now: next === 'plan_excision'
+            ? 'Result saved. Patient advised. Book the re-excision as a new linked procedure next.'
+            : (saved?.billingHold
+                ? 'Result saved. Patient advised. Confirm billing before the lesion can leave the board.'
+                : 'Result saved. Patient advised. No further action.'),
+        appointment_requested: 'Result saved. Appointment requested to discuss the result.',
+        not_reached: 'Result saved. Not reached — stays on Needs contact.',
+        mark_for_contact: 'Result saved. Marked for contact.',
+        file_no_call: saved?.billingHold
+            ? 'Result saved. Filed with no call. Confirm billing before the lesion can leave the board.'
+            : 'Result saved. Filed with no call. No further action.'
     };
-    showToast((messages[next] || 'Result saved.') + siblingNote);
-    if (next === 'plan_excision') openExcisionProcedureModal(id);
+    const key = fileNoCall ? 'file_no_call' : contact;
+    showToast((messages[key] || 'Result saved.') + siblingNote);
+    if (saved?.openExcision) openExcisionProcedureModal(id);
 }
 
 function findLesionForExcisionProcedure(id) {
@@ -1670,13 +1969,24 @@ function fillExcisionProcedureForm(lesion) {
 
 function resolveExcisionAssignTarget(source) {
     if (!source?.id) return { mode: 'create', lesion: null, prior: null };
-    if (source.priorLesionId) return { mode: 'update', lesion: source, prior: findLesionForExcisionProcedure(source.priorLesionId) };
-    const child = typeof findLinkedReexcisionChild === 'function' ? findLinkedReexcisionChild(source.id) : null;
-    if (child) return { mode: 'update', lesion: child, prior: source };
-    if (typeof lesionNeedsNewReexcisionRecord === 'function' && lesionNeedsNewReexcisionRecord(source)) {
-        return { mode: 'spawn', lesion: null, prior: source };
+    const tip = typeof latestReexcisionEpisode === 'function' ? latestReexcisionEpisode(source) : source;
+    const target = tip || source;
+    const priorOfTarget = target.priorLesionId
+        ? findLesionForExcisionProcedure(target.priorLesionId)
+        : null;
+    const targetOpen = typeof lesionIsOpenReexcisionPlan === 'function'
+        ? lesionIsOpenReexcisionPlan(target)
+        : ((target.managementStatus === 'planned_procedure' || target.managementStatus === 'current_case')
+            && !(typeof lesionProcedureDone === 'function' && lesionProcedureDone(target)));
+    if (targetOpen || (target.priorLesionId && !(typeof lesionIsCompletedEpisode === 'function' && lesionIsCompletedEpisode(target)) && !(typeof lesionProcedureDone === 'function' && lesionProcedureDone(target)))) {
+        return { mode: 'update', lesion: target, prior: priorOfTarget };
     }
-    return { mode: 'update', lesion: source, prior: null };
+    const completed = (typeof lesionNeedsNewReexcisionRecord === 'function' && lesionNeedsNewReexcisionRecord(target))
+        || (typeof lesionIsCompletedEpisode === 'function' && lesionIsCompletedEpisode(target))
+        || (typeof lesionProcedureDone === 'function' && lesionProcedureDone(target))
+        || !!String(target.histologyResult || '').trim();
+    if (completed) return { mode: 'spawn', lesion: null, prior: target };
+    return { mode: 'update', lesion: target, prior: priorOfTarget };
 }
 
 function updateAssignExcisionReexcisionBanner(lesion) {
@@ -1688,12 +1998,14 @@ function updateAssignExcisionReexcisionBanner(lesion) {
     }
     if (!banner) return;
     if (resolved.mode === 'spawn' && resolved.prior) {
-        const kind = typeof priorProcedureKindForReexcision === 'function'
-            ? priorProcedureKindForReexcision(resolved.prior)
-            : 'procedure';
+        const kind = typeof lesionOwnProcedureKind === 'function'
+            ? lesionOwnProcedureKind(resolved.prior)
+            : (typeof priorProcedureKindForReexcision === 'function'
+                ? priorProcedureKindForReexcision(resolved.prior)
+                : 'procedure');
         banner.classList.remove('hidden');
         banner.innerHTML = '<p class="font-semibold text-purple-950">This books a <span class="underline">new</span> re-excision lesion.</p>'
-            + '<p class="mt-1">The original ' + escapeHtml(kind) + ' at ' + escapeHtml(resolved.prior.location || 'this site')
+            + '<p class="mt-1">The previous ' + escapeHtml(kind) + ' at ' + escapeHtml(resolved.prior.location || 'this site')
             + ' stays closed (histology / billing unchanged). Written consent is required for the new excision — prior verbal or written consent is not reused.</p>';
         fillAssignExcisionPriorHistoFields(resolved.prior);
         return;
@@ -1773,6 +2085,8 @@ function syncSessionLesionFromProcedure(lesion) {
         priorLesionId: lesion.priorLesionId || '',
         reexcisionOf: lesion.reexcisionOf || '',
         priorProcedureKind: lesion.priorProcedureKind || '',
+        managementStatus: lesion.managementStatus || (lesion.priorLesionId ? 'planned_procedure' : ''),
+        chartId: lesion.chartId || (typeof hasCurrentPatient === 'function' && hasCurrentPatient() ? currentPatient.chartId : ''),
         excisionMargin: lesion.excisionMargin,
         excisionClosureType: lesion.excisionClosureType,
         excisionReconstruction: lesion.excisionReconstruction,
@@ -1944,6 +2258,8 @@ async function submitAssignExcisionModal() {
     }
 
     closeAssignExcisionModal();
+    if (typeof offerLesionToProcedureSession === 'function') offerLesionToProcedureSession(lesion);
+    if (typeof renderProcedureWorkspace === 'function') renderProcedureWorkspace();
     if (spawned) {
         showToast('Re-excision planned as a new lesion. Generate written consent before starting Procedure.');
     } else {

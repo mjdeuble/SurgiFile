@@ -5,6 +5,13 @@ let vaultAuth = {
     key: null,
     displayName: ''
 };
+let vaultPasswordNeedsUpgrade = false;
+let vaultPasswordChangeBusy = false;
+
+const VAULT_UNLOCK_FILE = 'unlock.enc';
+const VAULT_ACCOUNT_FILE = 'account.json';
+const VAULT_UNLOCK_NEXT = 'unlock.enc.next';
+const VAULT_ACCOUNT_NEXT = 'account.json.next';
 
 function sanitizeUsername(name) {
     return String(name || '')
@@ -69,19 +76,56 @@ function dismissAuthModal() {
 }
 
 async function lockVaultSession() {
+    if (vaultPasswordChangeBusy) {
+        if (typeof showToast === 'function') {
+            showToast('Wait until the password change finishes.');
+        }
+        return;
+    }
+    stopVaultIdleTimer();
+    let saveFailed = false;
     try {
-        if (hasCurrentPatient() && typeof rememberLastPatient === 'function') {
-            rememberLastPatient();
+        if (typeof chartSaveTimer !== 'undefined' && chartSaveTimer) {
+            clearTimeout(chartSaveTimer);
+            chartSaveTimer = null;
         }
-        if (hasCurrentPatient() && typeof saveCurrentChartFromDom === 'function') {
-            await saveCurrentChartFromDom();
+        if (typeof visitNoteSaveTimer !== 'undefined' && visitNoteSaveTimer) {
+            clearTimeout(visitNoteSaveTimer);
+            visitNoteSaveTimer = null;
         }
-        if (hasCurrentPatient() && typeof saveCurrentVisitNotes === 'function') {
-            await saveCurrentVisitNotes();
+        if (typeof flushVisitPersistence === 'function') {
+            const result = await flushVisitPersistence();
+            if (result && result.ok === false) saveFailed = true;
+        } else {
+            if (hasCurrentPatient() && typeof saveCurrentChartFromDom === 'function') {
+                await saveCurrentChartFromDom();
+            }
+            if (hasCurrentPatient() && typeof saveCurrentVisitNotes === 'function') {
+                await saveCurrentVisitNotes();
+            }
+        }
+        if (typeof persistUiSession === 'function') {
+            await persistUiSession(hasCurrentPatient() ? currentPatient.chartId : '');
+        }
+        if (typeof waitForPendingVaultWrites === 'function') {
+            await waitForPendingVaultWrites();
+        }
+        if (typeof clearPlaintextLastChartStorage === 'function') {
+            clearPlaintextLastChartStorage();
         }
     } catch (err) {
-        /* Still lock the session if a last write fails. */
+        saveFailed = true;
+        console.warn('Save before lock failed', err);
     }
+    if (saveFailed) {
+        if (typeof toastVaultWriteError === 'function') {
+            toastVaultWriteError('Could not save the last visit before lock. Sign in again and check the clinic folder.');
+        } else if (typeof showToast === 'function') {
+            showToast('Could not save the last visit before lock. Sign in again and check the clinic folder.');
+        }
+    }
+    vaultPasswordNeedsUpgrade = false;
+    closeHeaderAuthMenu();
     vaultAuth = { username: '', key: null, displayName: '' };
     managedLesions = [];
     managedBillings = [];
@@ -89,6 +133,7 @@ async function lockVaultSession() {
     currentPatient = { name: '', firstName: '', lastName: '', dob: '', phone: '', clinician: '', chartId: '' };
     stopVaultIdleTimer();
     managedCharts = [];
+    if (typeof loadedUiSession !== 'undefined') loadedUiSession = { chartId: '' };
     managedVisitNotes = [];
     managedConsents = [];
     pendingWorkspaceTab = '';
@@ -111,10 +156,14 @@ async function lockVaultSession() {
     openAuthModal();
 }
 
+const VAULT_PASSWORD_MIN_LENGTH = 12;
+
 async function createVaultUser(rawUsername, password, displayName) {
     const username = sanitizeUsername(rawUsername);
     if (username.length < 2) throw new Error('Choose a username of at least 2 characters.');
-    if (!password || password.length < 8) throw new Error('Password must be at least 8 characters.');
+    if (!password || password.length < VAULT_PASSWORD_MIN_LENGTH) {
+        throw new Error('Password must be at least ' + VAULT_PASSWORD_MIN_LENGTH + ' characters.');
+    }
     const fullName = String(displayName || '').trim();
     if (fullName.length < 3) throw new Error('Enter your full doctor name, e.g. Dr Jane Smith.');
     if (!vaultRootHandle) throw new Error('Connect the clinic folder first.');
@@ -142,29 +191,398 @@ async function createVaultUser(rawUsername, password, displayName) {
     await userDir.getDirectoryHandle('consents', { create: true });
 
     vaultAuth = { username, key, displayName: fullName };
+    vaultPasswordNeedsUpgrade = false;
     return username;
+}
+
+async function readCompleteVaultJson(dir, name) {
+    const text = await readTextFile(dir, name);
+    if (typeof vaultPayloadLooksComplete === 'function' && !vaultPayloadLooksComplete(text)) {
+        throw new Error('Incomplete vault file');
+    }
+    return { text, data: JSON.parse(text) };
+}
+
+async function unlockWithAccountEnvelope(account, envelope, password) {
+    const salt = b64ToBytes(account.salt);
+    const iterations = account.kdf?.iterations || VAULT_KDF_ITERATIONS;
+    const key = await deriveVaultKey(password, salt, iterations);
+    const unlocked = await decryptJson(key, envelope);
+    if (!unlocked || unlocked.ok !== true) throw new Error('Unable to unlock this user.');
+    return key;
+}
+
+async function tryUnlockVaultPair(userDir, accountName, unlockName, password) {
+    if (!(await fileExists(userDir, accountName)) || !(await fileExists(userDir, unlockName))) return null;
+    try {
+        const accountPack = await readCompleteVaultJson(userDir, accountName);
+        const unlockPack = await readCompleteVaultJson(userDir, unlockName);
+        const key = await unlockWithAccountEnvelope(accountPack.data, unlockPack.data, password);
+        return {
+            account: accountPack.data,
+            accountText: accountPack.text,
+            unlockText: unlockPack.text,
+            key
+        };
+    } catch (err) {
+        return null;
+    }
 }
 
 async function loginVaultUser(rawUsername, password) {
     const username = sanitizeUsername(rawUsername);
     if (!username || !password) throw new Error('Enter username and password.');
     const userDir = await getUserDir(username, false);
-    const account = JSON.parse(await readTextFile(userDir, 'account.json'));
-    const salt = b64ToBytes(account.salt);
-    const iterations = account.kdf?.iterations || VAULT_KDF_ITERATIONS;
-    const key = await deriveVaultKey(password, salt, iterations);
-    const envelope = JSON.parse(await readTextFile(userDir, 'unlock.enc'));
-    const unlocked = await decryptJson(key, envelope);
-    if (!unlocked || unlocked.ok !== true) throw new Error('Unable to unlock this user.');
-    vaultAuth = { username, key, displayName: String(account.displayName || '').trim() };
+    if (typeof recoverIncompleteVaultWrites === 'function') {
+        await recoverIncompleteVaultWrites(userDir);
+    }
+    const hasNext = (await fileExists(userDir, VAULT_ACCOUNT_NEXT)) && (await fileExists(userDir, VAULT_UNLOCK_NEXT));
+    let unlocked = null;
+    if (hasNext) {
+        unlocked = await tryUnlockVaultPair(userDir, VAULT_ACCOUNT_NEXT, VAULT_UNLOCK_NEXT, password);
+        if (!unlocked) {
+            throw new Error('A password change did not finish. Sign in with the new password.');
+        }
+        await writeTextFile(userDir, VAULT_UNLOCK_FILE, unlocked.unlockText);
+        await writeTextFile(userDir, VAULT_ACCOUNT_FILE, unlocked.accountText);
+        if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
+        await deleteTextFile(userDir, VAULT_UNLOCK_NEXT);
+        await deleteTextFile(userDir, VAULT_ACCOUNT_NEXT);
+    } else {
+        unlocked = await tryUnlockVaultPair(userDir, VAULT_ACCOUNT_FILE, VAULT_UNLOCK_FILE, password);
+        if (!unlocked) throw new Error('Unable to unlock this user.');
+    }
+    vaultAuth = { username, key: unlocked.key, displayName: String(unlocked.account.displayName || '').trim() };
+    vaultPasswordNeedsUpgrade = password.length < VAULT_PASSWORD_MIN_LENGTH;
     return username;
+}
+
+async function listUserEncryptedVaultFiles(username) {
+    const files = [];
+    const userDir = await getUserDir(username, false);
+    for await (const [name, handle] of userDir.entries()) {
+        if (handle.kind === 'file' && (name === VAULT_UNLOCK_FILE || name.endsWith('.json.enc'))) {
+            if (name.endsWith('.tmp') || name.endsWith('.next') || name.endsWith('.prev')) continue;
+            files.push({ dir: userDir, name });
+        }
+    }
+    const dirs = [
+        await getUserLesionsDir(username, true),
+        await getUserBillingDir(username, true),
+        await getUserChartsDir(username, true),
+        await getUserNotesDir(username, true),
+        await getUserConsentsDir(username, true)
+    ];
+    for (const dir of dirs) {
+        for await (const [name, handle] of dir.entries()) {
+            if (handle.kind === 'file' && name.endsWith('.json.enc') && !name.endsWith('.tmp')) files.push({ dir, name });
+        }
+    }
+    return files;
+}
+
+async function reencryptVaultFile(dir, name, fromKey, toKey) {
+    const envelope = JSON.parse(await readTextFile(dir, name));
+    const data = await decryptJson(fromKey, envelope);
+    await writeTextFile(dir, name, JSON.stringify(await encryptJson(toKey, data)));
+}
+
+async function assertCurrentVaultPassword(password) {
+    if (!isVaultLoggedIn()) throw new Error('Sign in first.');
+    if (!password) throw new Error('Enter your current password.');
+    try {
+        const userDir = await getUserDir(vaultAuth.username, false);
+        if (typeof recoverIncompleteVaultWrites === 'function') {
+            await recoverIncompleteVaultWrites(userDir);
+        }
+        const account = JSON.parse(await readTextFile(userDir, VAULT_ACCOUNT_FILE));
+        const envelope = JSON.parse(await readTextFile(userDir, VAULT_UNLOCK_FILE));
+        await unlockWithAccountEnvelope(account, envelope, password);
+    } catch (err) {
+        if (err && /current password/i.test(String(err.message || ''))) throw err;
+        throw new Error('Current password is incorrect.');
+    }
+}
+
+async function flushOpenVaultWork() {
+    if (typeof chartSaveTimer !== 'undefined' && chartSaveTimer) {
+        clearTimeout(chartSaveTimer);
+        chartSaveTimer = null;
+    }
+    if (typeof visitNoteSaveTimer !== 'undefined' && visitNoteSaveTimer) {
+        clearTimeout(visitNoteSaveTimer);
+        visitNoteSaveTimer = null;
+    }
+    if (typeof flushVisitPersistence === 'function') {
+        const result = await flushVisitPersistence();
+        if (result && result.ok === false) throw new Error('Could not save the open visit before changing the password.');
+    } else {
+        if (hasCurrentPatient() && typeof saveCurrentChartFromDom === 'function') {
+            await saveCurrentChartFromDom();
+        }
+        if (hasCurrentPatient() && typeof saveCurrentVisitNotes === 'function') {
+            await saveCurrentVisitNotes();
+        }
+    }
+    if (typeof persistUiSession === 'function') {
+        await persistUiSession(hasCurrentPatient() ? currentPatient.chartId : '');
+    }
+    if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
+}
+
+async function changeVaultPassword(newPassword, options) {
+    const opts = options || {};
+    if (!isVaultLoggedIn()) throw new Error('Sign in first.');
+    if (!newPassword || newPassword.length < VAULT_PASSWORD_MIN_LENGTH) {
+        throw new Error('Password must be at least ' + VAULT_PASSWORD_MIN_LENGTH + ' characters.');
+    }
+    if (opts.requireCurrent) {
+        await assertCurrentVaultPassword(opts.currentPassword);
+        if (opts.currentPassword === newPassword) {
+            throw new Error('Choose a different password.');
+        }
+    }
+    if (vaultPasswordChangeBusy) throw new Error('A password change is already running.');
+    vaultPasswordChangeBusy = true;
+    stopVaultIdleTimer();
+    const oldKey = vaultAuth.key;
+    const username = vaultAuth.username;
+    const converted = [];
+    let committed = false;
+    let userDir;
+    let oldUnlockText = '';
+    let oldAccountText = '';
+    let newKey = null;
+    try {
+        await flushOpenVaultWork();
+        userDir = await getUserDir(username, false);
+        if (typeof recoverIncompleteVaultWrites === 'function') {
+            await recoverIncompleteVaultWrites(userDir);
+        }
+        oldUnlockText = await readTextFile(userDir, VAULT_UNLOCK_FILE);
+        oldAccountText = await readTextFile(userDir, VAULT_ACCOUNT_FILE);
+        const salt = randomBytes(16);
+        newKey = await deriveVaultKey(newPassword, salt);
+        const files = await listUserEncryptedVaultFiles(username);
+        for (const file of files) {
+            if (file.name === VAULT_UNLOCK_FILE) continue;
+            await reencryptVaultFile(file.dir, file.name, oldKey, newKey);
+            converted.push(file);
+        }
+        const account = JSON.parse(oldAccountText);
+        account.salt = bytesToB64(salt);
+        account.kdf = { name: 'PBKDF2', hash: 'SHA-256', iterations: VAULT_KDF_ITERATIONS };
+        account.passwordUpdatedAt = new Date().toISOString();
+        const newAccountText = JSON.stringify(account, null, 2);
+        const newUnlockText = JSON.stringify(await encryptJson(newKey, { ok: true, username }));
+        await writeTextFile(userDir, VAULT_UNLOCK_NEXT, newUnlockText);
+        await writeTextFile(userDir, VAULT_ACCOUNT_NEXT, newAccountText);
+        if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
+        await writeTextFile(userDir, VAULT_UNLOCK_FILE, newUnlockText);
+        await writeTextFile(userDir, VAULT_ACCOUNT_FILE, newAccountText);
+        if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
+        await deleteTextFile(userDir, VAULT_UNLOCK_NEXT);
+        await deleteTextFile(userDir, VAULT_ACCOUNT_NEXT);
+        vaultAuth.key = newKey;
+        vaultPasswordNeedsUpgrade = false;
+        committed = true;
+        try {
+            let leftoverBackups = 0;
+            if (typeof pruneLesionConversionBackups === 'function') {
+                await pruneLesionConversionBackups(0);
+            }
+            if (typeof leftoverLesionConversionBackupCount === 'function') {
+                leftoverBackups = await leftoverLesionConversionBackupCount();
+            }
+            if (leftoverBackups && typeof showToast === 'function') {
+                showToast('Password updated. Delete backups/lesions-v1 folders in the clinic folder — those copies still use the old password.');
+            }
+        } catch (backupErr) {
+            console.warn('Could not remove old-key lesion backups after password change', backupErr);
+            if (typeof showToast === 'function') {
+                showToast('Password updated. Delete backups/lesions-v1 folders in the clinic folder — those copies still use the old password.');
+            }
+        }
+    } catch (err) {
+        console.warn('Password change failed', err);
+        if (!committed) {
+            if (userDir) {
+                try { await deleteTextFile(userDir, VAULT_UNLOCK_NEXT); } catch (delErr) { /* continue rollback */ }
+                try { await deleteTextFile(userDir, VAULT_ACCOUNT_NEXT); } catch (delErr) { /* continue rollback */ }
+                if (oldUnlockText && oldAccountText) {
+                    try {
+                        await writeTextFile(userDir, VAULT_UNLOCK_FILE, oldUnlockText);
+                        await writeTextFile(userDir, VAULT_ACCOUNT_FILE, oldAccountText);
+                        if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
+                    } catch (restoreErr) {
+                        console.warn('Could not restore unlock files after password change', restoreErr);
+                    }
+                }
+            }
+            if (newKey && converted.length) {
+                for (const file of converted.slice().reverse()) {
+                    try { await reencryptVaultFile(file.dir, file.name, newKey, oldKey); } catch (rollErr) {
+                        console.warn('Could not roll back vault file after password change', file.name, rollErr);
+                    }
+                }
+            }
+            vaultAuth.key = oldKey;
+        }
+        if (/save the open visit|current password|at least|different password|Sign in first|already running/i.test(String(err.message || ''))) {
+            throw err;
+        }
+        throw new Error('Could not update the password. Clinic files were left on the previous password.');
+    } finally {
+        vaultPasswordChangeBusy = false;
+        if (isVaultLoggedIn()) startVaultIdleLock();
+    }
+}
+
+let passwordChangeMode = 'upgrade';
+
+function fillPasswordChangeFields() {
+    const current = document.getElementById('passwordChangeCurrent');
+    const next = document.getElementById('passwordUpgradeNew');
+    const confirm = document.getElementById('passwordUpgradeConfirm');
+    if (current) current.value = '';
+    if (next) next.value = '';
+    if (confirm) confirm.value = '';
+}
+
+function setPasswordChangeMode(mode) {
+    passwordChangeMode = mode === 'change' ? 'change' : 'upgrade';
+    const isChange = passwordChangeMode === 'change';
+    const title = document.getElementById('passwordChangeTitle');
+    const lead = document.getElementById('passwordChangeLead');
+    const currentWrap = document.getElementById('passwordChangeCurrentWrap');
+    const dismiss = document.getElementById('passwordChangeDismiss');
+    const submit = document.getElementById('passwordUpgradeSubmit');
+    if (title) title.textContent = isChange ? 'Change vault password' : 'Set a longer vault password';
+    if (lead) {
+        lead.textContent = isChange
+            ? 'Re-encrypts your clinic files with a new password. Enter the current password first.'
+            : 'Your current password is shorter than 12 characters. That password is the only secret for the encrypted clinic files.';
+    }
+    if (currentWrap) currentWrap.classList.toggle('hidden', !isChange);
+    if (dismiss) dismiss.textContent = isChange ? 'Cancel' : 'Later';
+    if (submit) submit.textContent = isChange ? 'Change password' : 'Update password';
+}
+
+function openPasswordUpgradeModal() {
+    const modal = document.getElementById('passwordUpgradeModal');
+    if (!modal) return;
+    closeHeaderAuthMenu();
+    setPasswordChangeMode('upgrade');
+    fillPasswordChangeFields();
+    modal.classList.remove('hidden');
+    const next = document.getElementById('passwordUpgradeNew');
+    if (next) next.focus();
+}
+
+function openPasswordChangeModal() {
+    if (!isVaultLoggedIn()) {
+        showToast('Sign in first.');
+        openAuthModal();
+        return;
+    }
+    const modal = document.getElementById('passwordUpgradeModal');
+    if (!modal) return;
+    closeHeaderAuthMenu();
+    setPasswordChangeMode('change');
+    fillPasswordChangeFields();
+    modal.classList.remove('hidden');
+    const current = document.getElementById('passwordChangeCurrent');
+    if (current) current.focus();
+}
+
+function dismissPasswordUpgrade() {
+    const modal = document.getElementById('passwordUpgradeModal');
+    if (modal) modal.classList.add('hidden');
+    fillPasswordChangeFields();
+    passwordChangeMode = 'upgrade';
+}
+
+async function submitPasswordUpgrade() {
+    const current = document.getElementById('passwordChangeCurrent')?.value || '';
+    const next = document.getElementById('passwordUpgradeNew')?.value || '';
+    const confirm = document.getElementById('passwordUpgradeConfirm')?.value || '';
+    if (next !== confirm) {
+        showToast('Passwords do not match.');
+        return;
+    }
+    const btn = document.getElementById('passwordUpgradeSubmit');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Re-encrypting clinic files…';
+    }
+    try {
+        if (passwordChangeMode === 'change') {
+            await changeVaultPassword(next, { requireCurrent: true, currentPassword: current });
+        } else {
+            await changeVaultPassword(next);
+        }
+        dismissPasswordUpgrade();
+        showToast('Vault password updated.');
+    } catch (err) {
+        showToast(err.message || 'Could not update the password.');
+        if (btn) btn.textContent = passwordChangeMode === 'change' ? 'Change password' : 'Update password';
+    } finally {
+        if (btn) btn.disabled = false;
+        if (btn && document.getElementById('passwordUpgradeModal')?.classList.contains('hidden')) {
+            btn.textContent = 'Update password';
+        }
+    }
+}
+
+function closeHeaderAuthMenu() {
+    const menu = document.getElementById('headerAuthMenu');
+    const btn = document.getElementById('headerAuthButton');
+    if (menu) menu.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleHeaderAuthMenu() {
+    const menu = document.getElementById('headerAuthMenu');
+    const btn = document.getElementById('headerAuthButton');
+    if (!menu || !btn) return;
+    const open = menu.classList.contains('hidden');
+    if (open) {
+        menu.classList.remove('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+    } else {
+        closeHeaderAuthMenu();
+    }
+}
+
+function onHeaderAuthButtonClick() {
+    if (!isVaultLoggedIn()) {
+        closeHeaderAuthMenu();
+        openAuthModal();
+        return;
+    }
+    toggleHeaderAuthMenu();
+}
+
+function lockVaultFromHeaderMenu() {
+    closeHeaderAuthMenu();
+    lockVaultSession();
 }
 
 function updateAuthHeader() {
     const label = document.getElementById('headerAuthUserLabel');
     const wrap = document.getElementById('headerAuthWrap');
-    if (label) label.textContent = loggedInDoctorName() || vaultAuth.username || 'Not signed in';
-    if (wrap) wrap.classList.toggle('is-signed-in', isVaultLoggedIn());
+    const menuName = document.getElementById('headerAuthMenuName');
+    const btn = document.getElementById('headerAuthButton');
+    const signedIn = isVaultLoggedIn();
+    const who = loggedInDoctorName() || vaultAuth.username || 'Not signed in';
+    if (label) label.textContent = who;
+    if (menuName) menuName.textContent = signedIn ? who : '';
+    if (wrap) wrap.classList.toggle('is-signed-in', signedIn);
+    if (btn) {
+        btn.setAttribute('aria-label', signedIn ? 'Account menu' : 'Account');
+        btn.setAttribute('aria-haspopup', signedIn ? 'menu' : 'false');
+    }
+    if (!signedIn) closeHeaderAuthMenu();
 }
 
 function openAuthModal() {
@@ -234,7 +652,18 @@ function setAuthCreateMode(on, options) {
             ? 'Create a user for this clinic folder. Password is never stored.'
             : 'Connect the clinic folder, then sign in.';
     }
-    if (password) password.autocomplete = create ? 'new-password' : 'current-password';
+    if (password) {
+        password.autocomplete = create ? 'new-password' : 'current-password';
+        if (create) password.setAttribute('minlength', String(VAULT_PASSWORD_MIN_LENGTH));
+        else password.removeAttribute('minlength');
+    }
+    const hint = document.getElementById('authPasswordHint');
+    if (hint) hint.classList.toggle('hidden', !create);
+    const confirm = document.getElementById('authPasswordConfirm');
+    if (confirm) {
+        if (create) confirm.setAttribute('minlength', String(VAULT_PASSWORD_MIN_LENGTH));
+        else confirm.removeAttribute('minlength');
+    }
     if (create && !force) {
         const input = document.getElementById('authUsernameInput');
         if (input && !input.value) input.focus();
@@ -376,6 +805,36 @@ async function handleLoginVaultUser() {
 async function afterVaultLogin() {
     updateAuthHeader();
     applyLoggedInDoctorToForms();
+    try {
+        if (typeof loadClinicProfile === 'function') await loadClinicProfile();
+        if (typeof loadClinicSupplies === 'function') {
+            await loadClinicSupplies();
+            if (typeof populateProcSupplySelects === 'function') populateProcSupplySelects();
+        }
+        if (typeof loadClinicPdtPrices === 'function') {
+            await loadClinicPdtPrices();
+            if (typeof renderPdtAreaSelect === 'function') renderPdtAreaSelect();
+            if (typeof renderPdtPriceEditor === 'function') renderPdtPriceEditor();
+        }
+        await loadManagedLesionsFromVault();
+        if (typeof loadUiSessionFromVault === 'function') await loadUiSessionFromVault();
+        if (typeof adoptPlaintextLastChartIfNeeded === 'function') await adoptPlaintextLastChartIfNeeded();
+        updateHeaderPatient();
+        if (typeof updateChartChrome === 'function') updateChartChrome();
+        renderManagedLesions();
+        const resumeKind = typeof resumeLastChartAfterLogin === 'function'
+            ? await resumeLastChartAfterLogin()
+            : false;
+        if (resumeKind !== 'procedure' && resumeKind !== 'visit') {
+            switchWorkspaceTab('management');
+        }
+        startVaultIdleLock();
+    } catch (err) {
+        console.warn('Vault load after sign-in failed', err);
+        vaultPasswordNeedsUpgrade = false;
+        if (typeof lockVaultSession === 'function') await lockVaultSession();
+        throw new Error('Could not load encrypted files from the clinic folder. Check folder access and sign in again.');
+    }
     const pw = document.getElementById('authPassword');
     const confirm = document.getElementById('authPasswordConfirm');
     const display = document.getElementById('authDisplayName');
@@ -383,31 +842,22 @@ async function afterVaultLogin() {
     if (confirm) confirm.value = '';
     if (display) display.value = '';
     closeAuthModal();
-    if (typeof loadClinicProfile === 'function') await loadClinicProfile();
-    if (typeof loadClinicSupplies === 'function') {
-        await loadClinicSupplies();
-        if (typeof populateProcSupplySelects === 'function') populateProcSupplySelects();
-    }
-    if (typeof loadClinicPdtPrices === 'function') {
-        await loadClinicPdtPrices();
-        if (typeof renderPdtAreaSelect === 'function') renderPdtAreaSelect();
-        if (typeof renderPdtPriceEditor === 'function') renderPdtPriceEditor();
-    }
-    await loadManagedLesionsFromVault();
-    updateHeaderPatient();
-    if (typeof updateChartChrome === 'function') updateChartChrome();
-    renderManagedLesions();
-    const resumeKind = typeof resumeLastChartAfterLogin === 'function'
-        ? await resumeLastChartAfterLogin()
-        : false;
-    if (resumeKind !== 'procedure' && resumeKind !== 'visit') {
-        switchWorkspaceTab('management');
-    }
-    startVaultIdleLock();
+    if (vaultPasswordNeedsUpgrade) openPasswordUpgradeModal();
 }
 
 async function initAuthModule() {
     updateAuthHeader();
+    document.addEventListener('click', (event) => {
+        if (!event.target.closest('#headerAuthWrap')) closeHeaderAuthMenu();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        closeHeaderAuthMenu();
+        const modal = document.getElementById('passwordUpgradeModal');
+        if (modal && !modal.classList.contains('hidden') && passwordChangeMode === 'change') {
+            dismissPasswordUpgrade();
+        }
+    });
     if (!vaultFsSupported()) {
         openAuthModal();
         refreshAuthFolderStatus();
@@ -440,7 +890,7 @@ function startVaultIdleLock() {
 }
 
 function bumpVaultIdleTimer() {
-    if (!isVaultLoggedIn()) return;
+    if (!isVaultLoggedIn() || vaultPasswordChangeBusy) return;
     vaultIdleLastAt = Date.now();
     stopVaultIdleTimer();
     vaultIdleTimer = setTimeout(() => {
@@ -452,7 +902,7 @@ function bumpVaultIdleTimer() {
 }
 
 function checkVaultIdleOnVisible() {
-    if (document.visibilityState !== 'visible' || !isVaultLoggedIn()) return;
+    if (document.visibilityState !== 'visible' || !isVaultLoggedIn() || vaultPasswordChangeBusy) return;
     if (Date.now() - vaultIdleLastAt >= VAULT_IDLE_MS) {
         lockVaultSession().then(() => {
             showToast('Locked after 15 minutes of inactivity.');
@@ -466,7 +916,7 @@ function initVaultIdleLock() {
     if (vaultIdleListenersBound) return;
     vaultIdleListenersBound = true;
     const bump = () => {
-        if (!isVaultLoggedIn()) return;
+        if (!isVaultLoggedIn() || vaultPasswordChangeBusy) return;
         bumpVaultIdleTimer();
     };
     ['pointerdown', 'keydown', 'mousemove', 'wheel', 'touchstart', 'scroll'].forEach((eventName) => {

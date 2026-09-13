@@ -65,6 +65,9 @@ function clearLocalProcSuppliesFallback() {
 async function loadClinicProfile() {
     clinicProfile = emptyClinicProfile();
     if (!vaultRootHandle) return clinicProfile;
+    if (typeof recoverIncompleteVaultWrites === 'function') {
+        try { await recoverIncompleteVaultWrites(vaultRootHandle); } catch (err) { /* continue load */ }
+    }
     try {
         const text = await readTextFile(vaultRootHandle, clinicProfileFileName());
         const data = JSON.parse(text);

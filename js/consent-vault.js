@@ -2,14 +2,10 @@
 
 const CONSENT_DOC_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-function consentDocFileName(chartId, createdAt) {
-    const stem = String(chartId || 'patient')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 50) || 'patient';
-    const stamp = String(createdAt || new Date().toISOString()).replace(/[:.]/g, '-');
-    return 'consent-' + stem + '-' + stamp + '.json.enc';
+function consentDocFileName() {
+    return typeof newOpaqueEncFileName === 'function'
+        ? newOpaqueEncFileName('consent')
+        : 'consent-' + Date.now() + '-' + Math.random().toString(16).slice(2) + '.json.enc';
 }
 
 function consentDocExpiresAt(fromIso) {
@@ -54,34 +50,50 @@ function adminConsentDocs() {
 async function writeManagedConsentDoc(doc) {
     if (!isVaultLoggedIn() || !doc?.id) return;
     const dir = await getUserConsentsDir(vaultAuth.username, true);
-    const name = doc.fileName || consentDocFileName(doc.chartId, doc.createdAt);
-    doc.fileName = name;
-    const payload = await encryptJson(vaultAuth.key, doc);
-    await writeTextFile(dir, name, JSON.stringify(payload));
+    await writeOpaqueEncryptedJson(dir, doc, 'consent', vaultAuth.key);
 }
 
 async function deleteManagedConsentDocFile(doc) {
-    if (!isVaultLoggedIn() || !doc) return;
+    if (!isVaultLoggedIn() || !doc?.fileName) return false;
     const dir = await getUserConsentsDir(vaultAuth.username, true);
-    await deleteTextFile(dir, doc.fileName || consentDocFileName(doc.chartId, doc.createdAt));
+    return await deleteTextFile(dir, doc.fileName);
+}
+
+async function deleteManagedConsentDoc(id) {
+    const doc = findConsentDoc(id);
+    if (!doc) return false;
+    const ok = await deleteManagedConsentDocFile(doc);
+    if (!ok) {
+        if (typeof toastVaultDeleteFailure === 'function') toastVaultDeleteFailure('consents');
+        return false;
+    }
+    managedConsents = managedConsents.filter((item) => String(item.id) !== String(id));
+    if (typeof renderManagedLesions === 'function') renderManagedLesions();
+    return true;
 }
 
 async function pruneExpiredConsentDocs() {
     const keep = [];
+    let failed = 0;
     for (const doc of managedConsents.slice()) {
         if (!consentDocIsExpired(doc)) {
             keep.push(doc);
             continue;
         }
-        await deleteManagedConsentDocFile(doc);
+        const ok = await deleteManagedConsentDocFile(doc);
+        if (ok) continue;
+        keep.push(doc);
+        failed += 1;
     }
     managedConsents = keep;
+    if (failed && typeof toastVaultDeleteFailure === 'function') toastVaultDeleteFailure('consents');
 }
 
 async function loadManagedConsentsFromVault() {
     managedConsents = [];
     if (!isVaultLoggedIn()) return;
     const dir = await getUserConsentsDir(vaultAuth.username, true);
+    if (typeof recoverIncompleteVaultWrites === 'function') await recoverIncompleteVaultWrites(dir);
     for await (const [name, handle] of dir.entries()) {
         if (handle.kind !== 'file' || !name.endsWith('.json.enc')) continue;
         try {
@@ -96,6 +108,15 @@ async function loadManagedConsentsFromVault() {
         }
     }
     await pruneExpiredConsentDocs();
+    if (typeof dedupeVaultRecordsById === 'function') {
+        managedConsents = await dedupeVaultRecordsById(managedConsents, 'consent', dir);
+    }
+    if (typeof migrateIdentifyingEncFilenames === 'function') {
+        await migrateIdentifyingEncFilenames(managedConsents, 'consent', dir, vaultAuth.key);
+    }
+    if (typeof migrateIdentifyingRecordIds === 'function') {
+        await migrateIdentifyingRecordIds(managedConsents, 'consent', (doc) => writeManagedConsentDoc(doc));
+    }
     managedConsents.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
 }
 
@@ -109,7 +130,7 @@ async function saveGeneratedConsentDoc(data, plainText, printHtml) {
     const now = new Date().toISOString();
     const procedures = Array.isArray(data?.procedures) ? data.procedures : [];
     const doc = {
-        id: 'consent-' + chartId + '-' + Date.now(),
+        id: (typeof newOpaqueRecordId === 'function' ? newOpaqueRecordId('consent') : 'consent-' + Date.now()),
         chartId,
         patientName: patient.patientName || currentPatient.name || data?.name || '',
         patientDob: patient.patientDob || currentPatient.dob || data?.dob || '',
@@ -125,7 +146,7 @@ async function saveGeneratedConsentDoc(data, plainText, printHtml) {
             location: p.location || '',
             diagnosis: p.diagnosis || ''
         })),
-        fileName: consentDocFileName(chartId, now),
+        fileName: consentDocFileName(),
         owner: (typeof vaultAuth !== 'undefined' && vaultAuth.username) || ''
     };
     upsertConsentDocMemory(doc);
@@ -156,9 +177,10 @@ function renderSavedConsentDocCard(doc) {
         ? formatLesionWhen(doc.createdAt)
         : (doc.createdAt || '');
     const days = consentDocDaysLeft(doc);
-    const id = String(doc.id || '').replace(/'/g, '');
+    const id = String(doc.id || '');
     const n = Array.isArray(doc.procedures) ? doc.procedures.length : 0;
     const sites = (doc.procedures || []).map((p) => p.location).filter(Boolean).slice(0, 3).join(', ');
+    const idAttr = escapeHtml(id);
     return `
         <article class="p-4 space-y-2">
             <div class="flex flex-wrap justify-between gap-2">
@@ -170,9 +192,9 @@ function renderSavedConsentDocCard(doc) {
                 <span class="inline-flex items-center px-2 py-0.5 rounded bg-violet-100 text-violet-900 text-[10px] font-bold shrink-0">Consent</span>
             </div>
             <div class="flex flex-wrap gap-1.5">
-                <button type="button" onclick="openSavedConsentDoc('${id}')" class="mgmt-action-btn">View</button>
-                <button type="button" onclick="copySavedConsentDoc('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Copy for BP</button>
-                <button type="button" onclick="printSavedConsentDoc('${id}')" class="mgmt-action-btn">Print</button>
+                <button type="button" data-consent-action="open" data-consent-id="${idAttr}" class="mgmt-action-btn">View</button>
+                <button type="button" data-consent-action="copy" data-consent-id="${idAttr}" class="mgmt-action-btn mgmt-action-btn-primary">Copy for BP</button>
+                <button type="button" data-consent-action="print" data-consent-id="${idAttr}" class="mgmt-action-btn">Print</button>
             </div>
         </article>`;
 }

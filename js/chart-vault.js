@@ -39,23 +39,98 @@ function todayVisitKey() {
     return y + '-' + m + '-' + day;
 }
 
-function chartRecordFileName(chartId) {
-    const stem = String(chartId || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 60) || 'chart';
-    let hash = 0;
-    for (let i = 0; i < String(chartId).length; i++) {
-        hash = ((hash << 5) - hash) + String(chartId).charCodeAt(i);
-        hash |= 0;
-    }
-    return stem + '-' + (hash >>> 0).toString(16) + '.json.enc';
+function chartRecordFileName() {
+    return typeof newOpaqueEncFileName === 'function'
+        ? newOpaqueEncFileName('chart')
+        : 'chart-' + Date.now() + '-' + Math.random().toString(16).slice(2) + '.json.enc';
 }
 
 function findManagedChart(chartId) {
     if (!chartId) return null;
     return managedCharts.find((item) => item.id === chartId) || null;
+}
+
+const UI_SESSION_FILE = 'ui-session.json.enc';
+let loadedUiSession = { chartId: '' };
+let uiSessionWriteChain = Promise.resolve();
+
+function lastOpenChartId() {
+    return String(loadedUiSession?.chartId || '').trim();
+}
+
+function findActiveVisitChart() {
+    const charts = typeof managedCharts !== 'undefined' ? managedCharts : [];
+    return charts.find((chart) => isVisitSessionActive(chart.visitSession)) || null;
+}
+
+async function writeUiSessionFile(chartId) {
+    const id = String(chartId || '').trim();
+    loadedUiSession = { v: 1, chartId: id, updatedAt: new Date().toISOString() };
+    if (!isVaultLoggedIn()) return;
+    const dir = await getUserDir(vaultAuth.username, true);
+    if (!id) {
+        if (typeof deleteTextFile === 'function') await deleteTextFile(dir, UI_SESSION_FILE);
+        return;
+    }
+    const payload = await encryptJson(vaultAuth.key, {
+        v: 1,
+        chartId: id,
+        updatedAt: loadedUiSession.updatedAt
+    });
+    await writeTextFile(dir, UI_SESSION_FILE, JSON.stringify(payload));
+}
+
+function persistUiSession(chartId) {
+    const id = String(chartId || '').trim();
+    loadedUiSession = { ...(loadedUiSession || {}), chartId: id };
+    uiSessionWriteChain = uiSessionWriteChain
+        .then(() => writeUiSessionFile(id), () => writeUiSessionFile(id));
+    return uiSessionWriteChain;
+}
+
+async function loadUiSessionFromVault() {
+    loadedUiSession = { chartId: '' };
+    if (!isVaultLoggedIn()) return loadedUiSession;
+    try {
+        const dir = await getUserDir(vaultAuth.username, false);
+        if (typeof recoverIncompleteVaultWrites === 'function') await recoverIncompleteVaultWrites(dir);
+        const text = await readTextFile(dir, UI_SESSION_FILE);
+        const data = await decryptJson(vaultAuth.key, JSON.parse(text));
+        loadedUiSession = { chartId: String(data?.chartId || '').trim() };
+    } catch (err) {
+        loadedUiSession = { chartId: '' };
+    }
+    return loadedUiSession;
+}
+
+function patientContactForLesion(lesion) {
+    const identity = typeof patientIdentityFromRecord === 'function'
+        ? patientIdentityFromRecord(lesion || {})
+        : {};
+    const chartId = (typeof lesionChartId === 'function' ? lesionChartId(lesion) : '')
+        || identity.chartId
+        || lesion?.chartId
+        || '';
+    const chart = chartId ? findManagedChart(chartId) : null;
+    let phone = String(identity.phone || lesion?.patientPhone || lesion?.phone || '').trim();
+    if (!phone) phone = String(chart?.phone || '').trim();
+    if (!phone && typeof hasCurrentPatient === 'function' && hasCurrentPatient()
+        && currentPatient.chartId && chartId && currentPatient.chartId === chartId) {
+        phone = String(currentPatient.phone || '').trim();
+    }
+    let sms = '';
+    if (typeof normalizeSmsNormalResultsConsent === 'function') {
+        if (chart) sms = normalizeSmsNormalResultsConsent(chart.smsNormalResultsConsent);
+        else if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()
+            && currentPatient.chartId === chartId
+            && typeof smsNormalResultsConsent !== 'undefined') {
+            sms = normalizeSmsNormalResultsConsent(smsNormalResultsConsent);
+        }
+    }
+    const smsLabel = typeof smsNormalResultsConsentLabelFor === 'function'
+        ? smsNormalResultsConsentLabelFor(sms, { short: true })
+        : '';
+    return { phone, sms, smsLabel, chartId };
 }
 
 function currentManagedChart() {
@@ -114,8 +189,13 @@ function hydrateVisitLesionsFromIds(ids) {
     const next = [];
     managedLesions.forEach((item) => {
         if (!wanted.has(String(item.id))) return;
-        if (typeof lesionChartId === 'function' && lesionChartId(item) !== chartId) return;
-        next.push({ ...item });
+        const row = { ...item };
+        if (typeof lesionChartId === 'function' && lesionChartId(row) !== chartId) {
+            row.chartId = chartId;
+            if (currentPatient.name) row.patientName = row.patientName || currentPatient.name;
+            if (currentPatient.dob) row.patientDob = row.patientDob || currentPatient.dob;
+        }
+        next.push(row);
     });
     lesions = next;
 }
@@ -240,8 +320,9 @@ function newChartRecord(patient) {
         iemr: emptyChartIemr(),
         procedureSession: null,
         visitSession: null,
+        scratchpadIdleSince: '',
         owner: (typeof vaultAuth !== 'undefined' && vaultAuth.username) || '',
-        fileName: chartRecordFileName(id)
+        fileName: chartRecordFileName()
     };
 }
 
@@ -254,10 +335,7 @@ function upsertManagedChartMemory(chart) {
 async function writeManagedChart(chart) {
     if (!isVaultLoggedIn() || !chart?.id) return;
     const dir = await getUserChartsDir(vaultAuth.username, true);
-    const name = chart.fileName || chartRecordFileName(chart.id);
-    chart.fileName = name;
-    const payload = await encryptJson(vaultAuth.key, chart);
-    await writeTextFile(dir, name, JSON.stringify(payload));
+    await writeOpaqueEncryptedJson(dir, chart, 'chart', vaultAuth.key);
 }
 
 async function saveManagedChartRecord(chart) {
@@ -270,6 +348,7 @@ async function loadManagedChartsFromVault() {
     managedCharts = [];
     if (!isVaultLoggedIn()) return;
     const dir = await getUserChartsDir(vaultAuth.username, true);
+    if (typeof recoverIncompleteVaultWrites === 'function') await recoverIncompleteVaultWrites(dir);
     for await (const [name, handle] of dir.entries()) {
         if (handle.kind !== 'file' || !name.endsWith('.json.enc')) continue;
         try {
@@ -300,6 +379,341 @@ async function loadManagedChartsFromVault() {
         }
     }
     managedCharts.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'en', { sensitivity: 'base' }));
+    if (typeof dedupeVaultRecordsById === 'function') {
+        managedCharts = await dedupeVaultRecordsById(managedCharts, 'chart', dir);
+        managedCharts.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'en', { sensitivity: 'base' }));
+    }
+}
+
+const CHART_IDLE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+let pruningIdleCharts = false;
+
+function parseTimestampMs(iso) {
+    const t = Date.parse(iso || '');
+    return Number.isNaN(t) ? 0 : t;
+}
+
+function billingKeepsScratchpad(bill) {
+    if (!bill) return false;
+    return bill.status !== 'processed';
+}
+
+function lesionKeepsScratchpad(lesion) {
+    if (!lesion) return false;
+    const status = typeof canonicalLesionStatus === 'function'
+        ? canonicalLesionStatus(typeof lesionLifecycleStatus === 'function'
+            ? lesionLifecycleStatus(lesion)
+            : lesion.managementStatus)
+        : lesion.managementStatus;
+    if (status !== 'no_followup') return true;
+    if (typeof lesionCanCloseNoFollowup === 'function' && !lesionCanCloseNoFollowup(lesion)) return true;
+    return false;
+}
+
+function chartHasLiveWorkspace(chart, chartId) {
+    if (chart) {
+        if (isVisitSessionActive(chart.visitSession)) return true;
+        if (typeof isStoredProcedureSessionActive === 'function'
+            && isStoredProcedureSessionActive(chart.procedureSession)) return true;
+    }
+    const id = chart?.id || chartId;
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && currentPatient.chartId === id) {
+        if (typeof isBedSanitised !== 'undefined' && isBedSanitised) return true;
+        if (typeof procedureSession !== 'undefined' && procedureSession.started && !procedureSession.completedAt) return true;
+        if (typeof lesions !== 'undefined' && lesions.length) return true;
+        if (typeof patientConcerns !== 'undefined' && patientConcerns.length) return true;
+        if (typeof activeWorkspaceTab !== 'undefined'
+            && (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')) return true;
+        if (typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete) return true;
+        if (typeof groupStates !== 'undefined'
+            && ['canc', 'all', 'bld', 'dia', 'hea'].some((key) => groupStates[key] === 'YES' || groupStates[key] === 'NO')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function scratchpadChartBundle(chartId) {
+    const id = String(chartId || '');
+    const chart = id && typeof findManagedChart === 'function' ? findManagedChart(id) : null;
+    const lesions = (typeof managedLesions !== 'undefined' ? managedLesions : []).filter((item) => {
+        const itemId = typeof lesionChartId === 'function' ? lesionChartId(item) : item.chartId;
+        return itemId && itemId === id;
+    });
+    const lesionIds = new Set(lesions.map((item) => String(item.id)));
+    const bills = (typeof managedBillings !== 'undefined' ? managedBillings : []).filter((bill) => {
+        if (bill.chartId && bill.chartId === id) return true;
+        return lesionIds.has(String(bill.lesionId || ''));
+    });
+    return { chart, lesions, bills };
+}
+
+function collectScratchpadChartIds() {
+    const ids = new Set();
+    (typeof managedCharts !== 'undefined' ? managedCharts : []).forEach((chart) => {
+        if (chart?.id) ids.add(chart.id);
+    });
+    (typeof managedLesions !== 'undefined' ? managedLesions : []).forEach((lesion) => {
+        const id = typeof lesionChartId === 'function' ? lesionChartId(lesion) : lesion.chartId;
+        if (id) ids.add(id);
+    });
+    (typeof managedBillings !== 'undefined' ? managedBillings : []).forEach((bill) => {
+        if (bill.chartId) ids.add(bill.chartId);
+    });
+    (typeof managedVisitNotes !== 'undefined' ? managedVisitNotes : []).forEach((note) => {
+        if (note.chartId) ids.add(note.chartId);
+    });
+    (typeof managedConsents !== 'undefined' ? managedConsents : []).forEach((doc) => {
+        if (doc.chartId) ids.add(doc.chartId);
+    });
+    return [...ids];
+}
+
+function scratchpadChartIsActive(chartId, options) {
+    options = options || {};
+    const { chart, lesions, bills } = scratchpadChartBundle(chartId);
+    if (!options.ignoreWorkspace && chartHasLiveWorkspace(chart, chartId)) return true;
+    if (options.ignoreWorkspace && chart) {
+        if (isVisitSessionActive(chart.visitSession)) return true;
+        if (typeof isStoredProcedureSessionActive === 'function'
+            && isStoredProcedureSessionActive(chart.procedureSession)) return true;
+    }
+    if (lesions.some(lesionKeepsScratchpad)) return true;
+    if (bills.some(billingKeepsScratchpad)) return true;
+    return false;
+}
+
+function computeScratchpadIdleSinceMs(chartId) {
+    const { chart, lesions, bills } = scratchpadChartBundle(chartId);
+    let latest = 0;
+    const bump = (iso) => {
+        latest = Math.max(latest, parseTimestampMs(iso));
+    };
+    lesions.forEach((lesion) => {
+        bump(lesion.updatedAt);
+        bump(lesion.billingProcessedAt);
+        bump(lesion.resultAdvisedAt);
+        bump(lesion.histologyAt);
+        bump(lesion.procedureCompletedAt);
+        bump(lesion.excisionFinalisedAt);
+    });
+    bills.forEach((bill) => {
+        bump(bill.processedAt);
+        bump(bill.confirmedAt);
+        bump(bill.updatedAt);
+    });
+    if (chart) {
+        bump(chart.createdAt);
+        bump(chart.iemr?.examCopiedAt);
+        bump(chart.visitSession?.updatedAt);
+        bump(chart.procedureSession?.completedAt);
+    }
+    return latest;
+}
+
+function scratchpadIdleSinceMs(chartId) {
+    const { chart } = scratchpadChartBundle(chartId);
+    const stamped = parseTimestampMs(chart?.scratchpadIdleSince);
+    if (stamped) return stamped;
+    return computeScratchpadIdleSinceMs(chartId);
+}
+
+function scratchpadExpiresAtIso(chartId) {
+    if (scratchpadChartIsActive(chartId)) return '';
+    const start = scratchpadIdleSinceMs(chartId);
+    if (!start) return '';
+    return new Date(start + CHART_IDLE_TTL_MS).toISOString();
+}
+
+function scratchpadChartIsExpired(chartId) {
+    if (!chartId) return false;
+    if (scratchpadChartIsActive(chartId)) return false;
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && currentPatient.chartId === chartId) {
+        return false;
+    }
+    const { chart, lesions, bills } = scratchpadChartBundle(chartId);
+    if (!chart && !lesions.length && !bills.length) return false;
+    const iso = scratchpadExpiresAtIso(chartId);
+    if (!iso) return false;
+    return Date.parse(iso) <= Date.now();
+}
+
+function formatScratchpadExpiry(chartId) {
+    const id = chartId || (typeof hasCurrentPatient === 'function' && hasCurrentPatient() ? currentPatient.chartId : '');
+    if (!id || scratchpadChartIsActive(id)) return '';
+    const { chart, lesions, bills } = scratchpadChartBundle(id);
+    if (!chart?.scratchpadIdleSince && !lesions.length && !bills.length) return '';
+    const iso = scratchpadExpiresAtIso(id);
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return 'Deletes ' + d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+}
+
+function syncScratchpadIdleStamp(chart, options) {
+    options = options || {};
+    if (!chart?.id) return;
+    if (scratchpadChartIsActive(chart.id, { ignoreWorkspace: !!options.ignoreWorkspace })) {
+        chart.scratchpadIdleSince = '';
+        return;
+    }
+    if (chart.scratchpadIdleSince && !options.refresh) return;
+    const computed = computeScratchpadIdleSinceMs(chart.id);
+    const ms = Math.max(computed || 0, options.refresh ? Date.now() : 0) || computed || Date.now();
+    chart.scratchpadIdleSince = new Date(ms).toISOString();
+}
+
+async function deleteManagedChartFile(chart) {
+    if (!isVaultLoggedIn() || !chart) return false;
+    if (!chart.fileName) return true;
+    const dir = await getUserChartsDir(vaultAuth.username, true);
+    return await deleteTextFile(dir, chart.fileName);
+}
+
+function abandonOpenChartAfterPurge() {
+    applyingChartRecord = true;
+    try {
+        if (typeof closeFinaliseVisitModal === 'function') closeFinaliseVisitModal();
+        if (typeof resetProcedureSession === 'function') resetProcedureSession();
+        if (typeof resetScreeningAndExamForm === 'function') resetScreeningAndExamForm();
+        currentPatient = { name: '', firstName: '', lastName: '', dob: '', phone: '', clinician: '', chartId: '' };
+        pendingWorkspaceTab = '';
+        pendingSanitise = false;
+        if (typeof isBedSanitised !== 'undefined') isBedSanitised = false;
+        if (typeof lesions !== 'undefined') lesions = [];
+        if (typeof patientConcerns !== 'undefined') patientConcerns = [];
+        if (typeof noPatientConcerns !== 'undefined') noPatientConcerns = false;
+        if (typeof screeningMarkedComplete !== 'undefined') screeningMarkedComplete = false;
+        if (typeof smsNormalResultsConsent !== 'undefined') smsNormalResultsConsent = '';
+        if (typeof selectedChartLesionId !== 'undefined') selectedChartLesionId = '';
+        if (typeof currentManagedCaseId !== 'undefined') currentManagedCaseId = null;
+        if (typeof updateHeaderPatient === 'function') updateHeaderPatient();
+        if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
+    } finally {
+        applyingChartRecord = false;
+    }
+}
+
+async function purgeScratchpadChartId(chartId) {
+    const id = String(chartId || '');
+    if (!id) return false;
+    const bundle = scratchpadChartBundle(id);
+    const chart = bundle.chart;
+    const chartLesions = bundle.lesions;
+    const chartBills = bundle.bills;
+    let failed = 0;
+
+    const deletedLesionIds = new Set();
+    for (const lesion of chartLesions) {
+        const ok = typeof deleteManagedLesionFile === 'function'
+            ? await deleteManagedLesionFile(lesion.id)
+            : false;
+        if (ok) deletedLesionIds.add(String(lesion.id));
+        else failed += 1;
+    }
+    if (typeof managedLesions !== 'undefined') {
+        managedLesions = managedLesions.filter((item) => {
+            const itemId = typeof lesionChartId === 'function' ? lesionChartId(item) : item.chartId;
+            if (itemId !== id) return true;
+            return !deletedLesionIds.has(String(item.id));
+        });
+    }
+    if (typeof lesions !== 'undefined') {
+        lesions = lesions.filter((item) => {
+            const itemId = typeof lesionChartId === 'function' ? lesionChartId(item) : item.chartId;
+            if (itemId !== id) return true;
+            return !deletedLesionIds.has(String(item.id));
+        });
+    }
+
+    const deletedBillIds = new Set();
+    for (const bill of chartBills) {
+        const ok = typeof deleteManagedBillingFile === 'function'
+            ? await deleteManagedBillingFile(bill)
+            : false;
+        if (ok) deletedBillIds.add(String(bill.id));
+        else failed += 1;
+    }
+    if (typeof managedBillings !== 'undefined') {
+        managedBillings = managedBillings.filter((bill) => !deletedBillIds.has(String(bill.id)));
+    }
+
+    let chartGone = !chart;
+    if (chart) {
+        chartGone = await deleteManagedChartFile(chart);
+        if (chartGone) {
+            managedCharts = managedCharts.filter((item) => item.id !== id);
+        } else {
+            failed += 1;
+        }
+    }
+
+    if (failed) {
+        if (typeof toastVaultDeleteFailure === 'function') toastVaultDeleteFailure('charts');
+        return false;
+    }
+
+    if (typeof currentManagedCaseId !== 'undefined' && currentManagedCaseId
+        && !(typeof managedLesions !== 'undefined' ? managedLesions : []).some((item) => String(item.id) === String(currentManagedCaseId))) {
+        currentManagedCaseId = null;
+    }
+
+    if (typeof lastOpenChartId === 'function' && lastOpenChartId() === id && typeof persistUiSession === 'function') {
+        try { await persistUiSession(''); } catch (err) { /* pointer is best-effort */ }
+    }
+
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && currentPatient.chartId === id) {
+        abandonOpenChartAfterPurge();
+    }
+    return true;
+}
+
+async function ensureScratchpadIdleStamps() {
+    const charts = typeof managedCharts !== 'undefined' ? managedCharts.slice() : [];
+    for (const chart of charts) {
+        if (!chart?.id) continue;
+        if (scratchpadChartIsActive(chart.id)) {
+            if (chart.scratchpadIdleSince) {
+                chart.scratchpadIdleSince = '';
+                try { await saveManagedChartRecord(chart); } catch (err) { /* in-memory clear still applies */ }
+            }
+            continue;
+        }
+        if (chart.scratchpadIdleSince) continue;
+        const ms = computeScratchpadIdleSinceMs(chart.id) || Date.now();
+        chart.scratchpadIdleSince = new Date(ms).toISOString();
+        if (ms + CHART_IDLE_TTL_MS > Date.now()) {
+            try { await saveManagedChartRecord(chart); } catch (err) { /* prune can still use the in-memory stamp */ }
+        }
+    }
+}
+
+async function pruneExpiredIdleCharts() {
+    if (pruningIdleCharts || !isVaultLoggedIn()) return 0;
+    pruningIdleCharts = true;
+    let removed = 0;
+    let failed = 0;
+    try {
+        await ensureScratchpadIdleStamps();
+        const expired = collectScratchpadChartIds().filter((id) => scratchpadChartIsExpired(id));
+        for (const id of expired) {
+            try {
+                if (await purgeScratchpadChartId(id)) removed += 1;
+                else failed += 1;
+            } catch (err) {
+                failed += 1;
+                console.warn('Could not purge idle chart', id, err);
+            }
+        }
+        if (removed && typeof showToast === 'function') {
+            showToast(removed === 1
+                ? 'Removed 1 finished chart after 14 days.'
+                : 'Removed ' + removed + ' finished charts after 14 days.');
+        }
+        return removed;
+    } finally {
+        pruningIdleCharts = false;
+    }
 }
 
 async function ensureChartRecord(patient) {
@@ -547,6 +961,12 @@ async function saveCurrentChartFromDom(options) {
             chart.visitSession = visitSnap;
         }
     }
+    if (typeof syncScratchpadIdleStamp === 'function') {
+        syncScratchpadIdleStamp(chart, {
+            refresh: !!options?.endVisit,
+            ignoreWorkspace: !!options?.endVisit
+        });
+    }
     await saveManagedChartRecord(chart);
     if (typeof updateChartChrome === 'function') updateChartChrome();
     return chart;
@@ -558,6 +978,11 @@ function scheduleChartSave() {
     chartSaveTimer = setTimeout(() => {
         saveCurrentChartFromDom().catch((err) => {
             console.warn('Could not save patient chart', err);
+            if (typeof toastVaultWriteError === 'function') {
+                toastVaultWriteError('Chart could not be saved to the clinic folder. Check folder access.');
+            } else if (typeof showToast === 'function') {
+                showToast('Chart could not be saved to the clinic folder. Check folder access.');
+            }
         });
     }, 700);
 }
@@ -937,17 +1362,18 @@ async function resumeLastChartAfterLogin() {
     if (typeof openPatientChart !== 'function') return false;
     const last = typeof readLastPatient === 'function' ? readLastPatient() : null;
     const lastChart = chartForLastPatient(last);
-    const activeChart = (!lastChart && typeof findActiveProcedureChart === 'function')
+    const activeProcedure = typeof findActiveProcedureChart === 'function'
         ? findActiveProcedureChart()
         : null;
-    const source = lastChart || last || activeChart;
+    const activeVisit = findActiveVisitChart();
+    const source = lastChart || activeProcedure || activeVisit;
     if (!source) return false;
     const chartRecord = lastChart || (source.id ? source : chartForLastPatient(source));
     const hasActiveVisit = !!(chartRecord && isVisitSessionActive(chartRecord.visitSession));
     const hasActiveProcedure = !!(chartRecord && typeof isStoredProcedureSessionActive === 'function'
         && isStoredProcedureSessionActive(chartRecord.procedureSession))
-        || !!(activeChart && typeof isStoredProcedureSessionActive === 'function'
-            && isStoredProcedureSessionActive(activeChart.procedureSession));
+        || !!(activeProcedure && typeof isStoredProcedureSessionActive === 'function'
+            && isStoredProcedureSessionActive(activeProcedure.procedureSession));
     const opened = await openPatientChart(patientFromChartOrLast(source), {
         silent: true,
         keepFilter: true,
@@ -1004,19 +1430,11 @@ async function closePatientChart(options) {
         if (typeof updateChartChrome === 'function') updateChartChrome();
         return;
     }
-    if (!options?.force && sessionNotesShouldPromptClose()) {
-        const pending = typeof notesPendingCopy === 'function'
-            ? notesPendingCopy()
-            : { pending: true, consultExists: true, procedureExists: false };
-        openCloseChartNotesModal({
-            ...pending,
-            pending: true,
-            consultExists: pending.consultExists || true,
-            forcePrompt: true
-        });
+    if (!options?.force) {
+        requestClosePatientChart();
         return;
     }
-    closeCloseChartNotesModal();
+    closeFinaliseVisitModal();
     if (typeof clearStoredProcedureSession === 'function') {
         await clearStoredProcedureSession();
     }
@@ -1032,68 +1450,194 @@ async function closePatientChart(options) {
 }
 
 function requestClosePatientChart() {
-    closePatientChart();
+    if (!hasCurrentPatient()) {
+        closePatientChart({ force: true });
+        return;
+    }
+    if (typeof procedureSession !== 'undefined' && procedureSession.started) {
+        showToast('Finish the procedure first, then finalise the visit.');
+        if (typeof openProcedureCompleteModal === 'function') openProcedureCompleteModal();
+        return;
+    }
+    openFinaliseVisitModal();
 }
 
-function openCloseChartNotesModal(pending) {
-    const modal = document.getElementById('closeChartNotesModal');
+function openFinaliseVisitModal() {
+    const modal = document.getElementById('finaliseVisitModal');
     if (!modal) {
         closePatientChart({ force: true });
         return;
     }
-    refreshCloseChartNotesModal(pending);
+    refreshFinaliseVisitModal();
     modal.classList.remove('hidden');
 }
 
-function closeCloseChartNotesModal() {
-    const modal = document.getElementById('closeChartNotesModal');
+function closeFinaliseVisitModal() {
+    const modal = document.getElementById('finaliseVisitModal');
     if (modal) modal.classList.add('hidden');
 }
 
 function stayOnPatientChart() {
-    closeCloseChartNotesModal();
+    closeFinaliseVisitModal();
 }
 
-function refreshCloseChartNotesModal(pending) {
-    const state = pending || (typeof notesPendingCopy === 'function' ? notesPendingCopy() : { pending: false });
-    const detail = document.getElementById('closeChartNotesDetail');
-    const todayBtn = document.getElementById('btnCloseChartCopyToday');
-    const consultBtn = document.getElementById('btnCloseChartCopyConsult');
-    const procBtn = document.getElementById('btnCloseChartCopyProcedure');
-    if (detail) {
-        detail.textContent = state.forcePrompt || state.pending
-            ? 'Copy today’s clinical note into Best Practice before closing. If you already pasted earlier, replace that note rather than appending.'
-            : 'Notes have been copied. You can close the chart.';
-    }
-    if (todayBtn) {
-        todayBtn.classList.remove('hidden');
-        todayBtn.disabled = false;
-        todayBtn.textContent = 'Copy today’s note';
-    }
-    if (consultBtn) consultBtn.classList.add('hidden');
-    if (procBtn) procBtn.classList.add('hidden');
+function setFinaliseCopyButton(id, copied, idleLabel, doneLabel, idleClass, doneClass) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.textContent = copied ? doneLabel : idleLabel;
+    btn.className = copied ? doneClass : idleClass;
 }
 
-function copyPendingChartNotes(kind) {
+function refreshFinaliseVisitModal() {
+    if (typeof updateOutput === 'function') updateOutput();
+    const iemr = typeof generateCompleteInteractionNote === 'function'
+        ? generateCompleteInteractionNote()
+        : (typeof generateEMRNotePlainText === 'function' ? generateEMRNotePlainText() : '');
+    const rec = typeof generateReceptionMessage === 'function' ? generateReceptionMessage() : '';
+    const lesions = typeof visitProcedureLesionsForFinalise === 'function' ? visitProcedureLesionsForFinalise() : [];
+    const state = typeof visitFinaliseBillingState === 'function'
+        ? visitFinaliseBillingState(lesions)
+        : { mode: lesions.length ? 'hold' : 'close', copyText: '' };
+
+    const iemrEl = document.getElementById('finaliseIemrPreview');
+    const recEl = document.getElementById('finaliseReceptionPreview');
+    const billEl = document.getElementById('finaliseBillingPreview');
+    const billWrap = document.getElementById('finaliseBillingWrap');
+    const billHint = document.getElementById('finaliseBillingHint');
+    const closeBtn = document.getElementById('btnFinaliseVisitClose');
+
+    if (iemrEl) iemrEl.value = iemr || '';
+    if (recEl) recEl.value = rec || '';
+    if (billEl) billEl.value = state.copyText || '';
+    if (billWrap) billWrap.classList.toggle('hidden', state.mode === 'close');
+    if (billHint) {
+        billHint.textContent = state.mode === 'process'
+            ? 'Site and item numbers for Best Practice. Same-day procedures bill together. Copy, then mark processed and close so billing is not an extra step.'
+            : 'Same-day procedures bill together. Hold these items until histology is back, unless you change a lesion to suspected melanoma.';
+    }
+
+    const iemrCopied = typeof outputCopyState !== 'undefined' && outputCopyState.emr
+        && outputCopyState.emr.copied && outputCopyState.emr.lastCopiedText === iemr;
+    const recCopied = typeof outputCopyState !== 'undefined' && outputCopyState.rec
+        && outputCopyState.rec.copied && outputCopyState.rec.lastCopiedText === rec;
+    setFinaliseCopyButton(
+        'btnFinaliseCopyIemr',
+        iemrCopied,
+        'Copy IEMR',
+        'IEMR copied',
+        'px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer',
+        'px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer'
+    );
+    setFinaliseCopyButton(
+        'btnFinaliseCopyReception',
+        recCopied,
+        'Copy message to reception',
+        'Reception message copied',
+        'px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg cursor-pointer',
+        'px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer'
+    );
+    setFinaliseCopyButton(
+        'btnFinaliseCopyBilling',
+        false,
+        'Copy item numbers',
+        'Item numbers copied',
+        'px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg cursor-pointer',
+        'px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer'
+    );
+
+    if (closeBtn) {
+        if (state.mode === 'process') {
+            closeBtn.textContent = 'Mark billing processed and close';
+            closeBtn.className = 'px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg cursor-pointer';
+        } else if (state.mode === 'hold') {
+            closeBtn.textContent = 'Hold billing and close';
+            closeBtn.className = 'px-4 py-2 bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold rounded-lg cursor-pointer';
+        } else {
+            closeBtn.textContent = 'Close chart';
+            closeBtn.className = 'px-4 py-2 bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold rounded-lg cursor-pointer';
+        }
+    }
+}
+
+function copyFinaliseVisitIemr() {
+    const text = document.getElementById('finaliseIemrPreview')?.value || '';
+    if (!text) {
+        showToast('No IEMR note to copy yet.');
+        return;
+    }
     if (typeof copyTodaysClinicalNote === 'function') {
         copyTodaysClinicalNote();
-    } else if (typeof copyEMRNotePlainText === 'function') {
-        copyEMRNotePlainText();
+    } else {
+        copyTextToClipboard(text, 'IEMR copied for Best Practice.', () => {
+            if (typeof markOutputCopied === 'function') markOutputCopied('emr', text);
+            if (typeof markChartIemrCopied === 'function') markChartIemrCopied(text);
+        });
     }
-    setTimeout(() => {
-        const pending = typeof notesPendingCopy === 'function' ? notesPendingCopy() : { pending: false };
-        if (!pending.pending) {
-            closePatientChart({ force: true });
-            return;
-        }
-        refreshCloseChartNotesModal(pending);
-    }, 350);
+    setTimeout(() => refreshFinaliseVisitModal(), 200);
 }
 
-function flushVisitPersistence() {
-    if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) return;
-    if (typeof isVaultLoggedIn === 'function' && !isVaultLoggedIn()) return;
-    if (!hasCurrentPatient()) return;
+function copyFinaliseVisitReception() {
+    const text = document.getElementById('finaliseReceptionPreview')?.value
+        || (typeof generateReceptionMessage === 'function' ? generateReceptionMessage() : '');
+    if (!text) {
+        showToast('No reception message yet.');
+        return;
+    }
+    copyTextToClipboard(text, 'Reception message copied.', () => {
+        if (typeof markOutputCopied === 'function') markOutputCopied('rec', text);
+        refreshFinaliseVisitModal();
+    });
+}
+
+function copyFinaliseVisitBilling() {
+    const text = document.getElementById('finaliseBillingPreview')?.value
+        || (typeof generateVisitBillingCopy === 'function'
+            ? generateVisitBillingCopy(typeof visitProcedureLesionsForFinalise === 'function' ? visitProcedureLesionsForFinalise() : [])
+            : '');
+    if (!text) {
+        showToast('No item numbers to copy yet.');
+        return;
+    }
+    copyTextToClipboard(text, 'Item numbers copied for Best Practice.', () => {
+        setFinaliseCopyButton(
+            'btnFinaliseCopyBilling',
+            true,
+            'Copy item numbers',
+            'Item numbers copied',
+            'px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg cursor-pointer',
+            'px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer'
+        );
+    });
+}
+
+async function submitFinaliseVisit() {
+    const lesions = typeof visitProcedureLesionsForFinalise === 'function' ? visitProcedureLesionsForFinalise() : [];
+    const state = typeof visitFinaliseBillingState === 'function'
+        ? visitFinaliseBillingState(lesions)
+        : { mode: lesions.length ? 'hold' : 'close' };
+    if (state.mode === 'process' && typeof markVisitLesionsBillingProcessed === 'function') {
+        const result = await markVisitLesionsBillingProcessed(lesions);
+        await closePatientChart({ force: true, silent: true });
+        const codes = (result.codes || []).filter(Boolean).join(' · ');
+        showToast(codes
+            ? 'Billing marked processed: ' + codes + '. Chart closed.'
+            : 'Billing marked processed. Chart closed.');
+        return;
+    }
+    if (state.mode === 'hold') {
+        await closePatientChart({ force: true, silent: true });
+        showToast('Billing held. Chart closed.');
+        return;
+    }
+    await closePatientChart({ force: true });
+}
+
+async function flushVisitPersistence() {
+    if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) {
+        if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
+        return { ok: true, skipped: true };
+    }
+    if (typeof isVaultLoggedIn === 'function' && !isVaultLoggedIn()) return { ok: true, skipped: true };
     if (typeof chartSaveTimer !== 'undefined' && chartSaveTimer) {
         clearTimeout(chartSaveTimer);
         chartSaveTimer = null;
@@ -1102,14 +1646,25 @@ function flushVisitPersistence() {
         clearTimeout(visitNoteSaveTimer);
         visitNoteSaveTimer = null;
     }
-    const tasks = [];
+    if (!hasCurrentPatient()) {
+        if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
+        return { ok: true, skipped: true };
+    }
+    const errors = [];
     if (typeof saveCurrentChartFromDom === 'function') {
-        tasks.push(saveCurrentChartFromDom().catch((err) => console.warn('Flush chart save failed', err)));
+        try { await saveCurrentChartFromDom(); } catch (err) {
+            console.warn('Flush chart save failed', err);
+            errors.push(err);
+        }
     }
     if (typeof saveCurrentVisitNotes === 'function') {
-        tasks.push(saveCurrentVisitNotes().catch((err) => console.warn('Flush note save failed', err)));
+        try { await saveCurrentVisitNotes(); } catch (err) {
+            console.warn('Flush note save failed', err);
+            errors.push(err);
+        }
     }
-    return Promise.all(tasks);
+    if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
+    return { ok: !errors.length, errors };
 }
 
 function bindVisitPersistenceFlush() {
@@ -1118,6 +1673,8 @@ function bindVisitPersistenceFlush() {
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') flushVisitPersistence();
     });
+    // Browsers do not wait for File System Access writes on pagehide. Flush is
+    // best-effort; lock Windows when leaving the desk.
     window.addEventListener('pagehide', () => {
         flushVisitPersistence();
     });
@@ -1145,8 +1702,12 @@ function updateChartChrome() {
     const sub = document.getElementById('mgmtChartBannerText');
     if (sub) {
         sub.textContent = open
-            ? ([currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ') + ' · This chart only. Close the chart to see every patient’s lesions.')
-            : 'All current active skin lesions. Search a patient to open their chart.';
+            ? ([currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ')
+                + ' · This chart only. Close the chart to see every patient’s lesions.'
+                + (typeof formatScratchpadExpiry === 'function' && formatScratchpadExpiry(currentPatient.chartId)
+                    ? ' · Finished work is kept 14 days (' + formatScratchpadExpiry(currentPatient.chartId) + ').'
+                    : ''))
+            : 'All current active skin lesions. Search a patient to open their chart. Finished charts are kept 14 days, then deleted.';
     }
     if (iemrEl) {
         iemrEl.classList.toggle('hidden', !open);

@@ -908,6 +908,56 @@ function receptionBillingInstruction(summary) {
     return 'Billing: HOLD.';
 }
 
+function visitProcedureLesionsForFinalise() {
+    if (typeof procedureOutputLesions === 'function') return procedureOutputLesions() || [];
+    const chart = typeof chartLesions === 'function' ? chartLesions() : [];
+    return chart.filter((item) => (
+        typeof lesionPerformedToday === 'function' ? lesionPerformedToday(item) : !!item.procedureCompletedAt
+    ));
+}
+
+function generateVisitBillingCopy(lesionList) {
+    const summary = typeof procedureSessionBillingSummary === 'function'
+        ? procedureSessionBillingSummary(lesionList || [])
+        : { rows: [] };
+    const lines = (summary.rows || []).map((row) => {
+        const codes = row.hold ? 'HOLD' : (row.codes || 'Codes pending');
+        return (row.site || 'site') + ' (' + (row.tag || 'Procedure') + '): ' + codes;
+    });
+    if (lines.length) lines.unshift('Consult: 23');
+    return lines.join('\n');
+}
+
+function visitFinaliseBillingState(lesionList) {
+    const list = lesionList || [];
+    if (!list.length) return { mode: 'close', lesions: [], summary: null, copyText: '' };
+    const summary = typeof procedureSessionBillingSummary === 'function'
+        ? procedureSessionBillingSummary(list)
+        : { rows: [], holdRows: [], allReady: false, allProcess: false };
+    const copyText = generateVisitBillingCopy(list);
+    if (summary.allReady && !(summary.holdRows && summary.holdRows.length)) {
+        return { mode: 'process', lesions: list, summary, copyText };
+    }
+    return { mode: 'hold', lesions: list, summary, copyText };
+}
+
+async function markVisitLesionsBillingProcessed(lesionList) {
+    const list = lesionList || [];
+    if (!list.length) return { processed: 0, codes: [] };
+    const confirmed = typeof confirmSameDaySessionBilling === 'function'
+        ? await confirmSameDaySessionBilling(list)
+        : { confirmed: 0, codes: [] };
+    const ids = [];
+    list.forEach((lesion) => {
+        const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
+        if (bill && bill.status === 'confirmed') ids.push(bill.id);
+    });
+    if (ids.length && typeof markBillingsAsProcessed === 'function') {
+        await markBillingsAsProcessed(ids, { silentToast: true });
+    }
+    return { processed: ids.length, codes: confirmed.codes || [] };
+}
+
 async function confirmSameDaySessionBilling(lesionList) {
     const summary = procedureSessionBillingSummary(lesionList);
     if (!summary.allReady) return { confirmed: 0, codes: [], doctorText: summary.doctorText || '' };

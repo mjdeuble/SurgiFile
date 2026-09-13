@@ -368,13 +368,13 @@ function commitDiagnosisEntry(state, entry, customText) {
 function paintDxSuggest(state, query) {
     const list = dxSuggestEl(state.input);
     if (!list) return;
-    const exclude = state.multi ? splitDiagnosisParts(state.hiddenEl?.value || '') : [];
-    const hits = searchDiagnoses(query, { exclude });
-    if (!hits.length && !String(query || '').trim()) {
+    const q = String(query || '').trim();
+    if (!q) {
         hideDxSuggest(state.input);
         return;
     }
-    const q = String(query || '').trim();
+    const exclude = state.multi ? splitDiagnosisParts(state.hiddenEl?.value || '') : [];
+    const hits = searchDiagnoses(q, { exclude });
     const items = hits.map((entry, idx) => {
         const meta = entry.code === entry.family ? '' : entry.family;
         return '<button type="button" class="dx-suggest-item' + (idx === 0 ? ' is-active' : '') + '" data-dx-code="'
@@ -537,10 +537,17 @@ function readDiagnosisTypeahead(inputId) {
     return exact ? exact.code : typed;
 }
 
+function diagnosisFieldValue(value) {
+    const t = String(value || '').trim();
+    if (!t || /^pending assessment$/i.test(t)) return '';
+    return t;
+}
+
 function setDiagnosisTypeahead(inputId, value) {
     const state = dxTypeaheadRegistry[inputId];
     const input = document.getElementById(inputId);
     if (!input) return;
+    value = diagnosisFieldValue(value);
     if (!state) {
         input.value = value || '';
         return;

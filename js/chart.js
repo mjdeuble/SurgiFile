@@ -7,7 +7,10 @@ function chartLesions() {
     const chartId = currentPatient.chartId;
     const map = new Map();
     managedLesions.forEach((item) => {
-        if (lesionChartId(item) === chartId) map.set(String(item.id), item);
+        const onChart = typeof lesionBelongsToOpenChart === 'function'
+            ? lesionBelongsToOpenChart(item)
+            : lesionChartId(item) === chartId;
+        if (onChart) map.set(String(item.id), item);
     });
     lesions.forEach((item) => {
         const id = String(item.id);
@@ -15,6 +18,11 @@ function chartLesions() {
         map.set(id, existing ? { ...existing, ...item } : item);
     });
     return Array.from(map.values()).sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+}
+
+function clinicalChartLesions() {
+    const items = typeof chartLesions === 'function' ? chartLesions() : [];
+    return items.filter((item) => !(typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(item)));
 }
 
 function isVisitLesion(id) {
@@ -32,6 +40,8 @@ function lesionStatusLabel(lesion) {
     else if (status === 'planned_procedure' && type === 'shave') label = 'Planned procedure · Shave';
     else if (status === 'planned_procedure') label = 'Planned procedure';
     else if (status === 'awaiting_histology') label = 'Awaiting results';
+    else if (status === 'needs_contact') label = lesion?.contactUrgent ? 'Needs contact · Urgent' : 'Needs contact';
+    else if (status === 'appointment_requested') label = 'Appointment requested';
     else label = LESION_STATUSES[status] || status || 'On chart';
     const consent = typeof lesionConsentLabel === 'function' ? lesionConsentLabel(lesion) : '';
     return consent ? label + ' · ' + consent : label;
@@ -214,7 +224,7 @@ function renderChartSidebar() {
         return;
     }
 
-    const items = chartLesions();
+    const items = typeof clinicalChartLesions === 'function' ? clinicalChartLesions() : chartLesions();
     const concernRows = patientConcerns.filter((text) => !items.some((item) => String(item.location || '').toLowerCase() === String(text).toLowerCase()));
     if (!items.length && !concernRows.length) {
         list.innerHTML = '<p class="text-[11px] text-slate-400 italic px-0.5">No lesions on this chart yet.</p>';

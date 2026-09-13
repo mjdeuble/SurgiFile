@@ -183,6 +183,8 @@ function generateEMRNotePlainText(options) {
         txt += `- Complications: ${comp || 'Not recorded.'}\n\n`;
     }
 
+    txt += generateHistologyResultEmrSection();
+
     const biopsiesCount = typeof sessionBiopsyCount === 'function' ? sessionBiopsyCount() : getBiopsyLesions().length;
     if (biopsiesCount > 0) {
         txt += generateBiopsyFinancialEmrSection(biopsiesCount);
@@ -353,17 +355,18 @@ function histoSizeLine(l) {
 }
 
 function histoFeatureHtml(l) {
+    const esc = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value ?? '');
     const bits = [];
     const size = histoSizeLine(l);
-    if (size) bits.push(`<strong>Size / margin:</strong> ${size}`);
-    if (l.excisionClosureType) bits.push(`<strong>Closure:</strong> ${l.excisionClosureType}`);
+    if (size) bits.push(`<strong>Size / margin:</strong> ${esc(size)}`);
+    if (l.excisionClosureType) bits.push(`<strong>Closure:</strong> ${esc(l.excisionClosureType)}`);
     if (l.orientationType && l.orientationType !== 'None') {
-        bits.push(`<strong>Orientation:</strong> ${l.orientationType}${l.orientationDescription ? ' at ' + l.orientationDescription : ''}`);
+        bits.push(`<strong>Orientation:</strong> ${esc(l.orientationType)}${l.orientationDescription ? ' at ' + esc(l.orientationDescription) : ''}`);
     }
-    bits.push(`<strong>Macro:</strong> ${l.macroscopic && l.macroscopic !== 'Unspecified' ? l.macroscopic : 'Unspecified'}`);
-    bits.push(`<strong>Dermoscopy:</strong> ${l.dermoscopy && l.dermoscopy !== 'Unspecified' ? l.dermoscopy : 'Unspecified'}`);
+    bits.push(`<strong>Macro:</strong> ${esc(l.macroscopic && l.macroscopic !== 'Unspecified' ? l.macroscopic : 'Unspecified')}`);
+    bits.push(`<strong>Dermoscopy:</strong> ${esc(l.dermoscopy && l.dermoscopy !== 'Unspecified' ? l.dermoscopy : 'Unspecified')}`);
     const priorCite = typeof formatPriorHistologyCitation === 'function' ? formatPriorHistologyCitation(l) : '';
-    if (priorCite) bits.push(`<strong>Previous histology:</strong> ${priorCite.replace(/^Previous histology /i, '')}`);
+    if (priorCite) bits.push(`<strong>Previous histology:</strong> ${esc(priorCite.replace(/^Previous histology /i, ''))}`);
     return bits.join('<br>');
 }
 
@@ -462,13 +465,14 @@ function printSupplementaryReportSheet(lesionList) {
         || currentPatient?.clinician
         || "________________________";
 
+    const esc = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value ?? '');
     const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
     const printHtml = `
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Supplementary Pathology Clinical Report - ${dateStr}</title>
+            <title>Supplementary Pathology Clinical Report - ${esc(dateStr)}</title>
             <style>
                 body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.4; color: #000; margin: 12mm; }
                 .header { border-bottom: 2.5px solid #000; padding-bottom: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; }
@@ -490,7 +494,7 @@ function printSupplementaryReportSheet(lesionList) {
                     <div class="title">SUPPLEMENTARY PATHOLOGY CLINICAL REPORT</div>
                     <div class="subtitle">Detailed clinical findings for laboratory histology</div>
                 </div>
-                <div style="font-size: 10pt; font-weight: bold;">Date: ${dateStr}</div>
+                <div style="font-size: 10pt; font-weight: bold;">Date: ${esc(dateStr)}</div>
             </div>
 
             <div class="alert-banner">
@@ -499,8 +503,8 @@ function printSupplementaryReportSheet(lesionList) {
 
             <div class="patient-box">
                 <div class="patient-grid">
-                    <div><strong>Patient Full Name:</strong> ${name}</div>
-                    <div><strong>DOB:</strong> ${dob}</div>
+                    <div><strong>Patient Full Name:</strong> ${esc(name)}</div>
+                    <div><strong>DOB:</strong> ${esc(dob)}</div>
                 </div>
             </div>
 
@@ -518,13 +522,13 @@ function printSupplementaryReportSheet(lesionList) {
                     ${biopsyLesions.map((l, idx) => `
                         <tr>
                             <td style="font-weight: bold; text-align: center;">${idx + 1}</td>
-                            <td style="font-weight: bold; text-transform: uppercase;">${l.location || 'Unspecified site'}</td>
-                            <td>${l.impression}</td>
-                            <td>${l.biopsyType || l.procedure || 'Biopsy'}</td>
+                            <td style="font-weight: bold; text-transform: uppercase;">${esc(l.location || 'Unspecified site')}</td>
+                            <td>${esc(l.impression)}</td>
+                            <td>${esc(l.biopsyType || l.procedure || 'Biopsy')}</td>
                             <td>
                                 ${typeof histoFeatureHtml === 'function' ? histoFeatureHtml(l) : `
-                                <strong>Macro:</strong> ${l.macroscopic || 'Unspecified'}<br>
-                                <strong>Dermoscopy:</strong> ${l.dermoscopy || 'Unspecified'}
+                                <strong>Macro:</strong> ${esc(l.macroscopic || 'Unspecified')}<br>
+                                <strong>Dermoscopy:</strong> ${esc(l.dermoscopy || 'Unspecified')}
                                 `}
                             </td>
                         </tr>
@@ -538,7 +542,7 @@ function printSupplementaryReportSheet(lesionList) {
 
             <div class="sig-box">
                 <div><strong>Requesting Medical Practitioner Signature:</strong> ___________________________________</div>
-                <div><strong>Provider / Dr Name:</strong> ${doctor}</div>
+                <div><strong>Provider / Dr Name:</strong> ${esc(doctor)}</div>
             </div>
 
             \x3Cscript>
@@ -599,9 +603,22 @@ function generateReceptionMessage() {
     if (topicalBits.length) parts.push(topicalBits.join('; '));
     if (recallTitle) parts.push('Recall - ' + recallTitle);
 
-    if (hasProcedure) {
+    const followLesions = typeof chartLesions === 'function' ? chartLesions() : consultLesions;
+    (followLesions || []).forEach((item) => {
+        const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(item) : item.managementStatus;
+        const site = item.location || 'site';
+        if (status === 'appointment_requested') parts.push('Appointment requested - discuss result ' + site);
+        else if (status === 'needs_contact') {
+            parts.push((item.contactUrgent ? 'Please phone today - discuss result ' : 'Please contact - discuss result ') + site);
+        }
+    });
+
+    const billingLesions = typeof visitProcedureLesionsForFinalise === 'function'
+        ? visitProcedureLesionsForFinalise()
+        : procedureLesions;
+    if (billingLesions.length) {
         const summary = typeof procedureSessionBillingSummary === 'function'
-            ? procedureSessionBillingSummary(procedureLesions)
+            ? procedureSessionBillingSummary(billingLesions)
             : null;
         const billingLine = typeof receptionBillingInstruction === 'function' ? receptionBillingInstruction(summary) : '';
         if (billingLine) parts.push(billingLine);
@@ -611,6 +628,72 @@ function generateReceptionMessage() {
     if (!text) return 'Thanks.';
     if (!/\.$/.test(text)) text += '.';
     return text + ' Thanks.';
+}
+
+function isRecentHistologyForNote(lesion) {
+    if (!lesion || !String(lesion.histologyResult || '').trim()) return false;
+    if (typeof isSameLocalDay === 'function') {
+        if (isSameLocalDay(lesion.histologyAt) || isSameLocalDay(lesion.resultAdvisedAt)) return true;
+    }
+    const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus;
+    return status === 'needs_contact' || status === 'appointment_requested';
+}
+
+function generateResultIemrNote(lesion, draft) {
+    if (!lesion && !draft) return '';
+    const site = (lesion && (lesion.location || '')) || 'site';
+    const result = (draft && draft.result) || (lesion && lesion.histologyResult) || '';
+    if (!result) return '';
+    const dx = (draft && draft.diagnosis) || (lesion && lesion.histologyDiagnosis) || '';
+    const plan = (draft && draft.plan) || (lesion && lesion.resultPlan) || '';
+    const contact = (draft && draft.contact) || (lesion && lesion.contactState) || 'mark_for_contact';
+    const fileNoCall = !!(draft && draft.fileNoCall) || (lesion && lesion.contactState === 'file_no_call');
+    const accession = lesion && typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
+    const planBit = plan === 'plan_excision'
+        ? 'Further procedure after advised.'
+        : (plan === 'no_followup' ? 'No further action.' : '');
+    let contactBit = 'Patient to be contacted.';
+    if (fileNoCall) contactBit = 'Filed. No call (agreed call-if-anything).';
+    else if (contact === 'advised_now') contactBit = 'Patient advised.';
+    else if (contact === 'appointment_requested') contactBit = 'Appointment requested to discuss the result.';
+    else if (contact === 'not_reached') contactBit = 'Not reached. Further contact attempts required.';
+    else if (lesion && lesion.contactUrgent) contactBit = 'Urgent contact.';
+    const callNote = (draft && draft.callNote) || '';
+    const lines = [
+        site + (dx ? ' — ' + dx : '') + ': ' + result + (accession ? ' (Lab case ' + accession + ')' : '') + '.',
+        'Reviewed. ' + [planBit, contactBit].filter(Boolean).join(' '),
+        callNote
+    ].filter(Boolean);
+    return lines.join(' ');
+}
+
+function generateResultReceptionMessage(lesion, draft) {
+    const site = (lesion && (lesion.location || '')) || 'site';
+    const contact = (draft && draft.contact) || (lesion && lesion.contactState) || '';
+    const status = lesion && (typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus);
+    const urgent = !!(lesion && lesion.contactUrgent);
+    if (contact === 'appointment_requested' || status === 'appointment_requested') {
+        return 'Appointment requested - discuss result ' + site + '. Thanks.';
+    }
+    if (contact === 'not_reached' || (status === 'needs_contact' && typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(lesion))) {
+        return 'Please retry contact - discuss result ' + site + '. Thanks.';
+    }
+    if (contact === 'mark_for_contact' || status === 'needs_contact') {
+        return (urgent ? 'Please phone today - discuss result ' : 'Please contact - discuss result ') + site + '. Thanks.';
+    }
+    return '';
+}
+
+function generateHistologyResultEmrSection() {
+    const list = (typeof chartLesions === 'function' ? chartLesions() : (typeof managedLesions !== 'undefined' ? managedLesions : []))
+        .filter((item) => isRecentHistologyForNote(item));
+    if (!list.length) return '';
+    let txt = '=== HISTOLOGY RESULTS ===\n\n';
+    list.forEach((item) => {
+        const line = generateResultIemrNote(item);
+        if (line) txt += '- ' + line + '\n';
+    });
+    return txt + '\n';
 }
 
 function syncCopyFlag(key, currentText) {

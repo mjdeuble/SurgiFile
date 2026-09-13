@@ -10,6 +10,31 @@ function billingHasBeenSent(bill) {
     return bill?.status === 'confirmed' || bill?.status === 'processed';
 }
 
+const BILLING_PROCESSED_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+function billingProcessedExpiresAt(fromIso) {
+    const t = Date.parse(fromIso);
+    if (Number.isNaN(t)) return '';
+    return new Date(t + BILLING_PROCESSED_TTL_MS).toISOString();
+}
+
+function billingIsProcessedExpired(bill) {
+    if (!bill || bill.status !== 'processed') return false;
+    const expiry = Date.parse(bill.expiresAt || '');
+    if (!Number.isNaN(expiry)) return expiry <= Date.now();
+    const processed = Date.parse(bill.processedAt || bill.updatedAt || '');
+    if (Number.isNaN(processed)) return false;
+    return processed + BILLING_PROCESSED_TTL_MS <= Date.now();
+}
+
+function formatBillingProcessedExpiry(bill) {
+    const iso = bill?.expiresAt || billingProcessedExpiresAt(bill?.processedAt);
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return 'Deletes ' + d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+}
+
 function newBillingId() {
     if (crypto.randomUUID) return 'bill-' + crypto.randomUUID();
     return 'bill-' + Date.now() + '-' + Math.random().toString(16).slice(2);
@@ -25,7 +50,11 @@ function findManagedBilling(id) {
 }
 
 function isLesionBillingProcessed(lesionId) {
-    return billingHasBeenSent(billingForLesion(lesionId));
+    const bill = billingForLesion(lesionId);
+    if (billingHasBeenSent(bill)) return true;
+    const lesion = (typeof managedLesions !== 'undefined' ? managedLesions : []).find((item) => String(item.id) === String(lesionId));
+    const status = lesion?.billingStatus;
+    return status === 'processed' || status === 'confirmed';
 }
 
 function billingStatusLabel(bill) {
@@ -118,10 +147,45 @@ async function saveManagedBillingRecord(bill, action, note) {
     if (isVaultLoggedIn()) await writeManagedBilling(bill);
 }
 
+async function deleteManagedBillingFile(bill) {
+    if (!isVaultLoggedIn() || !bill?.id) return false;
+    const dir = await getUserBillingDir(vaultAuth.username, true);
+    return await deleteTextFile(dir, bill.id + '.json.enc');
+}
+
+async function stampLesionBillingProcessed(lesionId, processedAt) {
+    const lesion = (typeof managedLesions !== 'undefined' ? managedLesions : []).find((item) => String(item.id) === String(lesionId));
+    if (!lesion) return;
+    lesion.billingStatus = 'processed';
+    lesion.billingProcessedAt = processedAt || lesion.billingProcessedAt || new Date().toISOString();
+    if (isVaultLoggedIn() && typeof writeManagedLesion === 'function') {
+        try { await writeManagedLesion(lesion); } catch (err) { /* in-memory stamp still applies */ }
+    }
+}
+
+async function pruneExpiredProcessedBillings() {
+    const expired = (managedBillings || []).filter((bill) => billingIsProcessedExpired(bill));
+    if (!expired.length) return 0;
+    const removedIds = new Set();
+    let failed = 0;
+    for (const bill of expired) {
+        await stampLesionBillingProcessed(bill.lesionId, bill.processedAt);
+        const ok = await deleteManagedBillingFile(bill);
+        if (ok) removedIds.add(String(bill.id));
+        else failed += 1;
+    }
+    managedBillings = managedBillings.filter((bill) => !removedIds.has(String(bill.id)));
+    if (failed && typeof toastVaultDeleteFailure === 'function') {
+        toastVaultDeleteFailure('billing');
+    }
+    return removedIds.size;
+}
+
 async function loadManagedBillingsFromVault() {
     managedBillings = [];
     if (!isVaultLoggedIn()) return;
     const dir = await getUserBillingDir(vaultAuth.username, true);
+    if (typeof recoverIncompleteVaultWrites === 'function') await recoverIncompleteVaultWrites(dir);
     for await (const [name, handle] of dir.entries()) {
         if (handle.kind !== 'file' || !name.endsWith('.json.enc')) continue;
         try {
@@ -134,6 +198,7 @@ async function loadManagedBillingsFromVault() {
     }
     managedBillings.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
     await migrateBillingQueueStatuses();
+    await pruneExpiredProcessedBillings();
 }
 
 async function migrateBillingQueueStatuses() {
@@ -160,6 +225,7 @@ async function createOrUpdateBillingFromLesion(lesion) {
         if (suggestion.ready && suggestion.summary) lesion.suggestedMbsItems = suggestion.summary;
     }
     const existing = billingForLesion(lesion.id);
+    if (!existing && lesion.billingStatus === 'processed') return null;
     const bill = snapshotBillingFromLesion(lesion, existing);
     if (!existing) bill.status = 'awaiting';
     if (typeof lesionCanBillAtProcedure === 'function') {
@@ -223,6 +289,7 @@ function billingViewModel(bill) {
 
 async function migrateEmbeddedBillingFromLesions() {
     for (const lesion of managedLesions) {
+        if (lesion.billingStatus === 'processed') continue;
         const oldStatus = lesion.managementStatus;
         const needsBilling = oldStatus === 'awaiting_billing'
             || oldStatus === 'billing_processed'
