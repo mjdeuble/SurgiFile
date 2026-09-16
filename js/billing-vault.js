@@ -79,7 +79,9 @@ function snapshotBillingFromLesion(lesion, existing) {
         patientPhone: lesion.patientPhone || patient.patientPhone || '',
         clinician: lesion.clinician || patient.clinician || '',
         location: detail.location || lesion.location || '',
-        impression: detail.pathology || lesion.impression || '',
+        impression: detail.pathology || lesion.impression || existing?.impression || '',
+        histologyDiagnosis: lesion.histologyDiagnosis || existing?.histologyDiagnosis || '',
+        histologyResult: lesion.histologyResult || existing?.histologyResult || '',
         procedureType: detail.procedure || lesion.procedure || '',
         punchSize: detail.punchSize || lesion.punchSize || '',
         type: lesion.type || (typeof lesionType === 'function' ? lesionType(lesion) : '') || existing?.type || '',
@@ -99,7 +101,6 @@ function snapshotBillingFromLesion(lesion, existing) {
             || '',
         billingReconstruction: biopsy ? '' : (lesion.billingReconstruction || existing?.billingReconstruction || ''),
         includeFlapGraft: lesion.includeFlapGraft ?? existing?.includeFlapGraft,
-        histologyResult: lesion.histologyResult || existing?.histologyResult || '',
         suggestedMbsItems: (suggestion && suggestion.ready && suggestion.summary)
             || lesion.suggestedMbsItems
             || existing?.suggestedMbsItems
@@ -195,6 +196,7 @@ async function loadManagedBillingsFromVault() {
         } catch (err) {
             console.warn('Skipped unreadable billing file', name);
         }
+        if (typeof vaultLoadTickFile === 'function') vaultLoadTickFile();
     }
     managedBillings.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
     await migrateBillingQueueStatuses();
@@ -250,7 +252,7 @@ async function syncBillingFromLesion(lesion) {
     const existing = billingForLesion(lesion.id);
     if (!existing) return null;
     const bill = snapshotBillingFromLesion(lesion, existing);
-    await saveManagedBillingRecord(bill, 'synced', lesion.histologyResult || '');
+    await saveManagedBillingRecord(bill, 'synced', lesion.histologyDiagnosis || lesion.histologyResult || '');
     return bill;
 }
 
@@ -266,9 +268,10 @@ function billingViewModel(bill) {
         excisionLengthMm: firstFilled(lesion.excisionLengthMm, bill.excisionLengthMm),
         excisionWidthMm: firstFilled(lesion.excisionWidthMm, bill.excisionWidthMm),
         excisionMarginMm: firstFilled(lesion.excisionMarginMm, bill.excisionMarginMm),
-        histologyResult: firstFilled(lesion.histologyResult, bill.histologyResult),
         billingRegion: firstFilled(lesion.billingRegion, bill.billingRegion),
         billingLesionType: firstFilled(lesion.billingLesionType, bill.billingLesionType),
+        histologyDiagnosis: firstFilled(lesion.histologyDiagnosis, bill.histologyDiagnosis),
+        histologyResult: firstFilled(lesion.histologyResult, bill.histologyResult),
         impression: firstFilled(lesion.impression, bill.impression)
     };
     if (typeof inferBillingLesionType === 'function') {

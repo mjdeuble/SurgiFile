@@ -7,6 +7,7 @@ let vaultAuth = {
 };
 let vaultPasswordNeedsUpgrade = false;
 let vaultPasswordChangeBusy = false;
+let vaultAuthBusy = false;
 
 const VAULT_UNLOCK_FILE = 'unlock.enc';
 const VAULT_ACCOUNT_FILE = 'account.json';
@@ -68,6 +69,12 @@ async function saveVaultDisplayName(displayName) {
 }
 
 function dismissAuthModal() {
+    if (vaultAuthBusy) {
+        if (typeof showToast === 'function') {
+            showToast('Still loading clinic files. Wait until sign-in finishes.');
+        }
+        return;
+    }
     if (authCreateMode && authKnownUserCount > 0) {
         setAuthCreateMode(false);
         return;
@@ -75,10 +82,140 @@ function dismissAuthModal() {
     closeAuthModal();
 }
 
+function resetVaultSessionState() {
+    vaultPasswordNeedsUpgrade = false;
+    closeHeaderAuthMenu();
+    vaultAuth = { username: '', key: null, displayName: '' };
+    managedLesions = [];
+    managedBillings = [];
+    currentManagedCaseId = null;
+    currentPatient = { name: '', firstName: '', lastName: '', dob: '', phone: '', clinician: '', chartId: '' };
+    stopVaultIdleTimer();
+    managedCharts = [];
+    if (typeof loadedUiSession !== 'undefined') loadedUiSession = { chartId: '' };
+    managedVisitNotes = [];
+    managedConsents = [];
+    pendingWorkspaceTab = '';
+    pendingSanitise = false;
+    isBedSanitised = false;
+    if (typeof visitConsultType !== 'undefined') visitConsultType = '';
+    shaveConsentVerified = false;
+    pendingShaveConsentAction = '';
+    lesions = [];
+    patientConcerns = [];
+    noPatientConcerns = false;
+    screeningMarkedComplete = false;
+    if (typeof screeningAskedThisConsult !== 'undefined') screeningAskedThisConsult = false;
+    smsNormalResultsConsent = '';
+    selectedChartLesionId = '';
+    if (typeof resetProcedureSession === 'function') resetProcedureSession();
+    if (typeof resetScreeningAndExamForm === 'function') resetScreeningAndExamForm();
+    updateHeaderPatient();
+    updateAuthHeader();
+    if (typeof updateChartChrome === 'function') updateChartChrome();
+    if (typeof renderChartSidebar === 'function') renderChartSidebar();
+}
+
+function setVaultAuthBusy(busy, message) {
+    vaultAuthBusy = !!busy;
+    const ids = [
+        'authSignInBtn', 'authCreateBtn', 'authConnectFolderBtn',
+        'authShowCreateBtn', 'authShowSignInBtn',
+        'authPassword', 'authPasswordConfirm',
+        'authUsernameSelect', 'authUsernameInput', 'authDisplayName'
+    ];
+    ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = vaultAuthBusy;
+    });
+    const closeBtn = document.getElementById('authModalCloseBtn');
+    if (closeBtn) {
+        closeBtn.disabled = vaultAuthBusy;
+        closeBtn.classList.toggle('hidden', vaultAuthBusy);
+        closeBtn.setAttribute('aria-hidden', vaultAuthBusy ? 'true' : 'false');
+    }
+    const signIn = document.getElementById('authSignInBtn');
+    if (signIn) signIn.textContent = vaultAuthBusy ? (message || 'Signing in…') : 'Sign in';
+    const createBtn = document.getElementById('authCreateBtn');
+    if (createBtn) createBtn.textContent = vaultAuthBusy ? (message || 'Creating user…') : 'Create user and sign in';
+    const progress = document.getElementById('authLoadProgress');
+    if (progress) progress.classList.toggle('hidden', !vaultAuthBusy);
+    if (vaultAuthBusy) {
+        reportVaultLoadProgress(message || 'Signing in…', message && /load/i.test(message) ? 0.12 : 0.05);
+        if (message) setAuthFolderStatus(message, 'info');
+    } else {
+        if (vaultLoadPaint) {
+            cancelAnimationFrame(vaultLoadPaint);
+            vaultLoadPaint = 0;
+        }
+        const bar = document.getElementById('authLoadProgressBar');
+        if (bar) bar.style.width = '0%';
+        if (typeof refreshAuthFolderStatus === 'function') refreshAuthFolderStatus();
+    }
+}
+
+let vaultLoadStage = { label: '', start: 0, end: 1, count: 0 };
+let vaultLoadPaint = 0;
+let vaultLoadPaintLabel = '';
+let vaultLoadPaintFrac = 0;
+
+function reportVaultLoadProgress(label, fraction) {
+    if (!vaultAuthBusy) return;
+    vaultLoadPaintLabel = String(label || 'Loading clinic files…');
+    vaultLoadPaintFrac = Math.max(0, Math.min(1, Number(fraction) || 0));
+    if (vaultLoadPaint) return;
+    vaultLoadPaint = requestAnimationFrame(paintVaultLoadProgress);
+}
+
+function paintVaultLoadProgress() {
+    vaultLoadPaint = 0;
+    if (!vaultAuthBusy) return;
+    const wrap = document.getElementById('authLoadProgress');
+    const bar = document.getElementById('authLoadProgressBar');
+    const labelEl = document.getElementById('authLoadProgressLabel');
+    const track = wrap ? wrap.querySelector('[role="progressbar"]') : null;
+    if (wrap) wrap.classList.remove('hidden');
+    const pct = Math.round(vaultLoadPaintFrac * 100);
+    if (bar) bar.style.width = pct + '%';
+    if (track) track.setAttribute('aria-valuenow', String(pct));
+    if (labelEl) labelEl.textContent = vaultLoadPaintLabel;
+}
+
+function vaultLoadBeginStage(label, start, end) {
+    if (!vaultAuthBusy) return;
+    vaultLoadStage = {
+        label: String(label || 'Loading clinic files…'),
+        start: Number(start) || 0,
+        end: end == null ? 1 : Number(end),
+        count: 0
+    };
+    const signIn = document.getElementById('authSignInBtn');
+    if (signIn) signIn.textContent = vaultLoadStage.label;
+    const createBtn = document.getElementById('authCreateBtn');
+    if (createBtn) createBtn.textContent = vaultLoadStage.label;
+    reportVaultLoadProgress(vaultLoadStage.label, vaultLoadStage.start);
+}
+
+function vaultLoadTickFile() {
+    if (!vaultAuthBusy) return;
+    vaultLoadStage.count += 1;
+    const span = vaultLoadStage.end - vaultLoadStage.start;
+    const t = 1 - Math.exp(-vaultLoadStage.count / 10);
+    const n = vaultLoadStage.count;
+    reportVaultLoadProgress(vaultLoadStage.label + ' · ' + n, vaultLoadStage.start + span * t);
+}
+
+function vaultLoadEndStage() {
+    if (!vaultAuthBusy) return;
+    reportVaultLoadProgress(vaultLoadStage.label, vaultLoadStage.end);
+}
+
 async function lockVaultSession() {
-    if (vaultPasswordChangeBusy) {
+    if (vaultPasswordChangeBusy || vaultAuthBusy) {
         if (typeof showToast === 'function') {
-            showToast('Wait until the password change finishes.');
+            showToast(vaultAuthBusy
+                ? 'Wait until sign-in finishes loading clinic files.'
+                : 'Wait until the password change finishes.');
         }
         return;
     }
@@ -125,34 +262,7 @@ async function lockVaultSession() {
         }
     }
     vaultPasswordNeedsUpgrade = false;
-    closeHeaderAuthMenu();
-    vaultAuth = { username: '', key: null, displayName: '' };
-    managedLesions = [];
-    managedBillings = [];
-    currentManagedCaseId = null;
-    currentPatient = { name: '', firstName: '', lastName: '', dob: '', phone: '', clinician: '', chartId: '' };
-    stopVaultIdleTimer();
-    managedCharts = [];
-    if (typeof loadedUiSession !== 'undefined') loadedUiSession = { chartId: '' };
-    managedVisitNotes = [];
-    managedConsents = [];
-    pendingWorkspaceTab = '';
-    pendingSanitise = false;
-    isBedSanitised = false;
-    shaveConsentVerified = false;
-    pendingShaveConsentAction = '';
-    lesions = [];
-    patientConcerns = [];
-    noPatientConcerns = false;
-    screeningMarkedComplete = false;
-    smsNormalResultsConsent = '';
-    selectedChartLesionId = '';
-    if (typeof resetProcedureSession === 'function') resetProcedureSession();
-    if (typeof resetScreeningAndExamForm === 'function') resetScreeningAndExamForm();
-    updateHeaderPatient();
-    updateAuthHeader();
-    if (typeof updateChartChrome === 'function') updateChartChrome();
-    if (typeof renderChartSidebar === 'function') renderChartSidebar();
+    resetVaultSessionState();
     openAuthModal();
 }
 
@@ -232,26 +342,23 @@ async function tryUnlockVaultPair(userDir, accountName, unlockName, password) {
 async function loginVaultUser(rawUsername, password) {
     const username = sanitizeUsername(rawUsername);
     if (!username || !password) throw new Error('Enter username and password.');
+    if (typeof vaultLoadBeginStage === 'function') vaultLoadBeginStage('Unlocking…', 0, 0.1);
     const userDir = await getUserDir(username, false);
     if (typeof recoverIncompleteVaultWrites === 'function') {
         await recoverIncompleteVaultWrites(userDir);
     }
-    const hasNext = (await fileExists(userDir, VAULT_ACCOUNT_NEXT)) && (await fileExists(userDir, VAULT_UNLOCK_NEXT));
-    let unlocked = null;
-    if (hasNext) {
+    let unlocked = await tryUnlockVaultPair(userDir, VAULT_ACCOUNT_FILE, VAULT_UNLOCK_FILE, password);
+    if (!unlocked) {
         unlocked = await tryUnlockVaultPair(userDir, VAULT_ACCOUNT_NEXT, VAULT_UNLOCK_NEXT, password);
-        if (!unlocked) {
-            throw new Error('A password change did not finish. Sign in with the new password.');
+        if (unlocked) {
+            await writeTextFile(userDir, VAULT_UNLOCK_FILE, unlocked.unlockText);
+            await writeTextFile(userDir, VAULT_ACCOUNT_FILE, unlocked.accountText);
+            if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites(8000);
+            await deleteTextFile(userDir, VAULT_UNLOCK_NEXT);
+            await deleteTextFile(userDir, VAULT_ACCOUNT_NEXT);
         }
-        await writeTextFile(userDir, VAULT_UNLOCK_FILE, unlocked.unlockText);
-        await writeTextFile(userDir, VAULT_ACCOUNT_FILE, unlocked.accountText);
-        if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
-        await deleteTextFile(userDir, VAULT_UNLOCK_NEXT);
-        await deleteTextFile(userDir, VAULT_ACCOUNT_NEXT);
-    } else {
-        unlocked = await tryUnlockVaultPair(userDir, VAULT_ACCOUNT_FILE, VAULT_UNLOCK_FILE, password);
-        if (!unlocked) throw new Error('Unable to unlock this user.');
     }
+    if (!unlocked) throw new Error('Unable to unlock this user.');
     vaultAuth = { username, key: unlocked.key, displayName: String(unlocked.account.displayName || '').trim() };
     vaultPasswordNeedsUpgrade = password.length < VAULT_PASSWORD_MIN_LENGTH;
     return username;
@@ -771,6 +878,8 @@ async function handleCreateVaultUser() {
         showToast('Passwords do not match.');
         return;
     }
+    if (vaultAuthBusy) return;
+    setVaultAuthBusy(true, 'Creating user…');
     try {
         await createVaultUser(username, password, document.getElementById('authDisplayName')?.value.trim() || '');
         rememberVaultUsername(sanitizeUsername(username));
@@ -778,6 +887,8 @@ async function handleCreateVaultUser() {
         showToast('User created and signed in.');
     } catch (err) {
         showToast(err.message || 'Could not create user.');
+    } finally {
+        setVaultAuthBusy(false);
     }
 }
 
@@ -788,6 +899,8 @@ async function handleLoginVaultUser() {
         showToast('Select your user.');
         return;
     }
+    if (vaultAuthBusy) return;
+    setVaultAuthBusy(true, 'Signing in…');
     try {
         if (!vaultRootHandle) {
             const restored = await restoreClinicFolder(true);
@@ -799,6 +912,8 @@ async function handleLoginVaultUser() {
         showToast('Signed in.');
     } catch (err) {
         showToast(err.message || 'Sign-in failed. Check username and password.');
+    } finally {
+        setVaultAuthBusy(false);
     }
 }
 
@@ -806,6 +921,7 @@ async function afterVaultLogin() {
     updateAuthHeader();
     applyLoggedInDoctorToForms();
     try {
+        if (typeof vaultLoadBeginStage === 'function') vaultLoadBeginStage('Clinic settings…', 0.1, 0.16);
         if (typeof loadClinicProfile === 'function') await loadClinicProfile();
         if (typeof loadClinicSupplies === 'function') {
             await loadClinicSupplies();
@@ -816,9 +932,11 @@ async function afterVaultLogin() {
             if (typeof renderPdtAreaSelect === 'function') renderPdtAreaSelect();
             if (typeof renderPdtPriceEditor === 'function') renderPdtPriceEditor();
         }
+        if (typeof vaultLoadBeginStage === 'function') vaultLoadBeginStage('Loading lesions…', 0.16, 0.46);
         await loadManagedLesionsFromVault();
         if (typeof loadUiSessionFromVault === 'function') await loadUiSessionFromVault();
         if (typeof adoptPlaintextLastChartIfNeeded === 'function') await adoptPlaintextLastChartIfNeeded();
+        if (typeof vaultLoadBeginStage === 'function') vaultLoadBeginStage('Opening workspace…', 0.94, 1);
         updateHeaderPatient();
         if (typeof updateChartChrome === 'function') updateChartChrome();
         renderManagedLesions();
@@ -829,10 +947,11 @@ async function afterVaultLogin() {
             switchWorkspaceTab('management');
         }
         startVaultIdleLock();
+        if (typeof vaultLoadEndStage === 'function') vaultLoadEndStage();
     } catch (err) {
         console.warn('Vault load after sign-in failed', err);
-        vaultPasswordNeedsUpgrade = false;
-        if (typeof lockVaultSession === 'function') await lockVaultSession();
+        resetVaultSessionState();
+        openAuthModal();
         throw new Error('Could not load encrypted files from the clinic folder. Check folder access and sign in again.');
     }
     const pw = document.getElementById('authPassword');

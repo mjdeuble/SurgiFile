@@ -389,36 +389,80 @@ function clinicalDiagnosisIsMelanoma(lesion) {
 function histologyIndicatesMelanoma(lesionOrText) {
     if (lesionOrText == null) return false;
     if (typeof lesionOrText === 'string') return textIndicatesMelanoma(lesionOrText);
-    return textIndicatesMelanoma([lesionOrText.histologyDiagnosis, lesionOrText.histologyResult].filter(Boolean).join('; '));
+    return textIndicatesMelanoma(billingHistologyTextForType(lesionOrText));
+}
+
+function billingOwnHistologyText(lesion) {
+    if (!lesion) return '';
+    return [lesion.histologyDiagnosis, lesion.histologyResult].filter(Boolean).join('; ').trim();
+}
+
+function billingPriorHistologyText(lesion) {
+    if (!lesion) return '';
+    const cited = String(lesion.priorHistologyResult || '').trim();
+    if (cited) return cited;
+    if (!lesion.priorLesionId || typeof findLesionRecordById !== 'function') return '';
+    const prior = findLesionRecordById(lesion.priorLesionId);
+    if (!prior) return '';
+    return [prior.histologyDiagnosis, prior.histologyResult].filter(Boolean).join('; ').trim();
+}
+
+/** Own result first; for linked WLE/re-excision, fall back to parent histology for billing type. */
+function billingHistologyTextForType(lesion) {
+    return billingOwnHistologyText(lesion) || billingPriorHistologyText(lesion);
+}
+
+function isKnownBillingLesionType(value) {
+    return BILLING_LESION_TYPES.some((opt) => opt.id === value);
+}
+
+function billingTypeFromDiagnosisText(text, melanomaKind) {
+    const raw = String(text || '').trim();
+    if (!raw) return '';
+    if (textIndicatesMelanoma(raw)) return melanomaKind;
+    const lower = raw.toLowerCase();
+    if (MALIGNANT_HISTO_RE.test(lower)) return 'malignant';
+    if (BENIGN_HISTO_RE.test(lower)) return 'benign';
+    const bucket = typeof diagnosisBillingBucket === 'function' ? diagnosisBillingBucket(raw) : '';
+    if (bucket === 'melanoma') return melanomaKind;
+    if (bucket === 'malignant') return 'malignant';
+    if (bucket === 'benign') return 'benign';
+    return '';
 }
 
 function inferBillingLesionType(lesion) {
     if (!lesion) return '';
-    const histology = [lesion.histologyDiagnosis, lesion.histologyResult].filter(Boolean).join('; ').trim();
+    const ownHisto = billingOwnHistologyText(lesion);
+    const histology = billingHistologyTextForType(lesion);
     if (histology) {
-        if (histologyIndicatesMelanoma(lesion)) return 'confirmed_melanoma';
+        const fromHisto = billingTypeFromDiagnosisText(histology, 'confirmed_melanoma');
+        if (fromHisto) return fromHisto;
         if (lesion.billingLesionType === 'confirmed_melanoma') return 'confirmed_melanoma';
-        const histoLower = histology.toLowerCase();
-        if (MALIGNANT_HISTO_RE.test(histoLower)) return 'malignant';
-        if (BENIGN_HISTO_RE.test(histoLower)) return 'benign';
-        const bucket = typeof diagnosisBillingBucket === 'function' ? diagnosisBillingBucket(lesion.histologyDiagnosis || '') : '';
-        if (bucket === 'melanoma') return 'confirmed_melanoma';
-        if (bucket === 'malignant') return 'malignant';
-        if (bucket === 'benign') return 'benign';
-        if (lesion.billingLesionType && lesion.billingLesionType !== 'suspected_melanoma') {
-            return lesion.billingLesionType;
+        if (!ownHisto && lesion.priorLesionId) {
+            const prior = typeof findLesionRecordById === 'function' ? findLesionRecordById(lesion.priorLesionId) : null;
+            if (prior?.billingLesionType === 'confirmed_melanoma') return 'confirmed_melanoma';
+            if (isKnownBillingLesionType(prior?.billingLesionType) && prior.billingLesionType !== 'suspected_melanoma') {
+                return prior.billingLesionType;
+            }
         }
-        return '';
+        const stored = isKnownBillingLesionType(lesion.billingLesionType) && lesion.billingLesionType !== 'suspected_melanoma'
+            ? lesion.billingLesionType
+            : '';
+        return stored;
+    }
+    if (lesion.priorLesionId) {
+        const prior = typeof findLesionRecordById === 'function' ? findLesionRecordById(lesion.priorLesionId) : null;
+        if (prior?.billingLesionType === 'confirmed_melanoma') return 'confirmed_melanoma';
+        if (isKnownBillingLesionType(prior?.billingLesionType) && prior.billingLesionType !== 'suspected_melanoma') {
+            return prior.billingLesionType;
+        }
     }
     if (clinicalDiagnosisIsMelanoma(lesion)) return 'suspected_melanoma';
-    if (lesion.billingLesionType) return lesion.billingLesionType;
-    const impression = impressionForBilling(lesion);
-    if (impression) {
-        if (textIndicatesMelanoma(impression)) return 'suspected_melanoma';
-        if (MALIGNANT_HISTO_RE.test(impression)) return 'malignant';
-        if (BENIGN_HISTO_RE.test(impression)) return 'benign';
-    }
-    return '';
+    if (isKnownBillingLesionType(lesion.billingLesionType)) return lesion.billingLesionType;
+    return billingTypeFromDiagnosisText(
+        [lesion.impression, lesion.pathology, lesion.procedureDetail?.pathology].filter(Boolean).join('; '),
+        'suspected_melanoma'
+    );
 }
 
 function applyInferredBillingLesionType(lesion) {
@@ -426,10 +470,11 @@ function applyInferredBillingLesionType(lesion) {
     const inferred = inferBillingLesionType(lesion);
     if (!inferred) return lesion.billingLesionType || '';
     const current = lesion.billingLesionType || '';
-    const histoKnown = !!String(lesion.histologyResult || '').trim();
+    const histoKnown = !!billingHistologyTextForType(lesion);
     if (
         inferred === 'confirmed_melanoma'
         || !current
+        || !isKnownBillingLesionType(current)
         || (histoKnown && current === 'suspected_melanoma')
     ) {
         lesion.billingLesionType = inferred;
@@ -442,6 +487,40 @@ function firstFilled(...values) {
         if (value != null && String(value).trim() !== '') return value;
     }
     return '';
+}
+
+function formatBillingDiagnosisText(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    if (typeof formatDiagnosisDisplay === 'function') return formatDiagnosisDisplay(text) || text;
+    return text;
+}
+
+function billingConfirmedDiagnosis(view) {
+    if (!view) return '';
+    const dx = formatBillingDiagnosisText(view.histologyDiagnosis);
+    const result = String(view.histologyResult || '').trim();
+    return dx || result;
+}
+
+function billingDisplayDiagnosis(view) {
+    if (!view) return '';
+    return billingConfirmedDiagnosis(view)
+        || formatBillingDiagnosisText(view.impression)
+        || formatBillingDiagnosisText(view.pathology)
+        || '';
+}
+
+function billingHistologyDetail(view) {
+    if (!view) return '';
+    const dx = formatBillingDiagnosisText(view.histologyDiagnosis);
+    const result = String(view.histologyResult || '').trim();
+    if (dx && result) {
+        const same = result.toLowerCase() === dx.toLowerCase()
+            || result.toLowerCase() === String(view.histologyDiagnosis || '').trim().toLowerCase();
+        return same ? dx : dx + '. ' + result;
+    }
+    return dx || result;
 }
 
 function closureLooksLikeExcision(value) {
@@ -458,6 +537,20 @@ function billingProcedureKind(lesion) {
     const punchExcision = /punch excision/i.test(punchType) || /formal excision/i.test(punchType)
         || (/punch/i.test(biopsyType) && /excision/i.test(biopsyType) && !/biopsy/i.test(biopsyType));
 
+    // Linked WLE / re-excision is always an excision claim, never the prior biopsy item.
+    if (lesion.priorLesionId && (
+        type === 'excision'
+        || /^excision$/i.test(procedure)
+        || lesion.excisionFinalisedAt
+        || closureLooksLikeExcision(firstFilled(detail.excisionClosureType, lesion?.excisionClosureType, lesion?.excisionReconstruction))
+        || (firstFilled(lesion?.excisionLengthMm, detail.length)
+            && firstFilled(lesion?.excisionWidthMm, detail.width)
+            && firstFilled(lesion?.excisionMarginMm, detail.margin))
+    )) {
+        return 'excision';
+    }
+    if (type === 'excision' || /^excision$/i.test(procedure) || punchExcision) return 'excision';
+
     if (type === 'shave' || /^shave$/i.test(procedure) || /shave/i.test(biopsyType) || /shave/i.test(punchType)) {
         return 'biopsy';
     }
@@ -465,7 +558,6 @@ function billingProcedureKind(lesion) {
     if (/^punch$/i.test(procedure) || /punch biopsy/i.test(punchType) || (/punch/i.test(biopsyType) && !punchExcision)) {
         return punchExcision ? 'excision' : 'biopsy';
     }
-    if (type === 'excision' || /^excision$/i.test(procedure) || punchExcision) return 'excision';
 
     const surgicalClosure = firstFilled(detail.excisionClosureType, lesion?.excisionClosureType, lesion?.excisionReconstruction);
     if (lesion?.excisionFinalisedAt || closureLooksLikeExcision(surgicalClosure)) return 'excision';
@@ -716,8 +808,11 @@ function suggestMbsItems(lesion) {
     if (type === 'confirmed_melanoma' && region === 1 && nedMm != null && nedMm < 6) {
         notes.push('31371 requires NED ≥ 6 mm. Wide local excision usually meets this; confirm measurements.');
     }
-    if (type === 'malignant' && !lesion.histologyResult) {
-        notes.push('Malignant excision items 31356–31376 normally require histological confirmation before claiming. Suspected melanoma items 31377–31383 can be billed before confirmation.');
+    if ((type === 'malignant' || type === 'benign') && !lesion.histologyResult) {
+        notes.push('Placeholder items from size and expected diagnosis. Reception: HOLD until histology; change the item if the result differs.');
+        if (type === 'malignant') {
+            notes.push('Malignant excision items 31356–31376 normally require histological confirmation before claiming. Suspected melanoma items 31377–31383 can be billed before confirmation.');
+        }
     }
 
     if (excisionCode) {
@@ -835,7 +930,7 @@ function lesionCanBillAtProcedure(lesion) {
             kind: 'confirmed_melanoma'
         };
     }
-    if (type === 'suspected_melanoma' || (!lesion.histologyResult && clinicalDiagnosisIsMelanoma(lesion))) {
+    if (type === 'suspected_melanoma' || (!billingOwnHistologyText(lesion) && !billingPriorHistologyText(lesion) && clinicalDiagnosisIsMelanoma(lesion))) {
         return {
             ok: true,
             hold: false,
@@ -843,7 +938,7 @@ function lesionCanBillAtProcedure(lesion) {
             kind: 'suspected_melanoma'
         };
     }
-    if (lesion.histologyResult) {
+    if (billingHistologyTextForType(lesion)) {
         return {
             ok: true,
             hold: false,
@@ -868,7 +963,8 @@ function procedureSessionBillingSummary(lesionList) {
             ? (t === 'shave' ? 'Shave' : 'Punch')
             : (status.kind === 'confirmed_melanoma' ? 'Confirmed melanoma'
                 : (status.kind === 'suspected_melanoma' ? 'Suspected melanoma'
-                    : (status.kind === 'histo_known' ? 'Histology confirmed' : 'Excision')));
+                    : (status.kind === 'histo_known' ? 'Histology confirmed'
+                        : (status.hold ? 'HOLD expected' : 'Excision'))));
         return {
             lesion,
             ...status,
@@ -884,7 +980,7 @@ function procedureSessionBillingSummary(lesionList) {
     const allProcess = rows.length > 0 && holdRows.length === 0;
     const allReady = allProcess && rows.every((row) => row.ready && row.codes);
     const doctorLines = rows.map((row) => {
-        const codes = row.codes || (row.hold ? 'HOLD' : 'Codes pending');
+        const codes = row.codes || (row.hold ? 'need size and expected diagnosis' : 'Codes pending');
         return `${row.site} (${row.tag}): ${codes}`;
     });
     return {
@@ -902,7 +998,15 @@ function procedureSessionBillingSummary(lesionList) {
 
 function receptionBillingInstruction(summary) {
     if (!summary || !summary.rows || !summary.rows.length) return '';
-    if (summary.holdRows && summary.holdRows.length) return 'Billing: HOLD.';
+    const formatRow = (row) => {
+        const site = row.site || 'site';
+        const codes = String(row.codes || '').trim();
+        if (row.hold) return codes ? site + ' ' + codes + ' (HOLD expected)' : site + ' (HOLD)';
+        return codes ? site + ' ' + codes : site;
+    };
+    if (summary.holdRows && summary.holdRows.length) {
+        return 'Billing: HOLD until histology — ' + summary.rows.map(formatRow).join('; ') + '. Change item if result differs';
+    }
     if (summary.allReady) return 'Billing: billed today.';
     if (summary.allProcess) return 'Billing: PROCESS.';
     return 'Billing: HOLD.';
@@ -916,12 +1020,73 @@ function visitProcedureLesionsForFinalise() {
     ));
 }
 
+function copySnippetButton(text, label, extraClass) {
+    const value = String(text || '').trim();
+    if (!value) return '';
+    return `<button type="button" class="copy-chip${extraClass ? ' ' + extraClass : ''}" title="Copy ${escapeHtml(value)}" data-copy-text="${escapeHtml(value)}" data-copy-label="${escapeHtml(label || value + ' copied')}">${escapeHtml(value)}</button>`;
+}
+
+function billingItemCodesForCopy(row) {
+    if (!row) return [];
+    const consult = typeof CONSULT_ITEM_CODE !== 'undefined' ? CONSULT_ITEM_CODE : '23';
+    const fromItems = (row.items || []).map((item) => String(item && item.code != null ? item.code : item).trim()).filter(Boolean);
+    const fromSummary = String(row.codes || '').split(/\s*\+\s*/).map((part) => part.trim()).filter(Boolean);
+    const seen = new Set();
+    const out = [];
+    fromItems.concat(fromSummary).forEach((code) => {
+        if (!code || code === consult || seen.has(code)) return;
+        seen.add(code);
+        out.push(code);
+    });
+    return out;
+}
+
+function renderFinaliseBillingCopyList(summary) {
+    const consult = typeof CONSULT_ITEM_CODE !== 'undefined' ? CONSULT_ITEM_CODE : '23';
+    const rows = summary?.rows || [];
+    let html = `<div class="finalise-copy-row">
+        <span class="finalise-copy-label">Consult</span>
+        ${copySnippetButton(consult, 'Consult ' + consult + ' copied', 'copy-chip-code')}
+    </div>`;
+    html += rows.map((row) => {
+        const site = row.site || 'site';
+        const codes = billingItemCodesForCopy(row);
+        const chipClass = row.hold ? 'copy-chip-hold' : 'copy-chip-code';
+        const itemBtns = codes.length
+            ? codes.map((code) => copySnippetButton(code, code + ' copied', chipClass)).join('')
+            : (row.hold
+                ? '<span class="text-[11px] text-amber-800">Need size and expected diagnosis</span>'
+                : '<span class="text-[11px] text-slate-400">Codes pending</span>');
+        return `<div class="finalise-copy-row">
+            ${copySnippetButton(site, 'Site copied', 'copy-chip-site')}
+            <span class="text-[10px] text-slate-500">${escapeHtml(row.tag || '')}</span>
+            ${row.hold ? '<span class="text-[11px] font-semibold text-amber-800">HOLD</span>' : ''}
+            ${itemBtns}
+            ${row.hold && codes.length ? '<span class="text-[10px] text-amber-800">Expected — change if histology differs</span>' : ''}
+        </div>`;
+    }).join('');
+    return html;
+}
+
+function bindFinaliseBillingCopyClicks() {
+    const wrap = document.getElementById('finaliseBillingChips');
+    if (!wrap || wrap.dataset.copyBound === '1') return;
+    wrap.dataset.copyBound = '1';
+    wrap.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-copy-text]');
+        if (!btn || !wrap.contains(btn)) return;
+        const text = btn.dataset.copyText || btn.getAttribute('data-copy-text') || '';
+        const label = btn.dataset.copyLabel || btn.getAttribute('data-copy-label') || 'Copied.';
+        if (typeof copyTextToClipboard === 'function') copyTextToClipboard(text, label);
+    });
+}
+
 function generateVisitBillingCopy(lesionList) {
     const summary = typeof procedureSessionBillingSummary === 'function'
         ? procedureSessionBillingSummary(lesionList || [])
         : { rows: [] };
     const lines = (summary.rows || []).map((row) => {
-        const codes = row.hold ? 'HOLD' : (row.codes || 'Codes pending');
+        const codes = row.codes || (row.hold ? 'need size and expected diagnosis' : 'Codes pending');
         return (row.site || 'site') + ' (' + (row.tag || 'Procedure') + '): ' + codes;
     });
     if (lines.length) lines.unshift('Consult: 23');

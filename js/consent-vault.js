@@ -106,6 +106,7 @@ async function loadManagedConsentsFromVault() {
         } catch (err) {
             console.warn('Skipped unreadable consent doc', name);
         }
+        if (typeof vaultLoadTickFile === 'function') vaultLoadTickFile();
     }
     await pruneExpiredConsentDocs();
     if (typeof dedupeVaultRecordsById === 'function') {

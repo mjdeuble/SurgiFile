@@ -33,8 +33,50 @@ function emptyProcedureSession(chartId) {
         complicationNotes: '',
         siteComplications: {},
         amendLesionId: '',
-        amendPanel: ''
+        amendPanel: '',
+        preStartByLesionId: {}
     };
+}
+
+function normalizePreStartByLesionId(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    Object.keys(raw).forEach((id) => {
+        const snap = raw[id];
+        if (!snap || typeof snap !== 'object') return;
+        const status = typeof canonicalLesionStatus === 'function'
+            ? canonicalLesionStatus(snap.managementStatus)
+            : String(snap.managementStatus || '').trim();
+        if (!status) return;
+        out[String(id)] = {
+            managementStatus: status,
+            currentPlan: String(snap.currentPlan || '').trim()
+        };
+    });
+    return out;
+}
+
+function captureProcedurePreStartSnapshots(lesions) {
+    const map = {};
+    (lesions || []).forEach((lesion) => {
+        if (!lesion?.id) return;
+        const status = (typeof canonicalLesionStatus === 'function'
+            ? canonicalLesionStatus(lesion.managementStatus)
+            : String(lesion.managementStatus || '').trim())
+            || (typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : '')
+            || 'planned_procedure';
+        map[String(lesion.id)] = {
+            managementStatus: status,
+            currentPlan: String(lesion.currentPlan || '').trim()
+                || (typeof defaultPlanLine === 'function' ? defaultPlanLine(lesion) : '')
+        };
+    });
+    return map;
+}
+
+function procedurePreStartFor(id) {
+    const map = procedureSession.preStartByLesionId || {};
+    return map[String(id)] || null;
 }
 
 function snapshotProcedureSession() {
@@ -56,6 +98,7 @@ function snapshotProcedureSession() {
             : {},
         amendLesionId: procedureSession.amendLesionId || '',
         amendPanel: procedureSession.amendPanel || '',
+        preStartByLesionId: normalizePreStartByLesionId(procedureSession.preStartByLesionId),
         sanitised: typeof isBedSanitised !== 'undefined' ? !!isBedSanitised : false
     };
 }
@@ -129,7 +172,8 @@ function restoreProcedureSessionFromChart(chart) {
             ? saved.siteComplications
             : {},
         amendLesionId: saved.amendLesionId || '',
-        amendPanel: saved.amendPanel || ''
+        amendPanel: saved.amendPanel || '',
+        preStartByLesionId: normalizePreStartByLesionId(saved.preStartByLesionId)
     };
     if (saved.complications?.bleeding && !Object.keys(procedureSession.siteComplications).length) {
         const extra = String(procedureSession.complicationNotes || '').trim();
@@ -931,7 +975,7 @@ async function abortProcedureLesion(id) {
     id = String(id || '');
     if (!id) return;
     if (!procedureSession.started) {
-        showToast('Start the procedure first, then return a lesion if it cannot be completed.');
+        showToast('Start the procedure first, then abort a lesion if it cannot be completed now.');
         return;
     }
     if (!isProcedureSelected(id) && !isProcedureAllocationLocked(id)) {
@@ -940,6 +984,18 @@ async function abortProcedureLesion(id) {
     }
     let lesion = (typeof managedLesions !== 'undefined' ? managedLesions : []).find((item) => String(item.id) === id)
         || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === id);
+    if (lesion && (typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!(lesion.procedureCompletedAt || lesion.excisionFinalisedAt))) {
+        showToast('That lesion is already completed. It cannot be aborted from this session.');
+        return;
+    }
+    const preStart = procedurePreStartFor(id);
+    const restoreStatus = (preStart && preStart.managementStatus)
+        || 'planned_procedure';
+    const restorePlan = (preStart && preStart.currentPlan)
+        || (lesion && typeof defaultPlanLine === 'function'
+            ? defaultPlanLine({ ...lesion, managementStatus: restoreStatus, procedureCompletedAt: '' })
+            : 'Planned procedure');
+
     procedureSession.selectedIds = (procedureSession.selectedIds || []).filter((item) => String(item) !== id);
     procedureSession.lockedIds = (procedureSession.lockedIds || []).filter((item) => String(item) !== id);
     if (!isProcedureDeselected(id)) procedureSession.deselectedIds.push(id);
@@ -949,19 +1005,19 @@ async function abortProcedureLesion(id) {
         procedureSession.amendLesionId = '';
         procedureSession.amendPanel = '';
     }
+    if (procedureSession.preStartByLesionId && procedureSession.preStartByLesionId[id]) {
+        delete procedureSession.preStartByLesionId[id];
+    }
 
     if (lesion) {
-        const planAfter = typeof defaultPlanLine === 'function'
-            ? defaultPlanLine({ ...lesion, managementStatus: 'planned_procedure', procedureCompletedAt: '' })
-            : 'Planned procedure';
         lesion.procedureCompletedAt = '';
-        lesion.managementStatus = 'planned_procedure';
-        lesion.currentPlan = planAfter;
+        lesion.managementStatus = restoreStatus;
+        lesion.currentPlan = restorePlan;
         if (typeof appendLesionTimeline === 'function') {
             appendLesionTimeline(lesion, {
                 type: 'abort',
-                note: 'Aborted during procedure',
-                planAfter
+                note: 'Aborted during procedure — restored to pre-start status',
+                planAfter: restorePlan
             });
         }
         const sessionIdx = (typeof lesions !== 'undefined' ? lesions : []).findIndex((item) => String(item.id) === id);
@@ -969,25 +1025,35 @@ async function abortProcedureLesion(id) {
         const managedIdx = (typeof managedLesions !== 'undefined' ? managedLesions : []).findIndex((item) => String(item.id) === id);
         if (managedIdx !== -1) managedLesions[managedIdx] = { ...managedLesions[managedIdx], ...lesion };
         try {
-            if (typeof setManagedLesionStatus === 'function' && typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
-                await setManagedLesionStatus(lesion.id, 'planned_procedure', 'Aborted during procedure', {
-                    type: lesion.type,
-                    currentPlan: planAfter
-                });
+            if (typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
+                if (typeof saveManagedLesionRecord === 'function') {
+                    await saveManagedLesionRecord(lesion, 'abort:restore', 'Aborted during procedure — restored to pre-start status');
+                } else if (typeof writeManagedLesion === 'function') {
+                    lesion.updatedAt = new Date().toISOString();
+                    await writeManagedLesion(lesion);
+                    if (typeof upsertManagedLesionMemory === 'function') upsertManagedLesionMemory(lesion);
+                }
+            } else if (typeof upsertManagedLesionMemory === 'function') {
+                upsertManagedLesionMemory(lesion);
             }
         } catch (err) {
-            lesion.managementStatus = 'planned_procedure';
+            lesion.managementStatus = restoreStatus;
+            lesion.currentPlan = restorePlan;
+            if (typeof upsertManagedLesionMemory === 'function') upsertManagedLesionMemory(lesion);
         }
     }
 
     syncExLesionsFromProcedureSession();
     const remaining = procedureSession.selectedIds.length;
+    const statusLabel = (typeof LESION_STATUSES !== 'undefined' && LESION_STATUSES[restoreStatus])
+        || restoreStatus.replace(/_/g, ' ');
     if (!remaining) {
         procedureSession.started = false;
+        procedureSession.preStartByLesionId = {};
         closeProcedureCompleteModal();
-        showToast('Returned to planned procedure. Nothing left in this session.');
+        showToast('Aborted. Restored to ' + statusLabel + '. Nothing left in this session.');
     } else {
-        showToast('Returned to planned procedure. Finish the remaining lesions when ready.');
+        showToast('Aborted. Restored to ' + statusLabel + '. Finish the remaining lesions when ready.');
     }
     if (typeof renderLesionsTable === 'function') renderLesionsTable();
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
@@ -1284,7 +1350,7 @@ function renderProcedureAbortList() {
                 <div class="proc-finish-actions">
                     ${allowSutures ? `<button type="button" class="proc-finish-btn ${suturesOpen ? 'is-active' : ''}" onclick="toggleProcAmend('${safeId}', 'sutures')">Sutures</button>` : ''}
                     <button type="button" class="proc-finish-btn ${eventOpen ? 'is-active' : ''} ${siteQuiet ? '' : 'has-event'}" onclick="toggleProcAmend('${safeId}', 'event')">Event</button>
-                    <button type="button" class="proc-finish-btn is-abort" onclick="abortProcedureLesion('${safeId}')">Return to planned</button>
+                    <button type="button" class="proc-finish-btn is-abort" onclick="abortProcedureLesion('${safeId}')">Abort — restore plan</button>
                 </div>
             </div>
             ${panel}
@@ -1328,6 +1394,9 @@ function startProcedureSession() {
     procedureSession.startedAt = new Date().toISOString();
     procedureSession.completedAt = '';
     procedureSession.lockedIds = procedureSession.selectedIds.map(String);
+    procedureSession.preStartByLesionId = captureProcedurePreStartSnapshots(
+        typeof procedureSelectedLesions === 'function' ? procedureSelectedLesions() : []
+    );
     procedureSession.complications = emptyEpisodeComplications();
     procedureSession.complicationNotes = '';
     procedureSession.siteComplications = {};
@@ -1501,7 +1570,7 @@ function refreshProcedureBillingPanel() {
         banner.textContent = 'All procedures are OK to bill today, but some codes still need procedure area or size. Enter those, then Complete.';
     } else if (summary.allHold) {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 font-semibold';
-        banner.textContent = 'Hold billing for reception until histology is back. Do not process excision items unless you change a lesion to suspected melanoma.';
+        banner.textContent = 'Hold billing for reception until histology is back. Expected item numbers below are a placeholder from size and expected diagnosis — change if the result differs.';
     } else {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-sky-300 bg-sky-50 text-sky-950 font-semibold';
         banner.textContent = 'Hold the whole session. Same-day procedures are billed together, and at least one item still needs histology.';
@@ -1530,9 +1599,9 @@ function refreshProcedureBillingPanel() {
             <div class="shrink-0">${action}</div>
         </div>`;
     }).join('');
-    const copyBlock = summary.allProcess && summary.doctorText
+    const copyBlock = summary.doctorText
         ? `<div class="flex flex-wrap items-center justify-between gap-2">
-                <p class="text-[11px] text-slate-500">Also claim 23 if a consult was performed today.</p>
+                <p class="text-[11px] text-slate-500">${summary.holdRows && summary.holdRows.length ? 'HOLD expected items for reception. Also claim 23 if a consult was performed today.' : 'Also claim 23 if a consult was performed today.'}</p>
                 <button type="button" onclick="copyProcedureBillingCodes()" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold rounded-lg cursor-pointer">Copy billing codes</button>
            </div>`
         : '';
@@ -1686,6 +1755,7 @@ async function endProcedureSession() {
     procedureSession.completedAt = new Date().toISOString();
     procedureSession.selectedIds = [];
     procedureSession.detailLesionId = '';
+    procedureSession.preStartByLesionId = {};
     closeProcedureCompleteModal();
     const billed = typeof procedureSessionBillingSummary === 'function'
         ? procedureSessionBillingSummary(finishedLesions)
@@ -1772,7 +1842,7 @@ function renderProcedureWorkspace() {
     }
     const candidates = procedureCandidateLesions();
     if (!candidates.length) {
-        list.innerHTML = '<p class="text-xs text-slate-400 italic">No planned procedures on this chart yet. Add a punch, shave, or excision during examination.</p>';
+        list.innerHTML = '<p class="text-xs text-slate-400 italic">No planned procedures on this chart yet. Add a punch, shave, or excision in Lesions.</p>';
         if (typeof renderProcedureAbortList === 'function') renderProcedureAbortList();
         setProcedureDetailFormLocked(!!procedureSession.started);
         return;
@@ -1809,7 +1879,7 @@ function renderProcedureWorkspace() {
         }
         const safeId = id.replace(/'/g, '');
         const abortBtn = procedureSession.started && locked
-            ? `<button type="button" class="proc-abort-btn" onclick="abortProcedureLesion('${safeId}')">Abort</button>`
+            ? `<button type="button" class="proc-abort-btn" onclick="abortProcedureLesion('${safeId}')" title="Remove from this session and restore pre-start status">Abort</button>`
             : '';
         return `
             <div class="proc-allocate-row ${statusClass} ${active ? 'is-active' : ''}">

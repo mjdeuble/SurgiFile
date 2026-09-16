@@ -12,6 +12,8 @@ let managedVisitNotes = [];
 let managedConsents = [];
 let pendingWorkspaceTab = '';
 let pendingSanitise = false;
+/** Today's consult mode: 'chart_review' | 'phone' | 'face_to_face' | '' */
+let visitConsultType = '';
 
 let procedureSession = {
     chartId: '',
@@ -30,7 +32,8 @@ let procedureSession = {
     complicationNotes: '',
     siteComplications: {},
     amendLesionId: '',
-    amendPanel: ''
+    amendPanel: '',
+    preStartByLesionId: {}
 };
 
 // Skin Check View State
@@ -40,6 +43,8 @@ let pendingShaveConsentAction = '';
 let patientConcerns = [];
 let noPatientConcerns = false;
 let screeningMarkedComplete = false;
+/** True only when screening was completed during the current consult session (drives IEMR inclusion). */
+let screeningAskedThisConsult = false;
 let smsNormalResultsConsent = '';
 let lesions = [];
 let customConsentRisks = [];

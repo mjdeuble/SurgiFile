@@ -51,7 +51,11 @@ function currentProcedureNoteText() {
 
 function currentConsultNoteText() {
     if (typeof generateEMRNotePlainText !== 'function') return '';
-    return generateEMRNotePlainText({ includeFullScreening: true, forceFull: true });
+    const includeScreening = typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit();
+    return generateEMRNotePlainText({
+        includeFullScreening: includeScreening,
+        forceFull: includeScreening
+    });
 }
 
 function notesPendingCopy() {
@@ -141,6 +145,7 @@ async function loadManagedVisitNotesFromVault() {
         } catch (err) {
             console.warn('Skipped unreadable visit note', name);
         }
+        if (typeof vaultLoadTickFile === 'function') vaultLoadTickFile();
     }
     await pruneExpiredVisitNotes();
     if (typeof dedupeVaultRecordsById === 'function') {

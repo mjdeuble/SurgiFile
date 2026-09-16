@@ -158,12 +158,19 @@ function collectChartExamFromDom() {
 function collectVisitSessionFromDom() {
     const today = todayVisitKey();
     const tab = typeof activeWorkspaceTab !== 'undefined' ? activeWorkspaceTab : 'management';
+    const consultType = (typeof visitConsultType !== 'undefined' && visitConsultType)
+        || (typeof isBedSanitised !== 'undefined' && isBedSanitised ? 'face_to_face' : '');
+    const prev = currentManagedChart()?.visitSession;
+    const screeningAsked = !!(typeof screeningAskedThisConsult !== 'undefined' && screeningAskedThisConsult)
+        || !!(prev?.visitDate === today && prev?.screeningAsked);
     return {
         visitDate: today,
         workspaceTab: (tab === 'skin-check' || tab === 'excision-generator') ? tab : 'management',
-        sanitised: typeof isBedSanitised !== 'undefined' ? !!isBedSanitised : false,
+        consultType,
+        sanitised: consultType === 'face_to_face' || (typeof isBedSanitised !== 'undefined' ? !!isBedSanitised : false),
         patientConcerns: Array.isArray(patientConcerns) ? patientConcerns.slice() : [],
         visitLesionIds: (Array.isArray(lesions) ? lesions : []).map((item) => String(item.id)).filter(Boolean),
+        screeningAsked,
         updatedAt: new Date().toISOString()
     };
 }
@@ -172,6 +179,7 @@ function isVisitSessionActive(session) {
     if (!session) return false;
     const today = todayVisitKey();
     if (session.visitDate && session.visitDate !== today) return false;
+    if (session.consultType) return true;
     if (session.sanitised) return true;
     if ((session.visitLesionIds || []).length) return true;
     if ((session.patientConcerns || []).length) return true;
@@ -209,10 +217,20 @@ function restoreVisitSessionFromChart(chart) {
     }
     hydrateVisitLesionsFromIds(session.visitLesionIds);
 
-    if (session.sanitised) {
+    const consultType = session.consultType
+        || (session.sanitised ? 'face_to_face' : '');
+    if (typeof visitConsultType !== 'undefined') visitConsultType = consultType || '';
+    if (typeof screeningAskedThisConsult !== 'undefined') {
+        screeningAskedThisConsult = !!session.screeningAsked;
+    }
+    if (consultType === 'face_to_face' || session.sanitised) {
         isBedSanitised = true;
         pendingSanitise = false;
         if (typeof setModalBedSanitation === 'function') setModalBedSanitation(true);
+    } else if (consultType === 'phone' || consultType === 'chart_review') {
+        isBedSanitised = false;
+        pendingSanitise = false;
+        if (typeof setModalBedSanitation === 'function') setModalBedSanitation(false);
     }
 
     if (typeof renderPatientConcerns === 'function') renderPatientConcerns();
@@ -377,6 +395,7 @@ async function loadManagedChartsFromVault() {
         } catch (err) {
             console.warn('Skipped unreadable chart file', name);
         }
+        if (typeof vaultLoadTickFile === 'function') vaultLoadTickFile();
     }
     managedCharts.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'en', { sensitivity: 'base' }));
     if (typeof dedupeVaultRecordsById === 'function') {
@@ -579,11 +598,13 @@ function abandonOpenChartAfterPurge() {
         currentPatient = { name: '', firstName: '', lastName: '', dob: '', phone: '', clinician: '', chartId: '' };
         pendingWorkspaceTab = '';
         pendingSanitise = false;
+        if (typeof visitConsultType !== 'undefined') visitConsultType = '';
         if (typeof isBedSanitised !== 'undefined') isBedSanitised = false;
         if (typeof lesions !== 'undefined') lesions = [];
         if (typeof patientConcerns !== 'undefined') patientConcerns = [];
         if (typeof noPatientConcerns !== 'undefined') noPatientConcerns = false;
         if (typeof screeningMarkedComplete !== 'undefined') screeningMarkedComplete = false;
+        if (typeof screeningAskedThisConsult !== 'undefined') screeningAskedThisConsult = false;
         if (typeof smsNormalResultsConsent !== 'undefined') smsNormalResultsConsent = '';
         if (typeof selectedChartLesionId !== 'undefined') selectedChartLesionId = '';
         if (typeof currentManagedCaseId !== 'undefined') currentManagedCaseId = null;
@@ -841,6 +862,7 @@ function resetScreeningAndExamForm() {
         if (typeof applySmsNormalResultsConsent === 'function') applySmsNormalResultsConsent('');
         examMetadataWasComplete = false;
         screeningMarkedComplete = false;
+        if (typeof screeningAskedThisConsult !== 'undefined') screeningAskedThisConsult = false;
         if (typeof applyNoPatientConcerns === 'function') applyNoPatientConcerns(false);
         if (typeof updateScreeningCompleteButton === 'function') updateScreeningCompleteButton();
         if (typeof collapseAllAccordions === 'function') collapseAllAccordions();
@@ -1021,7 +1043,17 @@ function chartExamCopyIsCurrent(chart) {
     return !!record.iemr.examFingerprint && record.iemr.examFingerprint === examVisitFingerprint();
 }
 
+function screeningAskedThisVisit() {
+    if (typeof screeningAskedThisConsult !== 'undefined' && screeningAskedThisConsult) return true;
+    const session = typeof currentManagedChart === 'function' ? currentManagedChart()?.visitSession : null;
+    return !!(session && isVisitSessionActive(session) && session.screeningAsked);
+}
+
 function generateScreeningEmrSection(options) {
+    // Only document screening in IEMR when completed in this consult session.
+    // Prior answers stay on the chart for consent/recall, but are not repeated every note.
+    if (!screeningAskedThisVisit()) return '';
+
     let hasAnyScreening = false;
     let screeningTxt = `=== PRE-PROCEDURAL CLINICAL RISK SCREENING ===\n\n`;
 
@@ -1105,7 +1137,7 @@ function generateScreeningEmrSection(options) {
         const when = chart.iemr.screeningCopiedAt
             ? new Date(chart.iemr.screeningCopiedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
             : 'previously';
-        return `=== PRE-PROCEDURAL CLINICAL RISK SCREENING ===\n\n- On file and already copied to IEMR (${when}). Not repeated here. History remains available for consent forms.\n\n`;
+        return `=== PRE-PROCEDURAL CLINICAL RISK SCREENING ===\n\n- Completed this visit; already copied to IEMR (${when}). Not repeated here.\n\n`;
     }
     return screeningTxt + `\n`;
 }
@@ -1247,13 +1279,13 @@ function iemrCopyStatusLabel(chart) {
         const when = record.iemr.examCopiedAt
             ? new Date(record.iemr.examCopiedAt).toLocaleString('en-AU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
             : 'today';
-        return 'Examination copied to IEMR ' + when;
+        return 'Visit note copied to IEMR ' + when;
     }
     if (record.iemr?.screeningCopied) {
         const when = record.iemr.screeningCopiedAt
             ? new Date(record.iemr.screeningCopiedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
             : '';
-        return 'Screening on file' + (when ? ' (copied ' + when + ')' : '') + '. Today’s examination not yet copied.';
+        return 'Screening on file' + (when ? ' (copied ' + when + ')' : '') + '. Today’s visit note not yet copied.';
     }
     if (record.screening?.filled) return 'Screening on chart. Not yet copied to IEMR.';
     return 'No screening saved on this chart yet.';
@@ -1314,6 +1346,9 @@ async function openPatientChart(patient, options) {
     if (chart?.phone && !currentPatient.phone) currentPatient.phone = chart.phone;
     if (chart?.firstName && !currentPatient.firstName) currentPatient.firstName = chart.firstName;
     if (chart?.lastName && !currentPatient.lastName) currentPatient.lastName = chart.lastName;
+    if (typeof visitConsultType !== 'undefined') visitConsultType = '';
+    if (typeof screeningAskedThisConsult !== 'undefined') screeningAskedThisConsult = false;
+    if (typeof isBedSanitised !== 'undefined') isBedSanitised = false;
     applyCurrentChartToForms();
     const restoredVisit = typeof restoreVisitSessionFromChart === 'function'
         && restoreVisitSessionFromChart(chart);
@@ -1339,6 +1374,9 @@ async function openPatientChart(patient, options) {
         if (restoredProcedure) showToast('Opened chart: ' + name + '. Procedure still in progress.');
         else if (restoredVisit) showToast('Opened chart: ' + name + '. Visit restored.');
         else showToast('Opened chart: ' + name + '.');
+    }
+    if (typeof maybePromptConsultType === 'function') {
+        maybePromptConsultType(options);
     }
     return true;
 }
@@ -1504,16 +1542,25 @@ function refreshFinaliseVisitModal() {
     const billEl = document.getElementById('finaliseBillingPreview');
     const billWrap = document.getElementById('finaliseBillingWrap');
     const billHint = document.getElementById('finaliseBillingHint');
+    const billChips = document.getElementById('finaliseBillingChips');
     const closeBtn = document.getElementById('btnFinaliseVisitClose');
 
     if (iemrEl) iemrEl.value = iemr || '';
     if (recEl) recEl.value = rec || '';
     if (billEl) billEl.value = state.copyText || '';
     if (billWrap) billWrap.classList.toggle('hidden', state.mode === 'close');
+    if (billChips) {
+        billChips.innerHTML = state.mode === 'close'
+            ? ''
+            : (typeof renderFinaliseBillingCopyList === 'function'
+                ? renderFinaliseBillingCopyList(state.summary)
+                : '');
+    }
+    if (typeof bindFinaliseBillingCopyClicks === 'function') bindFinaliseBillingCopyClicks();
     if (billHint) {
         billHint.textContent = state.mode === 'process'
-            ? 'Site and item numbers for Best Practice. Same-day procedures bill together. Copy, then mark processed and close so billing is not an extra step.'
-            : 'Same-day procedures bill together. Hold these items until histology is back, unless you change a lesion to suspected melanoma.';
+            ? 'Click a site or an item number to copy it into Best Practice. Same-day procedures bill together. Copy what you need, then mark processed and close so billing is not an extra step.'
+            : 'HOLD until histology. Click each expected item number as a placeholder for reception; change it if the result differs.';
     }
 
     const iemrCopied = typeof outputCopyState !== 'undefined' && outputCopyState.emr
@@ -1539,8 +1586,8 @@ function refreshFinaliseVisitModal() {
     setFinaliseCopyButton(
         'btnFinaliseCopyBilling',
         false,
-        'Copy item numbers',
-        'Item numbers copied',
+        'Copy all item numbers',
+        'All item numbers copied',
         'px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg cursor-pointer',
         'px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer'
     );
@@ -1602,8 +1649,8 @@ function copyFinaliseVisitBilling() {
         setFinaliseCopyButton(
             'btnFinaliseCopyBilling',
             true,
-            'Copy item numbers',
-            'Item numbers copied',
+            'Copy all item numbers',
+            'All item numbers copied',
             'px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg cursor-pointer',
             'px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer'
         );

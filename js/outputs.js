@@ -48,6 +48,10 @@ function generateRegionalClearanceSummary() {
 /** IEMR management line: punch or shave alone when that technique is chosen. */
 function formatLesionPlanIemr(lesion) {
     if (!lesion) return '';
+    if (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan)) {
+        return 'Refer / Specialist';
+    }
+    if (String(lesion.proposedPlan || '') === 'refer') return 'Refer / Specialist';
     if (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan)) {
         return 'Topical / Field Treatment';
     }
@@ -73,6 +77,13 @@ function formatLesionPlanIemr(lesion) {
 
 function generateEMRNotePlainText(options) {
     const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const remote = typeof isRemoteOrDeskConsult === 'function' && isRemoteOrDeskConsult();
+    const consultLabel = typeof visitConsultTypeLabel === 'function' ? visitConsultTypeLabel() : '';
+    const faceToFace = !remote && (
+        (typeof visitConsultType !== 'undefined' && visitConsultType === 'face_to_face')
+        || (typeof isBedSanitised !== 'undefined' && isBedSanitised)
+        || !consultLabel
+    );
 
     let scopeVal = document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
     if (scopeVal.includes('Regional Area')) {
@@ -82,21 +93,32 @@ function generateEMRNotePlainText(options) {
 
     const fitz = document.getElementById('fitzpatrick')?.value || '';
     const lastCheck = document.getElementById('lastSkinCheck')?.value || '';
+    const smsLabel = typeof smsNormalResultsConsentLabel === 'function' ? smsNormalResultsConsentLabel() : '';
+    const hasScopeBlock = !!(scopeVal || fitz || lastCheck || smsLabel);
 
-    let txt = `=== SKIN EXAMINATION CLINICAL NOTE (${dateStr}) ===\n\n`;
+    const title = remote
+        ? (consultLabel === 'Phone consult'
+            ? `=== PHONE CONSULT CLINICAL NOTE (${dateStr}) ===\n\n`
+            : `=== CHART REVIEW CLINICAL NOTE (${dateStr}) ===\n\n`)
+        : `=== SKIN EXAMINATION CLINICAL NOTE (${dateStr}) ===\n\n`;
+    let txt = title;
 
-    if (isBedSanitised) {
+    if (remote && consultLabel) {
+        txt += `- Consult type: ${consultLabel}.\n\n`;
+    }
+
+    if (faceToFace && typeof isBedSanitised !== 'undefined' && isBedSanitised) {
         txt += `- Pre-Exam Sanitation: Couch sanitised, disposable liner fitted, dermatoscope disinfected.\n\n`;
     }
 
-    txt += `=== EXAMINATION SCOPE & PATIENT PHENOTYPE ===\n\n`;
-    if (scopeVal) txt += `- Consented Scope: ${scopeVal}\n`;
-    if (fitz) txt += `- Skin Phenotype: ${fitz}\n`;
-    if (lastCheck) txt += `- Interval Since Last Skin Check: ${lastCheck}\n`;
-    if (typeof smsNormalResultsConsentLabel === 'function' && smsNormalResultsConsentLabel()) {
-        txt += `- Normal results by text: ${smsNormalResultsConsentLabel()}\n`;
+    if (hasScopeBlock) {
+        txt += `=== EXAMINATION SCOPE & PATIENT PHENOTYPE ===\n\n`;
+        if (scopeVal) txt += `- Consented Scope: ${scopeVal}\n`;
+        if (fitz) txt += `- Skin Phenotype: ${fitz}\n`;
+        if (lastCheck) txt += `- Interval Since Last Skin Check: ${lastCheck}\n`;
+        if (smsLabel) txt += `- Normal results by text: ${smsLabel}\n`;
+        txt += `\n`;
     }
-    txt += `\n`;
 
     if (patientConcerns.length > 0) {
         txt += `=== PATIENT REPORTED CONCERNS ===\n\n`;
@@ -104,7 +126,7 @@ function generateEMRNotePlainText(options) {
             txt += `- ${c}\n`;
         });
         txt += `\n`;
-    } else if (noPatientConcerns) {
+    } else if (!remote && noPatientConcerns) {
         txt += `=== PATIENT REPORTED CONCERNS ===\n\n`;
         txt += `- No patient-reported lesion concerns today.\n\n`;
     }
@@ -115,27 +137,23 @@ function generateEMRNotePlainText(options) {
         });
     }
 
-    txt += generateRegionalClearanceSummary();
+    if (!remote) {
+        txt += generateRegionalClearanceSummary();
+    }
 
     const noteLesions = typeof visitNoteLesions === 'function' ? visitNoteLesions() : (lesions || []);
-    txt += `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
-    if (noteLesions.length === 0) {
-        if (scopeVal.includes('Full body')) {
-            txt += `- Full body skin examination performed. No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
-        } else if (scopeVal) {
-            txt += `- Examination performed (${scopeVal}). No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
-        } else {
-            txt += `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
-        }
-    } else {
+    if (noteLesions.length > 0) {
+        txt += remote
+            ? `=== LESIONS DISCUSSED / PLANNED ===\n\n`
+            : `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
         noteLesions.forEach((l, idx) => {
             txt += `Lesion #${idx + 1}: ${l.location}\n`;
             const dx = typeof formatDiagnosisIemr === 'function'
                 ? formatDiagnosisIemr(l.impression)
                 : (l.impression || '');
-            txt += `    - Prov Dx: ${dx}\n`;
-            if (l.macroscopic) txt += `    - Macroscopic: ${l.macroscopic}\n`;
-            if (l.dermoscopy) txt += `    - Dermoscopic: ${l.dermoscopy}\n`;
+            if (dx) txt += `    - Prov Dx: ${dx}\n`;
+            if (l.macroscopic && !remote) txt += `    - Macroscopic: ${l.macroscopic}\n`;
+            if (l.dermoscopy && !remote) txt += `    - Dermoscopic: ${l.dermoscopy}\n`;
             const planLabel = typeof formatLesionPlanIemr === 'function'
                 ? formatLesionPlanIemr(l)
                 : (isTopicalPlan(l.plan) ? 'Topical / Field Treatment' : (l.plan || ''));
@@ -149,20 +167,31 @@ function generateEMRNotePlainText(options) {
             else if (typeof formatHistologyAccession === 'function' && formatHistologyAccession(l, 'own')) {
                 txt += `    - Lab case: ${formatHistologyAccession(l, 'own')}\n`;
             }
-            const punchLike = (typeof lesionType === 'function' && lesionType(l) === 'punch') || !!l.punchSize;
-            if (punchLike) {
-                if (l.punchSize) txt += `    - Punch size: ${l.punchSize}mm\n`;
-            } else {
-                const sizeBits = [];
-                if (l.length && l.width) sizeBits.push(`${l.length}x${l.width}mm`);
-                else if (l.length) sizeBits.push(`${l.length}mm`);
-                else if (l.width) sizeBits.push(`${l.width}mm`);
-                if (l.margin) sizeBits.push(`margin ${typeof formatMarginCompact === 'function' ? formatMarginCompact(l.margin) : (parseMarginMm ? parseMarginMm(l.margin) + 'mm' : l.margin + 'mm')}`);
-                if (sizeBits.length) txt += `    - Size / margin: ${sizeBits.join(', ')}\n`;
+            if (!remote) {
+                const punchLike = (typeof lesionType === 'function' && lesionType(l) === 'punch') || !!l.punchSize;
+                if (punchLike) {
+                    if (l.punchSize) txt += `    - Punch size: ${l.punchSize}mm\n`;
+                } else {
+                    const sizeBits = [];
+                    if (l.length && l.width) sizeBits.push(`${l.length}x${l.width}mm`);
+                    else if (l.length) sizeBits.push(`${l.length}mm`);
+                    else if (l.width) sizeBits.push(`${l.width}mm`);
+                    if (l.margin) sizeBits.push(`margin ${typeof formatMarginCompact === 'function' ? formatMarginCompact(l.margin) : (parseMarginMm ? parseMarginMm(l.margin) + 'mm' : l.margin + 'mm')}`);
+                    if (sizeBits.length) txt += `    - Size / margin: ${sizeBits.join(', ')}\n`;
+                }
             }
             txt += formatTopicalEmrLines(l);
             txt += `\n`;
         });
+    } else if (!remote) {
+        txt += `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
+        if (scopeVal.includes('Full body')) {
+            txt += `- Full body skin examination performed. No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
+        } else if (scopeVal) {
+            txt += `- Examination performed (${scopeVal}). No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
+        } else {
+            txt += `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
+        }
     }
 
     if (procedureSession.started || procedureSession.completedAt || (typeof chartLesions === 'function' ? chartLesions() : []).some((item) => typeof lesionPerformedToday === 'function' && lesionPerformedToday(item))) {
@@ -226,7 +255,7 @@ function generateEMRNotePlainText(options) {
     }
 
     const recallTitle = typeof computedRecallInterval === 'function' ? computedRecallInterval() : '';
-    if (recallTitle) {
+    if (recallTitle && !remote) {
         const recallReason = (typeof computedRecallReason === 'function' && computedRecallReason())
             || document.getElementById('recallRecommendationReason')?.innerText
             || 'Standard annual recall.';
@@ -308,7 +337,12 @@ function generateProcedureIemrAddendum() {
 
 function generateCompleteInteractionNote() {
     if (typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
-    let txt = generateEMRNotePlainText({ includeFullScreening: true, forceFull: true }) || '';
+    // forceFull only when screening was completed this visit (avoids dumping prior-visit answers)
+    const includeScreening = typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit();
+    let txt = generateEMRNotePlainText({
+        includeFullScreening: includeScreening,
+        forceFull: includeScreening
+    }) || '';
     if (typeof generateExEntryNote === 'function' && Array.isArray(exLesions) && exLesions.length) {
         const op = generateExEntryNote();
         if (op && !op.startsWith('Your')) {
@@ -649,8 +683,8 @@ function generateResultIemrNote(lesion, draft) {
     const contact = (draft && draft.contact) || (lesion && lesion.contactState) || 'mark_for_contact';
     const fileNoCall = !!(draft && draft.fileNoCall) || (lesion && lesion.contactState === 'file_no_call');
     const accession = lesion && typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
-    const planBit = plan === 'plan_excision'
-        ? 'Further procedure after advised.'
+    const planBit = (plan === 'further_management' || plan === 'plan_excision')
+        ? 'Needs further management.'
         : (plan === 'no_followup' ? 'No further action.' : '');
     let contactBit = 'Patient to be contacted.';
     if (fileNoCall) contactBit = 'Filed. No call (agreed call-if-anything).';
