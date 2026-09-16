@@ -1745,10 +1745,10 @@ if (typeof document !== 'undefined') {
 function updateChartChrome() {
     const open = hasCurrentPatient();
     const closeBtn = document.getElementById('btnHeaderCloseChart');
-    const mgmtClose = document.getElementById('btnMgmtCloseChart');
     if (closeBtn) closeBtn.classList.toggle('hidden', !open);
-    if (mgmtClose) mgmtClose.classList.toggle('hidden', !open);
     if (typeof syncOpenChartSearchGate === 'function') syncOpenChartSearchGate();
+    const filterBar = document.getElementById('mgmtFilterBar');
+    if (filterBar) filterBar.classList.toggle('hidden', open);
     const banner = document.getElementById('mgmtChartBanner');
     const title = document.getElementById('mgmtBoardTitle');
     const iemrEl = document.getElementById('mgmtIemrStatus');
@@ -1758,7 +1758,6 @@ function updateChartChrome() {
     if (sub) {
         sub.textContent = open
             ? ([currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ')
-                + ' · This chart only. Close the chart to see every patient’s lesions.'
                 + (typeof formatScratchpadExpiry === 'function' && formatScratchpadExpiry(currentPatient.chartId)
                     ? ' · Finished work is kept 14 days (' + formatScratchpadExpiry(currentPatient.chartId) + ').'
                     : ''))
