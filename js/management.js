@@ -527,13 +527,14 @@ function lesionProcedureTypeLabel(lesion) {
 function lesionProcedureDimensions(lesion) {
     const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
     const type = typeof lesionType === 'function' ? lesionType(lesion) : (lesion?.type || '');
+    const done = typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!lesionProcedureAt(lesion);
     if (type === 'punch' || detail.procedure === 'Punch') {
         const punch = String(detail.punchSize || lesion?.punchSize || '').trim();
         return punch ? punch + ' mm punch' : '';
     }
     const pair = formatMmPair(
-        detail.length || lesion?.excisionLengthMm,
-        detail.width || lesion?.excisionWidthMm
+        done ? (detail.length || lesion?.excisionLengthMm) : lesion?.excisionLengthMm,
+        done ? (detail.width || lesion?.excisionWidthMm) : lesion?.excisionWidthMm
     );
     if (pair) return pair;
     const punch = String(detail.punchSize || lesion?.punchSize || '').trim();
@@ -598,7 +599,10 @@ function lesionCardEvents(lesion) {
 function renderLesionCardEventLine(event) {
     const when = formatLesionCardWhen(event.at) || '';
     const head = [lesionTimelineTypeLabel(event.type), event.outcome].filter(Boolean).join(' · ');
-    const note = [event.note, event.planAfter ? 'Plan: ' + event.planAfter : ''].filter(Boolean).join(' — ');
+    const noteBits = [];
+    if (event.note) noteBits.push(event.note);
+    if (event.planAfter && event.planAfter !== event.note) noteBits.push('Plan: ' + event.planAfter);
+    const note = noteBits.join(' — ');
     return `<li>
         <time>${escapeHtml(when)}</time>
         <span><strong>${escapeHtml(head)}</strong>${note ? ' · ' + escapeHtml(note) : ''}</span>
