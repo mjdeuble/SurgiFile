@@ -446,6 +446,231 @@ function fillLesionPatientContactEl(el, lesion) {
     el.classList.toggle('hidden', !inner);
 }
 
+function unspecifiedExamText(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    if (/^(unspecified|to be examined|patient reported spot|pending assessment)$/i.test(text)) return '';
+    return text;
+}
+
+function formatLesionCardWhen(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('en-AU', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatMmPair(length, width) {
+    const a = String(length == null ? '' : length).trim();
+    const b = String(width == null ? '' : width).trim();
+    if (a && b) return a + ' × ' + b + ' mm';
+    if (a) return a + ' mm';
+    if (b) return b + ' mm';
+    return '';
+}
+
+function lesionExamAt(lesion) {
+    return lesion?.createdAt || lesion?.examinedAt || '';
+}
+
+function lesionProcedureAt(lesion) {
+    return lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt || '';
+}
+
+function lesionCardRow(label, valueHtml) {
+    if (!valueHtml) return '';
+    return `<div class="lesion-card-row"><dt>${escapeHtml(label)}</dt><dd>${valueHtml}</dd></div>`;
+}
+
+function renderLesionCardBlock(title, when, rowsHtml) {
+    if (!rowsHtml) return '';
+    return `<section class="lesion-card-block">
+        <h4><span>${escapeHtml(title)}</span>${when ? `<time datetime="${escapeHtml(when)}">${escapeHtml(formatLesionCardWhen(when) || when)}</time>` : ''}</h4>
+        <dl class="lesion-card-dl">${rowsHtml}</dl>
+    </section>`;
+}
+
+function lesionExamDimensions(lesion) {
+    return formatMmPair(lesion?.length, lesion?.width);
+}
+
+function lesionExamMargin(lesion) {
+    const mm = String(lesion?.margin || '').trim();
+    return mm ? mm + ' mm' : '';
+}
+
+function lesionProcedureTypeLabel(lesion) {
+    const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
+    const type = typeof lesionType === 'function' ? lesionType(lesion) : (lesion?.type || '');
+    if (type === 'shave' || detail.procedure === 'Shave') return 'Shave biopsy';
+    if (type === 'punch' || detail.procedure === 'Punch') {
+        return detail.punchType || lesion?.biopsyType || 'Punch biopsy';
+    }
+    if (type === 'excision' || detail.procedure === 'Excision') {
+        const bits = [lesion?.priorLesionId ? 'Re-excision' : 'Excision'];
+        if (detail.excisionClosureType) bits.push(detail.excisionClosureType);
+        if (detail.graftType) bits.push(detail.graftType);
+        return bits.join(' · ');
+    }
+    if (type === 'topical') return 'Topical';
+    if (detail.procedure) return detail.procedure;
+    if (lesion?.biopsyType) return lesion.biopsyType;
+    return '';
+}
+
+function lesionProcedureDimensions(lesion) {
+    const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
+    const type = typeof lesionType === 'function' ? lesionType(lesion) : (lesion?.type || '');
+    if (type === 'punch' || detail.procedure === 'Punch') {
+        const punch = String(detail.punchSize || lesion?.punchSize || '').trim();
+        return punch ? punch + ' mm punch' : '';
+    }
+    const pair = formatMmPair(
+        detail.length || lesion?.excisionLengthMm,
+        detail.width || lesion?.excisionWidthMm
+    );
+    if (pair) return pair;
+    const punch = String(detail.punchSize || lesion?.punchSize || '').trim();
+    return punch ? punch + ' mm punch' : '';
+}
+
+function lesionProcedureMargin(lesion) {
+    const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(lesion) : {};
+    const mm = String(detail.margin || lesion?.excisionMarginMm || lesion?.excisionMargin || '').trim();
+    if (mm) return mm + ' mm';
+    const exam = String(lesion?.margin || '').trim();
+    const done = typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!lesionProcedureAt(lesion);
+    return done && exam ? exam + ' mm' : '';
+}
+
+function lesionHistologyCardValue(lesion) {
+    const done = typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!lesionProcedureAt(lesion);
+    const hasResult = typeof lesionHasSavedHistology === 'function'
+        ? lesionHasSavedHistology(lesion)
+        : !!String(lesion?.histologyResult || '').trim();
+    const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
+    const pot = lesion?.histologyPot ? 'Pot ' + lesion.histologyPot : '';
+    const extras = [accession ? 'Lab case ' + accession : '', pot].filter(Boolean).join(' · ');
+    if (hasResult) {
+        const detail = typeof billingHistologyDetail === 'function'
+            ? billingHistologyDetail(lesion)
+            : (lesion.histologyResult || lesion.histologyDiagnosis || '');
+        return [detail || 'Recorded', extras].filter(Boolean).join(' · ');
+    }
+    if (done) return extras ? 'Pending · ' + extras : 'Pending';
+    return '';
+}
+
+function lesionTimelineTypeLabel(type) {
+    return {
+        call_attempt: 'Call',
+        voicemail: 'Voicemail',
+        sms: 'SMS',
+        spoke: 'Spoke',
+        result_advised: 'Result advised',
+        plan: 'Plan',
+        procedure: 'Procedure',
+        abort: 'Aborted',
+        histology: 'Histology',
+        consent: 'Consent'
+    }[type] || type || 'Action';
+}
+
+function isLesionContactEvent(event) {
+    if (!event) return false;
+    return ['call_attempt', 'voicemail', 'sms', 'spoke', 'result_advised'].includes(event.type)
+        || (typeof CALL_OUTCOMES !== 'undefined' && CALL_OUTCOMES.includes(event.outcome));
+}
+
+function lesionCardEvents(lesion) {
+    const events = typeof ensureLesionTimeline === 'function'
+        ? ensureLesionTimeline(lesion).slice()
+        : (Array.isArray(lesion?.timeline) ? lesion.timeline.slice() : []);
+    return events.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+}
+
+function renderLesionCardEventLine(event) {
+    const when = formatLesionCardWhen(event.at) || '';
+    const head = [lesionTimelineTypeLabel(event.type), event.outcome].filter(Boolean).join(' · ');
+    const note = [event.note, event.planAfter ? 'Plan: ' + event.planAfter : ''].filter(Boolean).join(' — ');
+    return `<li>
+        <time>${escapeHtml(when)}</time>
+        <span><strong>${escapeHtml(head)}</strong>${note ? ' · ' + escapeHtml(note) : ''}</span>
+    </li>`;
+}
+
+function renderLesionExamBlock(lesion) {
+    const macro = unspecifiedExamText(lesion?.macroscopic);
+    const dermoscopy = unspecifiedExamText(lesion?.dermoscopy);
+    const features = [macro ? 'Macro: ' + macro : '', dermoscopy ? 'Dermoscopy: ' + dermoscopy : '']
+        .filter(Boolean).join(' · ');
+    const impression = unspecifiedExamText(
+        (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion?.impression) : '')
+        || lesion?.impression
+    );
+    const rows = [
+        lesionCardRow('Features', features ? escapeHtml(features) : ''),
+        lesionCardRow('Impression', impression ? escapeHtml(impression) : ''),
+        lesionCardRow('Dimensions', escapeHtml(lesionExamDimensions(lesion))),
+        lesionCardRow('Margin', escapeHtml(lesionExamMargin(lesion)))
+    ].join('');
+    const at = lesionExamAt(lesion);
+    if (!rows && !at) return '';
+    const empty = !rows ? lesionCardRow('Recorded', 'Examination saved') : rows;
+    return renderLesionCardBlock('Examination', at, empty);
+}
+
+function renderLesionProcedureBlock(lesion) {
+    const type = typeof lesionType === 'function' ? lesionType(lesion) : (lesion?.type || '');
+    const done = typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!lesionProcedureAt(lesion);
+    const planned = ['planned_procedure', 'current_case'].includes(
+        typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion?.managementStatus
+    );
+    if (type === 'topical' && !done) {
+        const discussed = Array.isArray(lesion?.topicalDiscussed) ? lesion.topicalDiscussed.join(', ') : '';
+        const rows = [
+            lesionCardRow('Decision', escapeHtml(lesion?.topicalDecision || '')),
+            lesionCardRow('Discussed', escapeHtml(discussed)),
+            lesionCardRow('Follow-up', lesion?.topicalFollowUp && lesion.topicalFollowUp !== 'none'
+                ? escapeHtml(lesion.topicalFollowUp) : '')
+        ].join('');
+        return renderLesionCardBlock('Topical', lesionExamAt(lesion), rows);
+    }
+    if (!done && !planned && type !== 'punch' && type !== 'shave' && type !== 'excision') return '';
+    const rows = [
+        lesionCardRow('Type', escapeHtml(lesionProcedureTypeLabel(lesion))),
+        lesionCardRow('Histology', done ? escapeHtml(lesionHistologyCardValue(lesion)) : ''),
+        lesionCardRow('Dimensions', escapeHtml(lesionProcedureDimensions(lesion))),
+        lesionCardRow('Margin', escapeHtml(lesionProcedureMargin(lesion)))
+    ].join('');
+    if (!rows) return '';
+    return renderLesionCardBlock(done ? 'Procedure' : 'Planned procedure', done ? lesionProcedureAt(lesion) : '', rows);
+}
+
+function renderLesionContactBlock(lesion) {
+    const events = lesionCardEvents(lesion).filter(isLesionContactEvent);
+    if (!events.length) return '';
+    return `<section class="lesion-card-block">
+        <h4><span>Contact</span></h4>
+        <ul class="lesion-card-log">${events.map(renderLesionCardEventLine).join('')}</ul>
+    </section>`;
+}
+
+function renderLesionActionLog(lesion) {
+    const events = lesionCardEvents(lesion).filter((event) => !isLesionContactEvent(event));
+    if (!events.length) return '';
+    return `<section class="lesion-card-block">
+        <h4><span>Actions</span></h4>
+        <ul class="lesion-card-log">${events.map(renderLesionCardEventLine).join('')}</ul>
+    </section>`;
+}
+
 function renderLesionBillingBlock(lesion) {
     const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
     if (!bill) return '';
@@ -480,19 +705,12 @@ function renderLesionBillingBlock(lesion) {
 
 function renderManagedLesionCard(lesion, options) {
     const grouped = !!(options && options.grouped);
+    const chartBoard = !!(options && options.chartBoard);
     const patient = lesion.patientName || 'Unnamed patient';
     const identity = typeof patientIdentityFromRecord === 'function' ? patientIdentityFromRecord(lesion) : null;
     const canFocus = !!(identity?.chartId || (lesion.patientName && lesion.patientDob));
-    const fu = lesion.topicalFollowUp && lesion.topicalFollowUp !== 'none'
-        ? `Follow-up: ${escapeHtml(lesion.topicalFollowUp)}`
-        : '';
-    const region = lesion.billingRegion ? procedureAreaLabel(lesion.billingRegion) : '';
-    const dims = [lesion.excisionLengthMm, lesion.excisionWidthMm].filter(Boolean).length === 2
-        ? `${lesion.excisionLengthMm} × ${lesion.excisionWidthMm} mm`
-        : '';
     const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
-    const billLabel = bill && !options?.chartBoard ? billingStatusLabel(bill) : '';
-    const chartBoard = !!(options && options.chartBoard);
+    const billLabel = bill && !chartBoard ? billingStatusLabel(bill) : '';
     const safeId = String(lesion.id || '').replace(/'/g, '');
     const contactHtml = grouped ? '' : renderLesionPatientContactHtml(lesion);
     const nameHtml = grouped
@@ -505,6 +723,41 @@ function renderManagedLesionCard(lesion, options) {
     const dx = typeof billingDisplayDiagnosis === 'function'
         ? billingDisplayDiagnosis(lesion)
         : (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion.impression) : (lesion.impression || ''));
+    const status = typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion.plan || '');
+    const missed = typeof lastUnsuccessfulCall === 'function' ? lastUnsuccessfulCall(lesion) : null;
+    const prior = typeof formatPriorHistologyCitation === 'function' && lesion.priorLesionId
+        ? formatPriorHistologyCitation(lesion)
+        : '';
+
+    if (chartBoard) {
+        const examHtml = renderLesionExamBlock(lesion);
+        const procedureHtml = renderLesionProcedureBlock(lesion);
+        return `
+        <article class="p-3 rounded-lg border border-slate-200 bg-slate-50/70 space-y-2">
+            <div class="flex justify-between gap-2">
+                <div class="min-w-0">
+                    <p class="text-sm font-semibold text-slate-800">${escapeHtml(lesion.location || 'No site')}</p>
+                    <p class="text-xs text-slate-600">${dx ? escapeHtml(dx) : escapeHtml(status)}</p>
+                </div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0">${escapeHtml(status)}</span>
+            </div>
+            ${missed ? `<p class="lesion-call-badge">${escapeHtml(formatCallBadge(missed))}</p>` : ''}
+            ${prior ? `<p class="text-[11px] text-slate-600">${escapeHtml(prior)}</p>` : ''}
+            ${lesion.currentPlan ? `<p class="text-[11px] text-slate-700"><span class="font-semibold text-slate-600">Plan:</span> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
+            ${examHtml}
+            ${procedureHtml}
+            ${renderLesionContactBlock(lesion)}
+            ${renderLesionActionLog(lesion)}
+            ${renderLesionBillingBlock(lesion)}
+            <div class="flex flex-wrap gap-1.5">${renderManagedLesionActions(lesion, options)}</div>
+        </article>`;
+    }
+
+    const fu = lesion.topicalFollowUp && lesion.topicalFollowUp !== 'none'
+        ? `Follow-up: ${escapeHtml(lesion.topicalFollowUp)}`
+        : '';
+    const region = lesion.billingRegion ? procedureAreaLabel(lesion.billingRegion) : '';
+    const dims = lesionExamDimensions(lesion) || lesionProcedureDimensions(lesion);
     return `
         <article class="p-3 rounded-lg border border-slate-200 bg-slate-50/70 space-y-2">
             <div class="flex justify-between gap-2">
@@ -513,23 +766,18 @@ function renderManagedLesionCard(lesion, options) {
                     <p class="text-xs text-slate-600">${escapeHtml(lesion.location || 'No site')}${dx ? ' · ' + escapeHtml(dx) : ''}</p>
                     ${contactHtml}
                 </div>
-                <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(formatLesionWhen(lesion.procedureCompletedAt || lesion.updatedAt))}</span>
+                <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(formatLesionWhen(lesionProcedureAt(lesion) || lesionExamAt(lesion) || lesion.updatedAt))}</span>
             </div>
-            <p class="text-[11px] text-slate-500">${escapeHtml(typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion.plan || ''))}${fu ? ' · ' + fu : ''}${region ? ' · ' + escapeHtml(region) : ''}${dims ? ' · ' + dims : ''}${billLabel ? ' · Billing: ' + escapeHtml(billLabel) : ''}</p>
+            <p class="text-[11px] text-slate-500">${escapeHtml(status)}${fu ? ' · ' + fu : ''}${region ? ' · ' + escapeHtml(region) : ''}${dims ? ' · ' + escapeHtml(dims) : ''}${billLabel ? ' · Billing: ' + escapeHtml(billLabel) : ''}</p>
             ${lesion.currentPlan ? `<p class="text-[11px] text-slate-700"><span class="font-semibold text-slate-600">Plan:</span> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
-            ${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(lesion)
-                ? `<p class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(lesion)))}</p>`
-                : ''}
+            ${missed ? `<p class="lesion-call-badge">${escapeHtml(formatCallBadge(missed))}</p>` : ''}
             ${lesion.histologyResult ? `<p class="text-[11px] text-slate-600">Result: ${escapeHtml(lesion.histologyResult)}</p>` : ''}
             ${typeof formatHistologyAccession === 'function' && formatHistologyAccession(lesion, 'own')
                 ? `<p class="text-[11px] text-slate-600">Lab case: ${escapeHtml(formatHistologyAccession(lesion, 'own'))}</p>`
                 : (lesion.histologyPot
                     ? `<p class="text-[11px] text-slate-600">Pot ${escapeHtml(String(lesion.histologyPot))}${lesion.histologyBatchId ? ' (this procedure)' : ''}</p>`
                     : '')}
-            ${typeof formatPriorHistologyCitation === 'function' && lesion.priorLesionId && formatPriorHistologyCitation(lesion)
-                ? `<p class="text-[11px] text-slate-600">${escapeHtml(formatPriorHistologyCitation(lesion))}</p>`
-                : ''}
-            ${chartBoard ? renderLesionBillingBlock(lesion) : ''}
+            ${prior ? `<p class="text-[11px] text-slate-600">${escapeHtml(prior)}</p>` : ''}
             <div class="flex flex-wrap gap-1.5">${renderManagedLesionActions(lesion, options)}</div>
         </article>`;
 }
