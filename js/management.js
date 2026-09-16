@@ -272,15 +272,10 @@ function renderOpenChartBoard() {
         }</div>`
         : '';
 
-    const notes = typeof adminVisitNotes === 'function' ? adminVisitNotes() : [];
-    const consents = typeof adminConsentDocs === 'function' ? adminConsentDocs() : [];
-    const notesHtml = notes.length && typeof renderSavedVisitNotesQueue === 'function' ? renderSavedVisitNotesQueue(notes) : '';
-    const consentsHtml = consents.length && typeof renderSavedConsentDocsQueue === 'function' ? renderSavedConsentDocsQueue(consents) : '';
-
-    if (!groups.length && !orphanBills.length && !notes.length && !consents.length) {
+    if (!groups.length && !orphanBills.length) {
         return '<p class="text-sm text-slate-400 italic lg:col-span-2">No lesions on this chart yet.</p>';
     }
-    return lesionHtml + billingHtml + notesHtml + consentsHtml;
+    return lesionHtml + billingHtml;
 }
 
 function renderManagedLesions() {
@@ -329,12 +324,12 @@ function renderManagedLesions() {
     const confirmedBill = bills.filter((item) => item.status === 'confirmed').length;
     const processedBill = bills.filter((item) => item.status === 'processed').length;
     if (counts) {
-        if (!isVaultLoggedIn()) {
-            counts.classList.remove('hidden');
-            counts.textContent = 'Sign in to load encrypted charts, billing, and results.';
-        } else if (hasCurrentPatient()) {
+        if (hasCurrentPatient()) {
             counts.classList.add('hidden');
             counts.textContent = '';
+        } else if (!isVaultLoggedIn()) {
+            counts.classList.remove('hidden');
+            counts.textContent = 'Sign in to load encrypted charts, billing, and results.';
         } else {
             counts.classList.remove('hidden');
             const noteCount = typeof adminVisitNotes === 'function' ? adminVisitNotes().length : 0;

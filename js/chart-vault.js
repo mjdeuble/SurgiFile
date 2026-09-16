@@ -1749,6 +1749,11 @@ function updateChartChrome() {
     if (typeof syncOpenChartSearchGate === 'function') syncOpenChartSearchGate();
     const filterBar = document.getElementById('mgmtFilterBar');
     if (filterBar) filterBar.classList.toggle('hidden', open);
+    const counts = document.getElementById('mgmtCounts');
+    if (counts && open) {
+        counts.classList.add('hidden');
+        counts.textContent = '';
+    }
     const banner = document.getElementById('mgmtChartBanner');
     const title = document.getElementById('mgmtBoardTitle');
     const iemrEl = document.getElementById('mgmtIemrStatus');
