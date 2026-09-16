@@ -305,7 +305,7 @@ function renderPatientChartSummary() {
                 <div class="mgmt-summary-recall ${recallReady && recallInterval ? 'is-ready' : 'is-pending'}">
                     <p class="text-[10px] font-bold uppercase tracking-wider">${recallReady && recallInterval ? 'Recommended review' : 'Review interval'}</p>
                     <p class="text-sm font-bold mt-0.5">${esc(recallReady && recallInterval ? recallInterval : 'Pending risk screening')}</p>
-                    <p class="text-[11px] mt-0.5 opacity-90">${esc(recallReady && recallReason ? recallReason : 'Complete skin-cancer history in Lesions to generate the guideline interval.')}</p>
+                    <p class="text-[11px] mt-0.5 opacity-90">${esc(recallReady && recallReason ? recallReason : 'Complete skin-cancer history in History to generate the guideline interval.')}</p>
                 </div>
             </div>
             <div class="mgmt-summary-history">
@@ -315,7 +315,7 @@ function renderPatientChartSummary() {
                         const critical = /pacemaker|CRITICAL|diathermy/i.test(line);
                         return `<li class="text-[11px] ${critical ? 'text-red-800 font-semibold' : 'text-slate-700'}">• ${esc(line)}</li>`;
                     }).join('')}</ul>`
-                    : '<p class="text-[11px] text-slate-400 italic">No screening recorded for this visit yet. Complete risk screening in Lesions.</p>'}
+                    : '<p class="text-[11px] text-slate-400 italic">No screening recorded for this visit yet. Complete risk screening in History.</p>'}
             </div>
             <div class="mgmt-summary-queues">
                 ${queueBlock('Awaiting procedure', planned, 'No planned procedures.', 'planned_procedure')}
