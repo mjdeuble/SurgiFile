@@ -424,8 +424,17 @@ function lesionIsOrphanReexcisionDuplicate(lesion) {
     return !!(canonical && String(canonical.id) !== String(lesion.id));
 }
 
+function lesionIsPreviousProcedure(lesion) {
+    if (!lesion) return false;
+    if (lesionIsOrphanReexcisionDuplicate(lesion)) return false;
+    if (lesion.linkedReexcisionId || lesion.linkedChildId) return true;
+    return lesionIsSupersededByReexcision(lesion);
+}
+
 function lesionIsHiddenByReexcisionLink(lesion) {
-    return lesionIsSupersededByReexcision(lesion) || lesionIsOrphanReexcisionDuplicate(lesion);
+    // Hide duplicate re-excision children only. Parent / previous-procedure
+    // lesions stay on the practice board and patient chart.
+    return lesionIsOrphanReexcisionDuplicate(lesion);
 }
 
 function lesionBelongsToOpenChart(lesion) {

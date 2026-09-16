@@ -73,9 +73,11 @@ function lesionMatchesFilter(lesion, filter) {
     if (typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(lesion)) return false;
     const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus;
     if (filter === 'open' || filter === 'active') {
-        return typeof isActiveManagementStatus === 'function'
+        const active = typeof isActiveManagementStatus === 'function'
             ? isActiveManagementStatus(lesion.managementStatus)
             : ACTIVE_MANAGEMENT_STATUSES.includes(status);
+        if (active) return true;
+        return typeof lesionIsPreviousProcedure === 'function' && lesionIsPreviousProcedure(lesion);
     }
     if (filter === 'billing' || filter === 'notes') return false;
     if (filter === 'planned_excision' || filter === 'planned_procedure') return status === 'planned_procedure';
@@ -231,22 +233,27 @@ const CHART_BOARD_STATUS_GROUPS = [
     ['needs_contact', 'Needs contact'],
     ['appointment_requested', 'Appointment requested'],
     ['topical_followup', 'Topical follow-up'],
+    ['previous_procedure', 'Previous procedures'],
     ['no_followup', 'No follow-up']
 ];
+
+function chartBoardGroupKey(lesion) {
+    if (typeof lesionIsPreviousProcedure === 'function' && lesionIsPreviousProcedure(lesion)) {
+        return 'previous_procedure';
+    }
+    return typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus;
+}
 
 function renderOpenChartBoard() {
     const items = adminLesions().filter((item) => !(typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(item)));
     const seen = new Set(items.map((item) => String(item.id)));
     const known = new Set(CHART_BOARD_STATUS_GROUPS.map((pair) => pair[0]));
     const groups = CHART_BOARD_STATUS_GROUPS.map(([key, title]) => {
-        const rows = items.filter((item) => {
-            const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(item) : item.managementStatus;
-            return status === key;
-        });
+        const rows = items.filter((item) => chartBoardGroupKey(item) === key);
         return { key, title, rows };
     }).filter((group) => group.rows.length);
     const leftover = items.filter((item) => {
-        const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(item) : item.managementStatus;
+        const status = chartBoardGroupKey(item);
         return !known.has(status);
     });
     if (leftover.length) groups.push({ key: 'other', title: 'Other', rows: leftover });
