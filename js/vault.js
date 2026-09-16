@@ -156,11 +156,20 @@ async function writeTextFile(dirHandle, name, text) {
     }
 }
 
-async function waitForPendingVaultWrites() {
+async function waitForPendingVaultWrites(timeoutMs) {
+    const deadline = Date.now() + (Number(timeoutMs) > 0 ? Number(timeoutMs) : 8000);
     for (let i = 0; i < 6; i += 1) {
         const snapshot = [...pendingVaultWrites];
         if (!snapshot.length) return;
-        await Promise.all(snapshot.map((p) => p.then(() => undefined, () => undefined)));
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+            console.warn('Vault writes still pending after wait');
+            return;
+        }
+        await Promise.race([
+            Promise.all(snapshot.map((p) => p.then(() => undefined, () => undefined))),
+            new Promise((resolve) => setTimeout(resolve, remaining))
+        ]);
     }
 }
 

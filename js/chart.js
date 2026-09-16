@@ -33,7 +33,28 @@ function lesionStatusLabel(lesion) {
     const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : (lesion.managementStatus || deriveLesionStatusFromPlan(lesion));
     const type = typeof lesionType === 'function' ? lesionType(lesion) : '';
     let label = '';
-    if (status === 'planned_procedure' && type === 'excision') {
+    if (lesion?.linkedReexcisionId) {
+        const child = typeof findLinkedReexcisionChild === 'function' ? findLinkedReexcisionChild(lesion.id) : null;
+        const childIsExcision = child && (
+            (typeof lesionType === 'function' ? lesionType(child) : child.type) === 'excision'
+            || child.managementStatus === 'planned_procedure'
+            || child.managementStatus === 'current_case'
+        );
+        const billing = /billing/i.test(String(lesion.currentPlan || ''));
+        if (childIsExcision) {
+            label = billing ? 'Done · re-excision booked · billing pending' : 'Done · re-excision booked';
+        } else {
+            label = billing ? 'Done · further management open · billing pending' : 'Done · further management open';
+        }
+    }
+    else if (lesion?.priorLesionId && status === 'needs_contact') {
+        label = lesion?.contactUrgent ? 'Needs contact · Further management · Urgent' : 'Needs contact · Further management';
+    }
+    else if (lesion?.priorLesionId && status === 'awaiting_assessment') {
+        const proposed = typeof proposedPlanLabel === 'function' ? proposedPlanLabel(lesion.proposedPlan) : '';
+        label = proposed ? ('Further management · ' + proposed) : 'Further management';
+    }
+    else if (status === 'planned_procedure' && type === 'excision') {
         label = lesion?.priorLesionId ? 'Planned procedure · Re-excision' : 'Planned procedure · Excision';
     }
     else if (status === 'planned_procedure' && type === 'punch') label = 'Planned procedure · Punch';
@@ -79,28 +100,83 @@ function closeChartSidebar() {
     closeLesionFlyout();
 }
 
-function markChartSanitised() {
+function visitConsultTypeLabel(type) {
+    const key = String(type || visitConsultType || '').trim();
+    if (key === 'phone') return 'Phone consult';
+    if (key === 'chart_review') return 'Chart review';
+    if (key === 'face_to_face') return 'Face to face';
+    return '';
+}
+
+function isRemoteOrDeskConsult(type) {
+    const key = String(type || visitConsultType || '').trim();
+    return key === 'phone' || key === 'chart_review';
+}
+
+function visitClinicalUnlocked() {
+    return !!visitConsultType || !!isBedSanitised;
+}
+
+function openConsultTypeModal() {
+    const modal = document.getElementById('consultTypeModal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeConsultTypeModal() {
+    const modal = document.getElementById('consultTypeModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function maybePromptConsultType(options) {
+    if (!hasCurrentPatient()) return false;
+    if (visitConsultType || isBedSanitised) return false;
+    if (options?.skipConsultTypePrompt) return false;
+    openConsultTypeModal();
+    return true;
+}
+
+function selectVisitConsultType(type) {
+    const key = String(type || '').trim();
+    if (key !== 'chart_review' && key !== 'phone' && key !== 'face_to_face') return;
     if (!hasCurrentPatient()) {
-        pendingSanitise = true;
-        requireCurrentPatient('Select a patient first. Sanitise unlocks examination and procedures for this chart.');
+        showToast('Select a patient first.');
         return;
     }
-    if (isBedSanitised) {
-        showToast('Already sanitised for this chart. Close the chart to end the visit.');
-        return;
-    }
+    visitConsultType = key;
     pendingSanitise = false;
-    isBedSanitised = true;
-    if (typeof setModalBedSanitation === 'function') setModalBedSanitation(true);
+    if (key === 'face_to_face') {
+        isBedSanitised = true;
+        if (typeof setModalBedSanitation === 'function') setModalBedSanitation(true);
+    } else {
+        isBedSanitised = false;
+        if (typeof setModalBedSanitation === 'function') setModalBedSanitation(false);
+    }
+    closeConsultTypeModal();
     renderChartSidebar();
-    updateOutput();
-    showToast('Room marked sanitised. Examination and procedures are unlocked.');
+    if (typeof updateOutput === 'function') updateOutput();
+    const label = visitConsultTypeLabel(key);
+    showToast(key === 'face_to_face'
+        ? 'Face to face — room marked sanitised. Lesions and Procedure unlocked.'
+        : label + ' — Lesions and Procedure unlocked (no sanitation note).');
     if (pendingWorkspaceTab) {
         const tab = pendingWorkspaceTab;
         pendingWorkspaceTab = '';
         switchWorkspaceTab(tab);
     }
     if (typeof scheduleChartSave === 'function') scheduleChartSave();
+}
+
+function markChartSanitised() {
+    if (!hasCurrentPatient()) {
+        pendingSanitise = true;
+        requireCurrentPatient('Select a patient first. Choose consult type to unlock Lesions and Procedure.');
+        return;
+    }
+    if (visitConsultType === 'face_to_face' && isBedSanitised) {
+        showToast('Already marked face to face / sanitised for this chart. Close the chart to end the visit.');
+        return;
+    }
+    selectVisitConsultType('face_to_face');
 }
 
 function pulseSanitiseControl() {
@@ -121,10 +197,11 @@ function requireRoomReady(tabName) {
         }
     }
     if (tabName !== 'skin-check' && tabName !== 'excision-generator') return true;
-    if (!isBedSanitised) {
+    if (!visitClinicalUnlocked()) {
         pendingWorkspaceTab = tabName;
         pulseSanitiseControl();
-        showToast('Click Sanitised in the side bar once to unlock examination and procedures.');
+        openConsultTypeModal();
+        showToast('Choose consult type to unlock Lesions and Procedure.');
         return false;
     }
     return true;
@@ -141,9 +218,10 @@ function selectChartLesion(id, options) {
         return;
     }
 
-    if (!isBedSanitised) {
+    if (!visitClinicalUnlocked()) {
         pulseSanitiseControl();
-        showToast('Click Sanitised to examine or operate on this lesion.');
+        openConsultTypeModal();
+        showToast('Choose consult type to examine or operate on this lesion.');
         return;
     }
 
@@ -181,11 +259,22 @@ function renderChartSidebar() {
 
     const sanitiseBtn = document.getElementById('sidebarSanitiseBtn');
     const sanitiseHint = document.getElementById('sidebarSanitiseHint');
-    if (sanitiseBtn) sanitiseBtn.classList.toggle('is-on', !!isBedSanitised);
+    const unlocked = visitClinicalUnlocked();
+    if (sanitiseBtn) {
+        sanitiseBtn.classList.toggle('is-on', !!isBedSanitised || visitConsultType === 'face_to_face');
+        const typeLabel = visitConsultTypeLabel();
+        sanitiseBtn.setAttribute('aria-label', typeLabel || 'Consult type');
+    }
     if (sanitiseHint) {
-        sanitiseHint.textContent = isBedSanitised
-            ? 'Room is sanitised for this visit. Close the chart to end the visit.'
-            : 'Click once to unlock examination and procedures for this patient.';
+        if (visitConsultType === 'face_to_face' || isBedSanitised) {
+            sanitiseHint.textContent = 'Face to face — room sanitised for this visit. Close the chart to end the visit.';
+        } else if (visitConsultType === 'phone') {
+            sanitiseHint.textContent = 'Phone consult — no sanitation note. Close the chart to end the visit.';
+        } else if (visitConsultType === 'chart_review') {
+            sanitiseHint.textContent = 'Chart review — no sanitation note. Close the chart to end the visit.';
+        } else {
+            sanitiseHint.textContent = 'Choose consult type (chart review, phone, or face to face) to unlock Lesions and Procedure.';
+        }
     }
 
     const examBtn = document.getElementById('navTabSkinCheck');
@@ -194,7 +283,7 @@ function renderChartSidebar() {
     const setNav = (btn, workspace) => {
         if (!btn) return;
         btn.classList.toggle('is-active', tab === workspace);
-        btn.classList.toggle('is-locked', (workspace === 'skin-check' || workspace === 'excision-generator') && !isBedSanitised);
+        btn.classList.toggle('is-locked', (workspace === 'skin-check' || workspace === 'excision-generator') && !unlocked);
         btn.setAttribute('aria-selected', tab === workspace ? 'true' : 'false');
     };
     setNav(examBtn, 'skin-check');
@@ -231,19 +320,29 @@ function renderChartSidebar() {
         return;
     }
 
-    list.innerHTML = items.map((lesion) => {
-        const today = isVisitLesion(lesion.id);
-        const concern = !!(lesion.isConcern);
-        const selected = String(lesion.id) === String(selectedChartLesionId);
-        const classes = ['chart-lesion-item'];
-        if (selected) classes.push('is-selected');
-        if (today) classes.push('is-today');
-        if (concern) classes.push('is-concern');
-        const tag = concern ? 'Concern' : today ? 'This visit' : 'On chart';
-        return `
+    const episodes = typeof groupRecordsByPatientEpisode === 'function'
+        ? groupRecordsByPatientEpisode(items).flatMap((group) => group.episodeList || [])
+        : [{ key: 'all', at: '', items }];
+    const lesionHtml = episodes.map((ep) => {
+        const label = typeof formatEpisodeDayLabel === 'function'
+            ? formatEpisodeDayLabel(ep.key, ep.at)
+            : '';
+        const rows = (ep.items || []).map((lesion) => {
+            const today = isVisitLesion(lesion.id);
+            const concern = !!(lesion.isConcern);
+            const selected = String(lesion.id) === String(selectedChartLesionId);
+            const classes = ['chart-lesion-item'];
+            if (selected) classes.push('is-selected');
+            if (today) classes.push('is-today');
+            if (concern) classes.push('is-concern');
+            const tag = concern ? 'Concern' : today ? 'This visit' : 'On chart';
+            const dx = typeof billingDisplayDiagnosis === 'function'
+                ? billingDisplayDiagnosis(lesion)
+                : (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion.impression) : (lesion.impression || ''));
+            return `
             <button type="button" class="${classes.join(' ')}" onclick="selectChartLesion('${String(lesion.id).replace(/'/g, '')}')">
                 <span class="block text-xs font-semibold text-slate-800 truncate">${escapeHtml(lesion.location || 'No site')}</span>
-                <span class="block text-[10px] text-slate-500 truncate">${escapeHtml(typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion.impression) : (lesion.impression || ''))}</span>
+                <span class="block text-[10px] text-slate-500 truncate">${escapeHtml(dx)}</span>
                 <span class="mt-0.5 flex justify-between gap-1 text-[10px] font-semibold">
                     <span class="text-blue-800">${escapeHtml(lesionStatusLabel(lesion))}</span>
                     <span class="text-slate-400">${tag}</span>
@@ -260,7 +359,14 @@ function renderChartSidebar() {
                     ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(lesion)))}</span>`
                     : ''}
             </button>`;
-    }).join('') + concernRows.map((text) => `
+        }).join('');
+        return `<div class="space-y-1">
+            ${label ? `<p class="px-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">${escapeHtml(label)}</p>` : ''}
+            ${rows}
+        </div>`;
+    }).join('');
+
+    list.innerHTML = lesionHtml + concernRows.map((text) => `
         <div class="chart-lesion-item is-concern">
             <span class="block text-xs font-semibold text-amber-950 truncate">${escapeHtml(text)}</span>
             <span class="block text-[10px] font-semibold text-amber-800">Patient concern</span>

@@ -84,7 +84,7 @@ async function confirmSanitationModal() {
         || (typeof loggedInDoctorName === 'function' && loggedInDoctorName())
         || '';
     if (!name || !dob) {
-        showToast('Open a patient chart before starting the examination.');
+        showToast('Open a patient chart before starting in Lesions.');
         return;
     }
     if (!hasCurrentPatient() || currentPatient.chartId !== patientChartId(name, dob)) {
@@ -231,9 +231,10 @@ function updateExamRequiredFields() {
 
 function addPatientConcern() {
     if (!requireCurrentPatient('Select a patient before adding a lesion.')) return;
-    if (!isBedSanitised) {
+    if (!visitClinicalUnlocked()) {
         if (typeof pulseSanitiseControl === 'function') pulseSanitiseControl();
-        showToast('Click Sanitised in the chart bar once to unlock examination.');
+        if (typeof openConsultTypeModal === 'function') openConsultTypeModal();
+        showToast('Choose consult type to unlock Lesions.');
         return;
     }
     const input = document.getElementById('newConcernLocation');
@@ -401,6 +402,7 @@ function completeRiskScreening() {
         return;
     }
     screeningMarkedComplete = true;
+    if (typeof screeningAskedThisConsult !== 'undefined') screeningAskedThisConsult = true;
     updateScreeningCompleteButton();
     updateExamSectionHeaders();
     if (typeof collapseExamSectionWhenComplete === 'function') collapseExamSectionWhenComplete('sec-risks');
@@ -512,10 +514,11 @@ function recalculateRecall() {
 
 function triggerAddLesion() {
     if (!requireCurrentPatient('Select a patient before adding a lesion.')) return;
-    if (!isBedSanitised) {
+    if (typeof visitClinicalUnlocked === 'function' ? !visitClinicalUnlocked() : !isBedSanitised) {
         pendingWorkspaceTab = 'skin-check';
         if (typeof pulseSanitiseControl === 'function') pulseSanitiseControl();
-        showToast('Click Sanitised in the chart bar once to unlock examination.');
+        if (typeof openConsultTypeModal === 'function') openConsultTypeModal();
+        showToast('Choose consult type to unlock Lesions.');
         return;
     }
     if (activeWorkspaceTab !== 'skin-check') switchWorkspaceTab('skin-check');
@@ -883,12 +886,14 @@ function renderLesionsTable() {
             <td class="p-3 text-slate-700">${escapeHtml(typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(l.impression) : (l.impression || ''))}</td>
             <td class="p-3"><span class="text-[11px] font-semibold text-blue-800">${escapeHtml(status)}</span>${l.currentPlan ? `<div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(l.currentPlan)}</div>` : ''}${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(l) ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(l)))}</span>` : ''}</td>
             <td class="p-3">
-                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${(l.plan || '').includes('Biopsy') ? 'bg-blue-100 text-blue-800' : (l.plan || '').includes('Excision') ? 'bg-purple-100 text-purple-800' : isTopicalPlan(l.plan) ? 'bg-teal-100 text-teal-800' : (l.plan || '').includes('Awaiting') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'}">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${(l.plan || '').includes('Biopsy') ? 'bg-blue-100 text-blue-800' : (l.plan || '').includes('Excision') ? 'bg-purple-100 text-purple-800' : (typeof isReferLesionPlan === 'function' && isReferLesionPlan(l.plan)) ? 'bg-indigo-100 text-indigo-800' : isTopicalPlan(l.plan) ? 'bg-teal-100 text-teal-800' : (l.plan || '').includes('Awaiting') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'}">
                             ${escapeHtml(isTopicalPlan(l.plan)
                                 ? formatTopicalTableBadge(l)
-                                : (l.priorLesionId
-                                    ? 'Re-excision'
-                                    : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`))}
+                                : ((typeof isReferLesionPlan === 'function' && isReferLesionPlan(l.plan))
+                                    ? 'Refer / Specialist'
+                                    : (l.priorLesionId
+                                        ? 'Re-excision'
+                                        : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`)))}
                         </span>
             </td>
             <td class="p-3 text-right space-x-2">

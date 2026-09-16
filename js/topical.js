@@ -413,15 +413,13 @@ async function addPdtPriceArea() {
 }
 
 function isPdtRelevant() {
-    const discussed = getDiscussedTreatmentIds();
     const decision = document.querySelector('input[name="topicalDecision"]:checked')?.value || '';
-    return discussed.includes('pdt') || decision === 'pdt';
+    return decision === 'pdt';
 }
 
 function isCryoRelevant() {
-    const discussed = getDiscussedTreatmentIds();
     const decision = document.querySelector('input[name="topicalDecision"]:checked')?.value || '';
-    return discussed.includes('cryotherapy') || decision === 'cryotherapy';
+    return decision === 'cryotherapy';
 }
 
 function getDiscussedTreatmentIds() {
