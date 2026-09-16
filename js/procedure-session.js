@@ -968,7 +968,6 @@ function syncExLesionsFromProcedureSession() {
         exLesions = exLesions.filter((item) => ids.has(String(item.sourceLesionId)));
     }
     procedureSelectedLesions().forEach(upsertExLesionFromChart);
-    if (typeof updateExLesionsList === 'function') updateExLesionsList();
 }
 
 async function abortProcedureLesion(id) {

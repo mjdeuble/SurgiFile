@@ -690,47 +690,6 @@ function resetExAll() {
     updateExAllOutputs();
 }
 
-function removeExLesion(id) {
-    if (typeof procedureSession !== 'undefined' && procedureSession.started) {
-        showToast('Return a lesion from Finish procedure instead of removing it here.');
-        return;
-    }
-    exLesions = exLesions.filter(l => l.id !== id);
-    exLesions.forEach((lesion, index) => { lesion.id = index + 1; });
-    exLesionCounter = exLesions.length;
-    document.getElementById('ex-form-title').textContent = `Enter Lesion ${exLesionCounter + 1} Details`;
-
-    if (editingExLesionId === id) cancelExEdit();
-    updateExAllOutputs();
-}
-
-function updateExLesionsList() {
-    const listEl = document.getElementById('ex-lesions-list');
-    if (!listEl) return;
-
-    listEl.innerHTML = '';
-    if (exLesions.length === 0) {
-        listEl.innerHTML = `<p class="text-xs text-slate-400 italic">No lesions added yet.</p>`;
-        return;
-    }
-
-    exLesions.forEach(lesion => {
-        const item = document.createElement('div');
-        item.className = 'bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs';
-        item.innerHTML = `
-            <div>
-                <p class="font-bold text-slate-800">${lesion.id}. ${lesion.location}</p>
-                <p class="text-slate-500">${typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion.pathology) : lesion.pathology.replace(/;/g, ', ')} (${lesion.procedure} - ${lesion.excisionClosureType || lesion.punchType || 'Shave'})</p>
-            </div>
-            <div class="flex items-center gap-1.5">
-                ${typeof procedureSession !== 'undefined' && procedureSession.started ? '' : `<button onclick="startEditExLesion(${lesion.id})" class="text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 cursor-pointer">Edit</button>
-                <button onclick="removeExLesion(${lesion.id})" class="text-red-500 hover:text-red-700 font-semibold px-2 py-1 cursor-pointer">&times; Remove</button>`}
-            </div>
-        `;
-        listEl.appendChild(item);
-    });
-}
-
 function generateExClinicalRequest() {
     const items = exLesionsForOutput();
     if (items.length === 0) {
@@ -957,7 +916,6 @@ function generateExEntryNote() {
 }
 
 function updateExAllOutputs(options) {
-    updateExLesionsList();
     updateExOutputVisibility();
     if (!options?.skipVisitSave && typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
 }
