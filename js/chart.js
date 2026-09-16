@@ -69,35 +69,27 @@ function lesionStatusLabel(lesion) {
 }
 
 function isLesionFlyoutOpen() {
-    const fly = document.getElementById('chartLesionFlyout');
-    return !!(fly && !fly.classList.contains('hidden'));
+    return false;
 }
 
 function toggleLesionFlyout() {
-    if (isLesionFlyoutOpen()) closeLesionFlyout();
-    else openLesionFlyout();
+    /* Lesion-list flyout removed — lesions live on the Lesions workspace. */
 }
 
 function openLesionFlyout() {
-    const fly = document.getElementById('chartLesionFlyout');
-    const btn = document.getElementById('btnRailLesions');
-    if (fly) fly.classList.remove('hidden');
-    if (btn) btn.classList.add('is-active');
+    /* Lesion-list flyout removed. */
 }
 
 function closeLesionFlyout() {
-    const fly = document.getElementById('chartLesionFlyout');
-    const btn = document.getElementById('btnRailLesions');
-    if (fly) fly.classList.add('hidden');
-    if (btn) btn.classList.remove('is-active');
+    /* Lesion-list flyout removed. */
 }
 
 function toggleChartSidebar() {
-    toggleLesionFlyout();
+    /* Lesion-list flyout removed. */
 }
 
 function closeChartSidebar() {
-    closeLesionFlyout();
+    /* Lesion-list flyout removed. */
 }
 
 function visitConsultTypeLabel(type) {
@@ -156,8 +148,8 @@ function selectVisitConsultType(type) {
     if (typeof updateOutput === 'function') updateOutput();
     const label = visitConsultTypeLabel(key);
     showToast(key === 'face_to_face'
-        ? 'Face to face — room marked sanitised. Lesions and Procedure unlocked.'
-        : label + ' — Lesions and Procedure unlocked (no sanitation note).');
+        ? 'Face to face — room marked sanitised. History, Lesions, Procedure, and Consent unlocked.'
+        : label + ' — History, Lesions, Procedure, and Consent unlocked (no sanitation note).');
     if (pendingWorkspaceTab) {
         const tab = pendingWorkspaceTab;
         pendingWorkspaceTab = '';
@@ -169,7 +161,7 @@ function selectVisitConsultType(type) {
 function markChartSanitised() {
     if (!hasCurrentPatient()) {
         pendingSanitise = true;
-        requireCurrentPatient('Select a patient first. Choose consult type to unlock Lesions and Procedure.');
+        requireCurrentPatient('Select a patient first. Choose consult type to unlock History, Lesions, Procedure, and Consent.');
         return;
     }
     if (visitConsultType === 'face_to_face' && isBedSanitised) {
@@ -188,21 +180,23 @@ function pulseSanitiseControl() {
 
 function requireRoomReady(tabName) {
     if (tabName === 'management') return true;
-    if (tabName === 'skin-check' || tabName === 'excision-generator') {
+    const clinical = typeof isClinicalWorkspaceTab === 'function'
+        ? isClinicalWorkspaceTab(tabName)
+        : (tabName === 'history' || tabName === 'skin-check' || tabName === 'excision-generator' || tabName === 'consent');
+    if (clinical) {
         if (!hasCurrentPatient()) {
             pendingWorkspaceTab = tabName;
             openPatientModal();
             showToast('Search for a patient on the practice board, or add a new patient.');
             return false;
         }
-    }
-    if (tabName !== 'skin-check' && tabName !== 'excision-generator') return true;
-    if (!visitClinicalUnlocked()) {
-        pendingWorkspaceTab = tabName;
-        pulseSanitiseControl();
-        openConsultTypeModal();
-        showToast('Choose consult type to unlock Lesions and Procedure.');
-        return false;
+        if (!visitClinicalUnlocked()) {
+            pendingWorkspaceTab = tabName;
+            pulseSanitiseControl();
+            openConsultTypeModal();
+            showToast('Choose consult type to unlock History, Lesions, Procedure, and Consent.');
+            return false;
+        }
     }
     return true;
 }
@@ -245,8 +239,12 @@ function selectChartLesion(id, options) {
 function railModeVisible(mode, tab) {
     if (mode === 'never') return false;
     if (!mode || mode === 'always') return true;
-    if (mode === 'exam') return tab === 'skin-check';
-    if (mode === 'clinical') return tab === 'skin-check' || tab === 'excision-generator';
+    if (mode === 'exam') return tab === 'history' || tab === 'skin-check';
+    if (mode === 'clinical') {
+        return typeof isClinicalWorkspaceTab === 'function'
+            ? isClinicalWorkspaceTab(tab)
+            : (tab === 'history' || tab === 'skin-check' || tab === 'excision-generator' || tab === 'consent');
+    }
     if (mode === 'admin') return tab === 'management';
     return true;
 }
@@ -273,21 +271,26 @@ function renderChartSidebar() {
         } else if (visitConsultType === 'chart_review') {
             sanitiseHint.textContent = 'Chart review — no sanitation note. Close the chart to end the visit.';
         } else {
-            sanitiseHint.textContent = 'Choose consult type (chart review, phone, or face to face) to unlock Lesions and Procedure.';
+            sanitiseHint.textContent = 'Choose consult type (chart review, phone, or face to face) to unlock History, Lesions, Procedure, and Consent.';
         }
     }
 
+    const historyBtn = document.getElementById('navTabHistory');
     const examBtn = document.getElementById('navTabSkinCheck');
     const procBtn = document.getElementById('navTabExcisionGen');
+    const consentBtn = document.getElementById('navTabConsent');
     const adminBtn = document.getElementById('navTabManagement');
+    const clinicalLocked = !unlocked;
     const setNav = (btn, workspace) => {
         if (!btn) return;
         btn.classList.toggle('is-active', tab === workspace);
-        btn.classList.toggle('is-locked', (workspace === 'skin-check' || workspace === 'excision-generator') && !unlocked);
+        btn.classList.toggle('is-locked', workspace !== 'management' && clinicalLocked);
         btn.setAttribute('aria-selected', tab === workspace ? 'true' : 'false');
     };
+    setNav(historyBtn, 'history');
     setNav(examBtn, 'skin-check');
     setNav(procBtn, 'excision-generator');
+    setNav(consentBtn, 'consent');
     setNav(adminBtn, 'management');
 
     document.querySelectorAll('#chartSidebar [data-rail]').forEach((el) => {
@@ -296,88 +299,8 @@ function renderChartSidebar() {
 
     const recall = document.getElementById('headerRecallBadgeContainer');
     const accordion = document.getElementById('accordionHeaderControls');
-    if (recall) recall.classList.toggle('hidden', !patientOn || tab !== 'skin-check');
-    if (accordion) accordion.classList.toggle('hidden', !patientOn || tab !== 'skin-check');
-
-    const lesionsBtn = document.getElementById('btnRailLesions');
-    if (lesionsBtn) lesionsBtn.classList.toggle('is-active', isLesionFlyoutOpen());
-
-    if (!patientOn) closeLesionFlyout();
+    if (recall) recall.classList.toggle('hidden', !patientOn || tab !== 'history');
+    if (accordion) accordion.classList.toggle('hidden', !patientOn || (tab !== 'history' && tab !== 'skin-check'));
 
     if (tab === 'excision-generator' && typeof renderProcedureWorkspace === 'function') renderProcedureWorkspace();
-
-    const list = document.getElementById('sidebarLesionList');
-    if (!list) return;
-    if (!patientOn) {
-        list.innerHTML = '<p class="text-[11px] text-slate-400 italic px-0.5">Select a patient to see their lesions and concerns.</p>';
-        return;
-    }
-
-    const items = typeof clinicalChartLesions === 'function' ? clinicalChartLesions() : chartLesions();
-    const concernRows = patientConcerns.filter((text) => !items.some((item) => String(item.location || '').toLowerCase() === String(text).toLowerCase()));
-    if (!items.length && !concernRows.length) {
-        list.innerHTML = '<p class="text-[11px] text-slate-400 italic px-0.5">No lesions on this chart yet.</p>';
-        return;
-    }
-
-    const episodes = typeof groupRecordsByPatientEpisode === 'function'
-        ? groupRecordsByPatientEpisode(items).flatMap((group) => group.episodeList || [])
-        : [{ key: 'all', at: '', items }];
-    const lesionHtml = episodes.map((ep) => {
-        const label = typeof formatEpisodeDayLabel === 'function'
-            ? formatEpisodeDayLabel(ep.key, ep.at)
-            : '';
-        const rows = (ep.items || []).map((lesion) => {
-            const today = isVisitLesion(lesion.id);
-            const concern = !!(lesion.isConcern);
-            const selected = String(lesion.id) === String(selectedChartLesionId);
-            const classes = ['chart-lesion-item'];
-            if (selected) classes.push('is-selected');
-            if (today) classes.push('is-today');
-            if (concern) classes.push('is-concern');
-            const tag = concern ? 'Concern' : today ? 'This visit' : 'On chart';
-            const dx = typeof billingDisplayDiagnosis === 'function'
-                ? billingDisplayDiagnosis(lesion)
-                : (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion.impression) : (lesion.impression || ''));
-            return `
-            <button type="button" class="${classes.join(' ')}" onclick="selectChartLesion('${String(lesion.id).replace(/'/g, '')}')">
-                <span class="block text-xs font-semibold text-slate-800 truncate">${escapeHtml(lesion.location || 'No site')}</span>
-                <span class="block text-[10px] text-slate-500 truncate">${escapeHtml(dx)}</span>
-                <span class="mt-0.5 flex justify-between gap-1 text-[10px] font-semibold">
-                    <span class="text-blue-800">${escapeHtml(lesionStatusLabel(lesion))}</span>
-                    <span class="text-slate-400">${tag}</span>
-                </span>
-                ${lesion.currentPlan ? `<span class="mt-0.5 block text-[10px] text-slate-600 truncate">${escapeHtml(lesion.currentPlan)}</span>` : ''}
-                ${typeof formatPriorHistologyCitation === 'function' && lesion.priorLesionId && formatPriorHistologyCitation(lesion)
-                    ? `<span class="mt-0.5 block text-[10px] text-slate-500 truncate">${escapeHtml(formatPriorHistologyCitation(lesion))}</span>`
-                    : (typeof formatHistologyAccession === 'function' && formatHistologyAccession(lesion, 'own')
-                        ? `<span class="mt-0.5 block text-[10px] text-slate-500 truncate">Lab case ${escapeHtml(formatHistologyAccession(lesion, 'own'))}</span>`
-                        : (lesion.histologyPot
-                            ? `<span class="mt-0.5 block text-[10px] text-slate-500 truncate">Pot ${escapeHtml(String(lesion.histologyPot))}${lesion.histologyBatchId ? ' · this procedure' : ''}</span>`
-                            : ''))}
-                ${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(lesion)
-                    ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(lesion)))}</span>`
-                    : ''}
-            </button>`;
-        }).join('');
-        return `<div class="space-y-1">
-            ${label ? `<p class="px-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">${escapeHtml(label)}</p>` : ''}
-            ${rows}
-        </div>`;
-    }).join('');
-
-    list.innerHTML = lesionHtml + concernRows.map((text) => `
-        <div class="chart-lesion-item is-concern">
-            <span class="block text-xs font-semibold text-amber-950 truncate">${escapeHtml(text)}</span>
-            <span class="block text-[10px] font-semibold text-amber-800">Patient concern</span>
-        </div>
-    `).join('');
 }
-
-document.addEventListener('click', (event) => {
-    const fly = document.getElementById('chartLesionFlyout');
-    const btn = document.getElementById('btnRailLesions');
-    if (!fly || fly.classList.contains('hidden')) return;
-    if (fly.contains(event.target) || (btn && btn.contains(event.target))) return;
-    closeLesionFlyout();
-});

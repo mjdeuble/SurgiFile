@@ -12,8 +12,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="stylesheet" href="css/tailwind.css?v=118">
-    <link rel="stylesheet" href="css/app.css?v=118">
+    <link rel="stylesheet" href="css/tailwind.css?v=119">
+    <link rel="stylesheet" href="css/app.css?v=119">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -26,18 +26,20 @@
                 <h1 class="font-bold text-lg leading-tight">DermRecord</h1>
             </div>
 
-            <button type="button" id="headerPatientButton" onclick="focusPracticeBoardSearch()" class="flex items-center gap-2 min-w-0 max-w-[16rem] ml-2 pl-3 border-l border-slate-700 hover:bg-slate-800/80 rounded-lg px-2 py-1 cursor-pointer text-left">
+            <button type="button" id="headerPatientButton" onclick="onHeaderPatientButtonClick()" class="flex items-center gap-2 min-w-0 max-w-[16rem] ml-2 pl-3 border-l border-slate-700 hover:bg-slate-800/80 rounded-lg px-2 py-1 cursor-pointer text-left">
                 <div class="min-w-0">
                     <p id="headerPatientName" class="text-sm font-semibold truncate leading-tight">No chart open</p>
                     <p id="headerPatientDob" class="text-[10px] text-slate-400 truncate leading-tight">Search the practice board to open a chart</p>
                 </div>
             </button>
+            <div id="headerOpenChartTools" class="flex items-center gap-2 flex-1 min-w-0">
             <div class="chart-search relative flex-1 min-w-[12rem] max-w-xs">
                 <label class="sr-only" for="headerChartSearch">Search patients to open a chart</label>
                 <input type="search" id="headerChartSearch" autocomplete="off" placeholder="Surname, first name, DOB, or phone" class="w-full px-2.5 py-1.5 text-[12px] rounded-lg border border-slate-600 bg-slate-800 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" oninput="onChartSearchInput(this, 'headerChartSearchResults')" onfocus="onChartSearchInput(this, 'headerChartSearchResults')" onkeydown="onChartSearchKeydown(event, 'headerChartSearchResults')">
                 <div id="headerChartSearchResults" class="chart-search-results hidden" role="listbox" aria-label="Matching charts"></div>
             </div>
             <button type="button" onclick="openAddPatientModal()" class="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-600 bg-slate-800 hover:bg-slate-700 text-white cursor-pointer">Add new patient</button>
+            </div>
             <button type="button" id="btnHeaderCloseChart" onclick="requestClosePatientChart()" class="hidden px-2.5 py-1 text-[11px] font-bold rounded-lg border border-amber-500/70 bg-amber-900/40 hover:bg-amber-800/60 text-amber-100 cursor-pointer" title="Finalise Visit and Close chart">Finalise visit</button>
 
             <div class="flex items-center gap-1 ml-auto">
@@ -83,12 +85,21 @@
                         </div>
                     </div>
                     <div class="header-icon-btn-wrap">
+                        <button type="button" id="navTabHistory" onclick="switchWorkspaceTab('history')" class="header-icon-btn" role="tab" aria-selected="false" aria-label="History">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                        </button>
+                        <div class="output-action-tooltip" role="tooltip">
+                            <div class="output-action-tooltip-title">History / Information gathering</div>
+                            <p class="output-action-tooltip-desc">Scope, concerns, and risk screening. Unlocked after consult type.</p>
+                        </div>
+                    </div>
+                    <div class="header-icon-btn-wrap">
                         <button type="button" id="navTabSkinCheck" onclick="switchWorkspaceTab('skin-check')" class="header-icon-btn" role="tab" aria-selected="false" aria-label="Lesions">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 4v5a6 6 0 0012 0V4M6 4h1.5M16.5 4H18"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v1a3 3 0 003 3"/><circle cx="18" cy="16" r="2.5" stroke-width="2"/></svg>
                         </button>
                         <div class="output-action-tooltip" role="tooltip">
                             <div class="output-action-tooltip-title">Lesions</div>
-                            <p class="output-action-tooltip-desc">Skin check, lesion list, and session copy outputs. Unlocked after consult type.</p>
+                            <p class="output-action-tooltip-desc">Document and summarise lesions. Unlocked after consult type.</p>
                         </div>
                     </div>
                     <div class="header-icon-btn-wrap">
@@ -98,6 +109,15 @@
                         <div class="output-action-tooltip" role="tooltip">
                             <div class="output-action-tooltip-title">Procedure</div>
                             <p class="output-action-tooltip-desc">Operative note and shorthand pathology request. Unlocked after consult type.</p>
+                        </div>
+                    </div>
+                    <div class="header-icon-btn-wrap">
+                        <button type="button" id="navTabConsent" onclick="switchWorkspaceTab('consent')" class="header-icon-btn" role="tab" aria-selected="false" aria-label="Consent">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12M8 21h8M12 16a2 2 0 00-2 2h4a2 2 0 00-2-2z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M7 7l-2.5 4.5a2.5 2.5 0 105 0L7 7zM17 7l-2.5 4.5a2.5 2.5 0 105 0L17 7z"/></svg>
+                        </button>
+                        <div class="output-action-tooltip" role="tooltip">
+                            <div class="output-action-tooltip-title">Consent</div>
+                            <p class="output-action-tooltip-desc">Surgical consent form. Unlocked after consult type.</p>
                         </div>
                     </div>
                 </nav>
@@ -111,36 +131,12 @@
                             </button>
                             <div class="output-action-tooltip" role="tooltip">
                                 <div class="output-action-tooltip-title">Consult type</div>
-                                <p id="sidebarSanitiseHint" class="output-action-tooltip-desc">Choose chart review, phone, or face to face (sanitation). Unlocks Lesions and Procedure.</p>
-                            </div>
-                        </div>
-                        <div class="header-icon-btn-wrap">
-                            <button type="button" id="btnRailLesions" onclick="toggleLesionFlyout()" class="header-icon-btn" aria-label="Lesion list">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="2.75" stroke-width="2"/><circle cx="16" cy="15" r="3.25" stroke-width="2"/></svg>
-                            </button>
-                            <div class="output-action-tooltip" role="tooltip">
-                                <div class="output-action-tooltip-title">Lesion list</div>
-                                <p class="output-action-tooltip-desc">Previous chart lesions, this visit, and patient concerns.</p>
+                                <p id="sidebarSanitiseHint" class="output-action-tooltip-desc">Choose chart review, phone, or face to face (sanitation). Unlocks History, Lesions, Procedure, and Consent.</p>
                             </div>
                         </div>
                     </div>
 
                     <div id="headerOutputActions" class="chart-rail-stack" role="toolbar" aria-label="Session actions">
-                        <div id="cardStatusEmr" class="output-action-btn-wrap is-pending" data-rail="exam">
-                            <button type="button" id="btnCopyEmr" onclick="copyTodaysClinicalNote()" class="output-action-btn" aria-label="Copy today’s clinical note">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                <span id="dotEmr" class="output-action-dot is-pending"></span>
-                            </button>
-                            <button type="button" onclick="toggleNotePreviewModal()" class="output-action-sub" aria-label="Preview clinical EMR note">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                            </button>
-                            <div class="output-action-tooltip" role="tooltip">
-                                <div class="output-action-tooltip-title">Today’s clinical note</div>
-                                <div id="textEmrStatus" class="output-action-tooltip-status">Pending copy</div>
-                                <p class="output-action-tooltip-desc">Always rebuilds the full visit (exam + procedure). If already copied, replace in Best Practice — do not append, or you may get duplicates.</p>
-                            </div>
-                        </div>
-
                         <div id="cardStatusPath" class="output-action-btn-wrap is-idle hidden" data-rail="never">
                             <button type="button" id="btnCopyPath" onclick="copyPathologyRequestAction()" class="output-action-btn" disabled aria-label="Copy pathology request slip">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
@@ -165,28 +161,6 @@
                                 <div class="output-action-tooltip-title">Attached Pathology Report</div>
                                 <div id="textSuppStatus" class="output-action-tooltip-status">Not required</div>
                                 <p id="descSuppStatus" class="output-action-tooltip-desc">Standard request fits directly on physical pathology pad.</p>
-                            </div>
-                        </div>
-
-                        <div id="cardStatusRec" class="output-action-btn-wrap is-pending" data-rail="exam">
-                            <button type="button" id="btnCopyRec" onclick="copyReceptionAction()" class="output-action-btn" aria-label="Copy message to reception">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-                                <span id="dotRec" class="output-action-dot is-pending"></span>
-                            </button>
-                            <div class="output-action-tooltip" role="tooltip">
-                                <div class="output-action-tooltip-title">Message to Reception</div>
-                                <div id="textRecStatus" class="output-action-tooltip-status">Pending copy</div>
-                                <p class="output-action-tooltip-desc">Consult type, ROS per site, and HOLD or PROCESS. Same-day procedures are billed together.</p>
-                            </div>
-                        </div>
-
-                        <div id="railConsentAction" class="output-action-btn-wrap is-consent" data-rail="always">
-                            <button type="button" onclick="openExcisionConsentModal()" class="output-action-btn" aria-label="Open surgical consent generator">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12M8 21h8M12 16a2 2 0 00-2 2h4a2 2 0 00-2-2z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M7 7l-2.5 4.5a2.5 2.5 0 105 0L7 7zM17 7l-2.5 4.5a2.5 2.5 0 105 0L17 7z"/></svg>
-                            </button>
-                            <div class="output-action-tooltip" role="tooltip">
-                                <div class="output-action-tooltip-title">Surgical Consent</div>
-                                <p class="output-action-tooltip-desc">Generate the informed consent form for booked excisions.</p>
                             </div>
                         </div>
 
@@ -235,7 +209,7 @@
                         <div class="output-action-tooltip" role="tooltip">
                             <div class="output-action-tooltip-title">Guideline Recall</div>
                             <div id="headerRecallBadgeText" class="output-action-tooltip-status">Pending Risk Screening</div>
-                            <p id="headerRecallReason" class="output-action-tooltip-desc">Complete skin-cancer history in section 3 to calculate the interval.</p>
+                            <p id="headerRecallReason" class="output-action-tooltip-desc">Complete skin-cancer history in History to calculate the interval.</p>
                         </div>
                     </div>
 
@@ -246,7 +220,7 @@
                             </button>
                             <div class="output-action-tooltip" role="tooltip">
                                 <div class="output-action-tooltip-title">Expand All</div>
-                                <p class="output-action-tooltip-desc">Open every skin-check section.</p>
+                                <p class="output-action-tooltip-desc">Open every section on this screen.</p>
                             </div>
                         </div>
                         <div class="header-icon-btn-wrap">
@@ -255,17 +229,13 @@
                             </button>
                             <div class="output-action-tooltip" role="tooltip">
                                 <div class="output-action-tooltip-title">Collapse All</div>
-                                <p class="output-action-tooltip-desc">Close every skin-check section.</p>
+                                <p class="output-action-tooltip-desc">Close every section on this screen.</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div id="chartLesionFlyout" class="chart-lesion-flyout hidden">
-                <p class="chart-sidebar-kicker mb-2">Lesions</p>
-                <div id="sidebarLesionList" class="chart-lesion-list"></div>
-            </div>
         </aside>
 
         <div id="chartMain" class="chart-main min-w-0 flex-1 flex flex-col">
@@ -273,7 +243,7 @@
     <!-- WORKSPACE TAB 1: SKIN EXAMINATION & SCREENING WORKFLOW -->
     <main id="view-skin-check" class="hidden max-w-7xl mx-auto px-4 py-6 flex-1 w-full">
 
-        <div class="space-y-4">
+        <div id="examHistoryBlock" class="space-y-4">
 
             <!-- SECTION 1: EXAMINATION METADATA & SCOPE -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -628,6 +598,10 @@
                 </div>
             </div>
 
+        </div>
+
+        <div id="examLesionsBlock" class="space-y-4 hidden">
+
             <!-- SECTION 4: LESION DOCUMENTATION & DERMOSCOPY -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <button onclick="toggleAccordion('sec-lesions')" class="w-full px-5 py-3.5 bg-slate-50 hover:bg-slate-100/80 flex justify-between items-center transition-colors text-left font-semibold text-slate-800 border-b border-slate-200">
@@ -963,6 +937,235 @@
             </div>
         </div>
     </main>
+    <main id="view-consent" class="hidden max-w-4xl mx-auto px-4 py-6 flex-1 w-full">
+        <div id="excisionConsentModal" class="bg-white rounded-2xl shadow-sm border border-slate-200 max-h-[calc(100vh-8rem)] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 bg-gradient-to-r from-purple-900 to-slate-900 text-white flex justify-between items-center shrink-0">
+                <div>
+                    <h3 class="font-bold text-base">Formal Surgical Excision Informed Consent Suite</h3>
+                    <p class="text-xs text-purple-200">Informed Patient Consent & Material Risk Disclosure</p>
+                </div>
+                <button type="button" onclick="onExcisionConsentHeaderClose()" class="text-slate-400 hover:text-white font-bold text-lg cursor-pointer" aria-label="Close consent">&times;</button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-5 text-xs text-slate-800 flex-1">
+                <!-- 1. Patient & Practitioner Identifiers -->
+                <div class="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-3">
+                    <h4 class="font-bold text-xs uppercase tracking-wider text-purple-900 flex items-center justify-between">
+                        <span>1. Patient & Medical Practitioner Intake</span>
+                        <span class="text-[10px] text-purple-700 font-normal">Linked from the open chart and signed-in doctor</span>
+                    </h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <span class="block font-semibold text-slate-700 mb-1">Patient</span>
+                            <p id="consentPatientNameDisplay" class="p-2 rounded bg-white border border-slate-200 text-slate-800 font-medium">—</p>
+                        </div>
+                        <div>
+                            <span class="block font-semibold text-slate-700 mb-1">Date of birth</span>
+                            <p id="consentPatientDobDisplay" class="p-2 rounded bg-white border border-slate-200 text-slate-800">—</p>
+                        </div>
+                        <div>
+                            <span class="block font-semibold text-slate-700 mb-1">Operating doctor</span>
+                            <p id="consentDoctorNameDisplay" class="p-2 rounded bg-slate-50 border border-slate-200 text-slate-800 font-medium">—</p>
+                        </div>
+                    </div>
+                    <input type="hidden" id="consentPatientName">
+                    <input type="hidden" id="consentPatientDOB">
+                    <input type="hidden" id="consentDoctorName">
+                </div>
+
+                <!-- 2. Procedure Specifics & Reconstruction Contingencies -->
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700">2. Planned Surgical Procedures & Reconstruction</h4>
+                            <p class="text-[10px] text-slate-500">Unconsented lesions only (all selected by default). Untick any to leave off this form. Output is a numbered list for BP Premier.</p>
+                        </div>
+                        <button onclick="importExcisionLesions()" class="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold rounded border border-purple-300 text-[11px] transition-colors cursor-pointer">
+                            Import chart lesions
+                        </button>
+                    </div>
+
+                    <!-- Table of Selected Procedures in Consent -->
+                    <div class="overflow-x-auto border border-purple-200 rounded-lg bg-white">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-purple-100/70 text-purple-900 font-bold border-b border-purple-200 uppercase text-[10px] tracking-wider">
+                                    <th class="p-2 text-center">Incl.</th>
+                                    <th class="p-2">#</th>
+                                    <th class="p-2">Type</th>
+                                    <th class="p-2">Location</th>
+                                    <th class="p-2">Diagnosis</th>
+                                    <th class="p-2">Margin</th>
+                                    <th class="p-2">Reconstruction</th>
+                                    <th class="p-2 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="consentProceduresTableBody" class="divide-y divide-slate-200">
+                                <!-- Dynamically populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Add Procedure Form Row -->
+                    <div class="p-3 bg-purple-50/50 border border-purple-200 rounded-lg space-y-2">
+                        <span class="block font-bold text-[11px] uppercase tracking-wider text-purple-900">+ Add Additional Procedure To Consent:</span>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 text-xs">
+                            <select id="addConsentKind" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
+                                <option value="excision">Excision</option>
+                                <option value="shave">Shave biopsy</option>
+                                <option value="punch">Punch biopsy</option>
+                            </select>
+                            <input type="text" id="addConsentLoc" oninput="updateConsentRiskPreview()" placeholder="Anatomical Location *" class="p-2 border border-slate-300 rounded bg-white">
+                            <div class="dx-typeahead">
+                                <input type="text" id="addConsentDx" placeholder="Diagnosis" class="p-2 border border-slate-300 rounded bg-white w-full" autocomplete="off" oninput="updateConsentRiskPreview()">
+                                <div class="dx-suggest hidden" role="listbox"></div>
+                            </div>
+                            <div class="mm-field-row">
+                                <div class="mm-field">
+                                    <input type="number" id="addConsentMargin" placeholder="Margin" min="0" step="0.5" inputmode="decimal" class="w-full p-2 border border-slate-300 rounded bg-white">
+                                    <span class="mm-unit">mm</span>
+                                </div>
+                                <button type="button" class="btn-margin-suggest" onclick="openMarginSuggestModal('addConsentMargin')">Suggest</button>
+                            </div>
+                            <select id="addConsentRecon" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
+                                <option value="Direct Linear Closure">Simple ellipse</option>
+                                <option value="Healing by Secondary Intention">Secondary intention</option>
+                                <option value="Local Flap Repair">Flap</option>
+                                <option value="Full Thickness Skin Graft">Graft</option>
+                                <option value="Local Flap and Skin Graft">Flap + Graft</option>
+                                <option value="Wedge Resection / Cartilage Repair">Wedge Resection</option>
+                            </select>
+                            <button onclick="addProcedureToConsent()" class="py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded transition-colors text-xs cursor-pointer">
+                                + Add Procedure
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Contingency Authorizations Checkboxes -->
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                        <label class="block font-bold text-[11px] uppercase tracking-wider text-slate-700">Intraoperative Procedure Contingency Approvals:</label>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <label class="flex items-center text-slate-800 font-medium cursor-pointer">
+                                <input type="checkbox" id="chkDeepPunchConsent" checked class="rounded text-purple-600 mr-2">
+                                Authorize Deep Margin / Cartilage Punch Biopsies (to verify deep clearance during ear or complex resections)
+                            </label>
+                            <label class="flex items-center text-slate-800 font-medium cursor-pointer">
+                                <input type="checkbox" id="chkFlapGraftContingency" checked class="rounded text-purple-600 mr-2">
+                                Authorize Local Flap, Graft, or Secondary Intention conversion if tension prevents direct closure
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Interactive Risk Matrix with Individual Checkboxes -->
+                <div class="space-y-3">
+                    <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700">3. Interactive Risk Disclosure Matrix (Patient-Friendly & Legally Sound)</h4>
+                    
+                    <!-- General Minor Surgical & Local Anaesthetic Risks -->
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                        <span class="block font-bold text-slate-800 text-[11px] uppercase tracking-wider">A. General Minor Surgical & Local Anaesthetic Risks:</span>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
+                                <input type="checkbox" id="riskGenLocalAnaesthetic" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
+                                Local anaesthetic injection risks: Stinging or discomfort, minor bruising, temporary numbness or muscle weakness, feeling faint (vasovagal reaction), or rare allergic reaction.
+                            </label>
+                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
+                                <input type="checkbox" id="riskGenBleeding" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
+                                Bleeding during or after surgery, resulting in a blood collection under the skin (hematoma) that may require drainage.
+                            </label>
+                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
+                                <input type="checkbox" id="riskGenInfection" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
+                                Wound infection requiring oral or topical antibiotics or special dressing care.
+                            </label>
+                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
+                                <input type="checkbox" id="riskGenScarring" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
+                                Permanent surgical scar, color or texture change, or thickened/raised scar growth (hypertrophic or keloid scar).
+                            </label>
+                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
+                                <input type="checkbox" id="riskGenDehiscence" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
+                                Opening of wound edges (dehiscence), spitting of internal stitches, or delayed healing requiring prolonged dressings.
+                            </label>
+                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
+                                <input type="checkbox" id="riskGenNumbness" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
+                                Temporary or permanent nerve numbness, altered skin sensation, or tingling around the surgical site.
+                            </label>
+                            <label class="flex items-start text-slate-800 font-medium cursor-pointer sm:col-span-2">
+                                <input type="checkbox" id="riskGenIncomplete" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
+                                Pathology report showing tumor cells close to or at the cut edge (incomplete excision), requiring a secondary operation (re-excision).
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Reconstruction Method Specific Risks -->
+                    <div class="p-3 bg-purple-50/50 border border-purple-200 rounded-lg space-y-2">
+                        <span class="block font-bold text-purple-950 text-[11px] uppercase tracking-wider">B. Reconstruction-Specific Risks (Flap / Graft / Secondary Intention):</span>
+                        <div id="consentReconRiskCheckboxes" class="space-y-1.5 text-xs">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Anatomical Location Specific Risks -->
+                    <div class="p-3 bg-purple-50/50 border border-purple-200 rounded-lg space-y-2">
+                        <span class="block font-bold text-purple-950 text-[11px] uppercase tracking-wider">C. Location-Specific Material Risks:</span>
+                        <div id="consentLocationRiskCheckboxes" class="space-y-1.5 text-xs">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Risks of Non-Treatment / Refusal -->
+                    <div class="p-3 bg-red-50/50 border border-red-200 rounded-lg space-y-2">
+                        <span class="block font-bold text-red-950 text-[11px] uppercase tracking-wider">D. Risks of Non-Treatment, Delay, or Surgical Refusal:</span>
+                        <div id="consentNonTxRiskCheckboxes" class="space-y-1.5 text-xs">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Custom Patient-Specific Risks -->
+                    <div class="p-3 bg-amber-50/50 border border-amber-200 rounded-lg space-y-2">
+                        <span class="block font-bold text-amber-950 text-[11px] uppercase tracking-wider">E. Patient-Specific Custom Clinical Risks:</span>
+                        <div class="flex gap-2">
+                            <input type="text" id="consentCustomRiskInput" placeholder="e.g. Patient on active Warfarin (higher bleeding risk), high anxiety, prior keloid on chest" class="flex-1 p-2 border border-amber-300 rounded bg-white text-xs">
+                            <button onclick="addCustomConsentRisk()" class="px-3 py-2 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded text-xs shrink-0 cursor-pointer">
+                                + Add Custom Risk
+                            </button>
+                        </div>
+                        <div id="consentCustomRisksList" class="space-y-1 pt-1">
+                            <!-- Custom added risks listed here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Informed Financial Consent (IFC) -->
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700">4. Informed Financial Consent (IFC) Disclosure</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Estimated Out-of-Pocket Gap</label>
+                            <input type="text" id="consentOopFee" value="$150.00 Out-of-Pocket Gap" class="w-full p-2 border border-slate-300 rounded bg-white font-semibold text-slate-800">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Secondary Re-Excision Fee Policy</label>
+                            <input type="text" id="consentReexcisionFeeText" value="Standard procedural fees apply if margin re-excision required" class="w-full p-2 border border-slate-300 rounded bg-white text-slate-700">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 bg-slate-100 border-t border-slate-200 flex justify-between items-center shrink-0 gap-3">
+                <span id="consentFooterHint" class="text-[11px] text-slate-500">Copy or print the consent first. Done stays off until then. Cancel returns to Lesions without marking lesions consented.</span>
+                <div class="flex flex-wrap justify-end gap-2 shrink-0">
+                    <button type="button" id="btnCancelExcisionConsent" onclick="cancelExcisionConsentSession()" class="px-4 py-2 border border-red-200 text-red-800 hover:bg-red-50 font-semibold text-xs rounded-lg transition-colors cursor-pointer" title="Close without marking lesions consented">Cancel consent</button>
+                    <button type="button" onclick="printExcisionConsentPDF()" class="px-4 py-2 border border-purple-300 text-purple-800 hover:bg-purple-50 font-semibold text-xs rounded-lg transition-colors cursor-pointer">Print</button>
+                    <button type="button" id="btnGenerateExcisionConsent" onclick="generateExcisionConsent()" class="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-lg shadow-md transition-colors flex items-center gap-1.5 cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                        <span>Generate &amp; Copy Consent</span>
+                    </button>
+                    <button type="button" id="btnCompleteExcisionConsent" onclick="completeExcisionConsentSession()" disabled class="px-5 py-2 bg-slate-300 text-slate-500 font-bold text-xs rounded-lg cursor-not-allowed" title="Copy or print the consent before closing" aria-disabled="true">Done</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
     <main id="view-management" class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full space-y-4">
         <div class="space-y-3">
             <div class="flex flex-wrap items-end justify-between gap-3">
@@ -983,7 +1186,7 @@
                     <button type="button" data-mgmt-filter="notes" onclick="setMgmtFilter('notes')" class="mgmt-filter-btn">Saved notes &amp; consents</button>
                 </div>
             </div>
-            <div class="flex flex-wrap items-end gap-2">
+            <div id="boardOpenChartTools" class="flex flex-wrap items-end gap-2">
                 <div class="chart-search relative flex-1 min-w-[16rem]">
                     <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="boardChartSearch">Open chart</label>
                     <input type="search" id="boardChartSearch" autocomplete="off" placeholder="Surname first, or first name, DOB, or phone" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" oninput="onChartSearchInput(this, 'boardChartSearchResults')" onfocus="onChartSearchInput(this, 'boardChartSearchResults')" onkeydown="onChartSearchKeydown(event, 'boardChartSearchResults')">
@@ -2027,236 +2230,6 @@
         </div>
     </div>
 
-    <!-- MODAL 5: FORMAL SURGICAL EXCISION INFORMED CONSENT & RISK PDF GENERATOR -->
-    <div id="excisionConsentModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-4 hidden">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full border border-slate-200 max-h-[92vh] flex flex-col overflow-hidden">
-            <div class="px-6 py-4 bg-gradient-to-r from-purple-900 to-slate-900 text-white flex justify-between items-center shrink-0">
-                <div>
-                    <h3 class="font-bold text-base">Formal Surgical Excision Informed Consent Suite</h3>
-                    <p class="text-xs text-purple-200">Informed Patient Consent & Material Risk Disclosure</p>
-                </div>
-                <button type="button" onclick="onExcisionConsentHeaderClose()" class="text-slate-400 hover:text-white font-bold text-lg cursor-pointer" aria-label="Close consent">&times;</button>
-            </div>
-
-            <div class="p-6 overflow-y-auto space-y-5 text-xs text-slate-800 flex-1">
-                <!-- 1. Patient & Practitioner Identifiers -->
-                <div class="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-3">
-                    <h4 class="font-bold text-xs uppercase tracking-wider text-purple-900 flex items-center justify-between">
-                        <span>1. Patient & Medical Practitioner Intake</span>
-                        <span class="text-[10px] text-purple-700 font-normal">Linked from the open chart and signed-in doctor</span>
-                    </h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                            <span class="block font-semibold text-slate-700 mb-1">Patient</span>
-                            <p id="consentPatientNameDisplay" class="p-2 rounded bg-white border border-slate-200 text-slate-800 font-medium">—</p>
-                        </div>
-                        <div>
-                            <span class="block font-semibold text-slate-700 mb-1">Date of birth</span>
-                            <p id="consentPatientDobDisplay" class="p-2 rounded bg-white border border-slate-200 text-slate-800">—</p>
-                        </div>
-                        <div>
-                            <span class="block font-semibold text-slate-700 mb-1">Operating doctor</span>
-                            <p id="consentDoctorNameDisplay" class="p-2 rounded bg-slate-50 border border-slate-200 text-slate-800 font-medium">—</p>
-                        </div>
-                    </div>
-                    <input type="hidden" id="consentPatientName">
-                    <input type="hidden" id="consentPatientDOB">
-                    <input type="hidden" id="consentDoctorName">
-                </div>
-
-                <!-- 2. Procedure Specifics & Reconstruction Contingencies -->
-                <div class="space-y-3">
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700">2. Planned Surgical Procedures & Reconstruction</h4>
-                            <p class="text-[10px] text-slate-500">Unconsented lesions only (all selected by default). Untick any to leave off this form. Output is a numbered list for BP Premier.</p>
-                        </div>
-                        <button onclick="importExcisionLesions()" class="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold rounded border border-purple-300 text-[11px] transition-colors cursor-pointer">
-                            Import chart lesions
-                        </button>
-                    </div>
-
-                    <!-- Table of Selected Procedures in Consent -->
-                    <div class="overflow-x-auto border border-purple-200 rounded-lg bg-white">
-                        <table class="w-full text-left border-collapse text-xs">
-                            <thead>
-                                <tr class="bg-purple-100/70 text-purple-900 font-bold border-b border-purple-200 uppercase text-[10px] tracking-wider">
-                                    <th class="p-2 text-center">Incl.</th>
-                                    <th class="p-2">#</th>
-                                    <th class="p-2">Type</th>
-                                    <th class="p-2">Location</th>
-                                    <th class="p-2">Diagnosis</th>
-                                    <th class="p-2">Margin</th>
-                                    <th class="p-2">Reconstruction</th>
-                                    <th class="p-2 text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="consentProceduresTableBody" class="divide-y divide-slate-200">
-                                <!-- Dynamically populated by JS -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Add Procedure Form Row -->
-                    <div class="p-3 bg-purple-50/50 border border-purple-200 rounded-lg space-y-2">
-                        <span class="block font-bold text-[11px] uppercase tracking-wider text-purple-900">+ Add Additional Procedure To Consent:</span>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 text-xs">
-                            <select id="addConsentKind" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
-                                <option value="excision">Excision</option>
-                                <option value="shave">Shave biopsy</option>
-                                <option value="punch">Punch biopsy</option>
-                            </select>
-                            <input type="text" id="addConsentLoc" oninput="updateConsentRiskPreview()" placeholder="Anatomical Location *" class="p-2 border border-slate-300 rounded bg-white">
-                            <div class="dx-typeahead">
-                                <input type="text" id="addConsentDx" placeholder="Diagnosis" class="p-2 border border-slate-300 rounded bg-white w-full" autocomplete="off" oninput="updateConsentRiskPreview()">
-                                <div class="dx-suggest hidden" role="listbox"></div>
-                            </div>
-                            <div class="mm-field-row">
-                                <div class="mm-field">
-                                    <input type="number" id="addConsentMargin" placeholder="Margin" min="0" step="0.5" inputmode="decimal" class="w-full p-2 border border-slate-300 rounded bg-white">
-                                    <span class="mm-unit">mm</span>
-                                </div>
-                                <button type="button" class="btn-margin-suggest" onclick="openMarginSuggestModal('addConsentMargin')">Suggest</button>
-                            </div>
-                            <select id="addConsentRecon" onchange="updateConsentRiskPreview()" class="p-2 border border-slate-300 rounded bg-white">
-                                <option value="Direct Linear Closure">Simple ellipse</option>
-                                <option value="Healing by Secondary Intention">Secondary intention</option>
-                                <option value="Local Flap Repair">Flap</option>
-                                <option value="Full Thickness Skin Graft">Graft</option>
-                                <option value="Local Flap and Skin Graft">Flap + Graft</option>
-                                <option value="Wedge Resection / Cartilage Repair">Wedge Resection</option>
-                            </select>
-                            <button onclick="addProcedureToConsent()" class="py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded transition-colors text-xs cursor-pointer">
-                                + Add Procedure
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Contingency Authorizations Checkboxes -->
-                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-                        <label class="block font-bold text-[11px] uppercase tracking-wider text-slate-700">Intraoperative Procedure Contingency Approvals:</label>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                            <label class="flex items-center text-slate-800 font-medium cursor-pointer">
-                                <input type="checkbox" id="chkDeepPunchConsent" checked class="rounded text-purple-600 mr-2">
-                                Authorize Deep Margin / Cartilage Punch Biopsies (to verify deep clearance during ear or complex resections)
-                            </label>
-                            <label class="flex items-center text-slate-800 font-medium cursor-pointer">
-                                <input type="checkbox" id="chkFlapGraftContingency" checked class="rounded text-purple-600 mr-2">
-                                Authorize Local Flap, Graft, or Secondary Intention conversion if tension prevents direct closure
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 3. Interactive Risk Matrix with Individual Checkboxes -->
-                <div class="space-y-3">
-                    <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700">3. Interactive Risk Disclosure Matrix (Patient-Friendly & Legally Sound)</h4>
-                    
-                    <!-- General Minor Surgical & Local Anaesthetic Risks -->
-                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-                        <span class="block font-bold text-slate-800 text-[11px] uppercase tracking-wider">A. General Minor Surgical & Local Anaesthetic Risks:</span>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
-                                <input type="checkbox" id="riskGenLocalAnaesthetic" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
-                                Local anaesthetic injection risks: Stinging or discomfort, minor bruising, temporary numbness or muscle weakness, feeling faint (vasovagal reaction), or rare allergic reaction.
-                            </label>
-                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
-                                <input type="checkbox" id="riskGenBleeding" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
-                                Bleeding during or after surgery, resulting in a blood collection under the skin (hematoma) that may require drainage.
-                            </label>
-                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
-                                <input type="checkbox" id="riskGenInfection" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
-                                Wound infection requiring oral or topical antibiotics or special dressing care.
-                            </label>
-                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
-                                <input type="checkbox" id="riskGenScarring" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
-                                Permanent surgical scar, color or texture change, or thickened/raised scar growth (hypertrophic or keloid scar).
-                            </label>
-                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
-                                <input type="checkbox" id="riskGenDehiscence" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
-                                Opening of wound edges (dehiscence), spitting of internal stitches, or delayed healing requiring prolonged dressings.
-                            </label>
-                            <label class="flex items-start text-slate-800 font-medium cursor-pointer">
-                                <input type="checkbox" id="riskGenNumbness" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
-                                Temporary or permanent nerve numbness, altered skin sensation, or tingling around the surgical site.
-                            </label>
-                            <label class="flex items-start text-slate-800 font-medium cursor-pointer sm:col-span-2">
-                                <input type="checkbox" id="riskGenIncomplete" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
-                                Pathology report showing tumor cells close to or at the cut edge (incomplete excision), requiring a secondary operation (re-excision).
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Reconstruction Method Specific Risks -->
-                    <div class="p-3 bg-purple-50/50 border border-purple-200 rounded-lg space-y-2">
-                        <span class="block font-bold text-purple-950 text-[11px] uppercase tracking-wider">B. Reconstruction-Specific Risks (Flap / Graft / Secondary Intention):</span>
-                        <div id="consentReconRiskCheckboxes" class="space-y-1.5 text-xs">
-                            <!-- Populated dynamically -->
-                        </div>
-                    </div>
-
-                    <!-- Anatomical Location Specific Risks -->
-                    <div class="p-3 bg-purple-50/50 border border-purple-200 rounded-lg space-y-2">
-                        <span class="block font-bold text-purple-950 text-[11px] uppercase tracking-wider">C. Location-Specific Material Risks:</span>
-                        <div id="consentLocationRiskCheckboxes" class="space-y-1.5 text-xs">
-                            <!-- Populated dynamically -->
-                        </div>
-                    </div>
-
-                    <!-- Risks of Non-Treatment / Refusal -->
-                    <div class="p-3 bg-red-50/50 border border-red-200 rounded-lg space-y-2">
-                        <span class="block font-bold text-red-950 text-[11px] uppercase tracking-wider">D. Risks of Non-Treatment, Delay, or Surgical Refusal:</span>
-                        <div id="consentNonTxRiskCheckboxes" class="space-y-1.5 text-xs">
-                            <!-- Populated dynamically -->
-                        </div>
-                    </div>
-
-                    <!-- Custom Patient-Specific Risks -->
-                    <div class="p-3 bg-amber-50/50 border border-amber-200 rounded-lg space-y-2">
-                        <span class="block font-bold text-amber-950 text-[11px] uppercase tracking-wider">E. Patient-Specific Custom Clinical Risks:</span>
-                        <div class="flex gap-2">
-                            <input type="text" id="consentCustomRiskInput" placeholder="e.g. Patient on active Warfarin (higher bleeding risk), high anxiety, prior keloid on chest" class="flex-1 p-2 border border-amber-300 rounded bg-white text-xs">
-                            <button onclick="addCustomConsentRisk()" class="px-3 py-2 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded text-xs shrink-0 cursor-pointer">
-                                + Add Custom Risk
-                            </button>
-                        </div>
-                        <div id="consentCustomRisksList" class="space-y-1 pt-1">
-                            <!-- Custom added risks listed here -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 4. Informed Financial Consent (IFC) -->
-                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                    <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700">4. Informed Financial Consent (IFC) Disclosure</h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block font-semibold text-slate-700 mb-1">Estimated Out-of-Pocket Gap</label>
-                            <input type="text" id="consentOopFee" value="$150.00 Out-of-Pocket Gap" class="w-full p-2 border border-slate-300 rounded bg-white font-semibold text-slate-800">
-                        </div>
-                        <div>
-                            <label class="block font-semibold text-slate-700 mb-1">Secondary Re-Excision Fee Policy</label>
-                            <input type="text" id="consentReexcisionFeeText" value="Standard procedural fees apply if margin re-excision required" class="w-full p-2 border border-slate-300 rounded bg-white text-slate-700">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="px-6 py-4 bg-slate-100 border-t border-slate-200 flex justify-between items-center shrink-0 gap-3">
-                <span id="consentFooterHint" class="text-[11px] text-slate-500">Copy or print the consent first. Done stays off until then. Cancel consent closes without marking lesions consented.</span>
-                <div class="flex flex-wrap justify-end gap-2 shrink-0">
-                    <button type="button" id="btnCancelExcisionConsent" onclick="cancelExcisionConsentSession()" class="px-4 py-2 border border-red-200 text-red-800 hover:bg-red-50 font-semibold text-xs rounded-lg transition-colors cursor-pointer" title="Close without marking lesions consented">Cancel consent</button>
-                    <button type="button" onclick="printExcisionConsentPDF()" class="px-4 py-2 border border-purple-300 text-purple-800 hover:bg-purple-50 font-semibold text-xs rounded-lg transition-colors cursor-pointer">Print</button>
-                    <button type="button" id="btnGenerateExcisionConsent" onclick="generateExcisionConsent()" class="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-lg shadow-md transition-colors flex items-center gap-1.5 cursor-pointer">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
-                        <span>Generate &amp; Copy Consent</span>
-                    </button>
-                    <button type="button" id="btnCompleteExcisionConsent" onclick="completeExcisionConsentSession()" disabled class="px-5 py-2 bg-slate-300 text-slate-500 font-bold text-xs rounded-lg cursor-not-allowed" title="Copy or print the consent before closing" aria-disabled="true">Done</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- MODAL 6: PROVISIONAL DIAGNOSIS (PDx) SELECTOR MODAL (EXCISION GENERATOR MODULE) -->
     <div id="exPathologyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden z-50">
         <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-2xl border border-slate-200 space-y-4">
@@ -2548,30 +2521,30 @@
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=118"></script>
-    <script src="js/diagnosis-catalogue.js?v=118"></script>
-    <script src="js/crypto.js?v=118"></script>
-    <script src="js/vault.js?v=118"></script>
-    <script src="js/ui.js?v=118"></script>
-    <script src="js/topical.js?v=118"></script>
-    <script src="js/billing.js?v=118"></script>
-    <script src="js/margin-guide.js?v=118"></script>
-    <script src="js/skin-check.js?v=118"></script>
-    <script src="js/consent.js?v=118"></script>
-    <script src="js/clinic-profile.js?v=118"></script>
-    <script src="js/aftercare.js?v=118"></script>
-    <script src="js/letters.js?v=118"></script>
-    <script src="js/outputs.js?v=118"></script>
-    <script src="js/excision.js?v=118"></script>
-    <script src="js/lesion-vault.js?v=118"></script>
-    <script src="js/billing-vault.js?v=118"></script>
-    <script src="js/chart-vault.js?v=118"></script>
-    <script src="js/note-vault.js?v=118"></script>
-    <script src="js/consent-vault.js?v=118"></script>
-    <script src="js/auth.js?v=118"></script>
-    <script src="js/management.js?v=118"></script>
-    <script src="js/chart.js?v=118"></script>
-    <script src="js/procedure-session.js?v=118"></script>
-    <script src="js/app.js?v=118"></script>
+    <script src="js/state.js?v=119"></script>
+    <script src="js/diagnosis-catalogue.js?v=119"></script>
+    <script src="js/crypto.js?v=119"></script>
+    <script src="js/vault.js?v=119"></script>
+    <script src="js/ui.js?v=119"></script>
+    <script src="js/topical.js?v=119"></script>
+    <script src="js/billing.js?v=119"></script>
+    <script src="js/margin-guide.js?v=119"></script>
+    <script src="js/skin-check.js?v=119"></script>
+    <script src="js/consent.js?v=119"></script>
+    <script src="js/clinic-profile.js?v=119"></script>
+    <script src="js/aftercare.js?v=119"></script>
+    <script src="js/letters.js?v=119"></script>
+    <script src="js/outputs.js?v=119"></script>
+    <script src="js/excision.js?v=119"></script>
+    <script src="js/lesion-vault.js?v=119"></script>
+    <script src="js/billing-vault.js?v=119"></script>
+    <script src="js/chart-vault.js?v=119"></script>
+    <script src="js/note-vault.js?v=119"></script>
+    <script src="js/consent-vault.js?v=119"></script>
+    <script src="js/auth.js?v=119"></script>
+    <script src="js/management.js?v=119"></script>
+    <script src="js/chart.js?v=119"></script>
+    <script src="js/procedure-session.js?v=119"></script>
+    <script src="js/app.js?v=119"></script>
 </body>
 </html>

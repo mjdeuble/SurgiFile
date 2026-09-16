@@ -1399,7 +1399,7 @@ function startProcedureSession() {
     }
     const missingConsent = selectedLesionsMissingConsent();
     if (missingConsent.length) {
-        showToast('Consent is required before starting. Open Surgical Consent and copy the form for: ' + missingConsent.map((item) => item.location || 'unnamed lesion').join(', '));
+        showToast('Consent is required before starting. Open Consent and copy the form for: ' + missingConsent.map((item) => item.location || 'unnamed lesion').join(', '));
         renderProcedureWorkspace();
         return;
     }
@@ -1842,7 +1842,7 @@ function renderProcedureWorkspace() {
         } else if (detailsIncomplete.length) {
             hint.textContent = 'Orange lesions still need procedure details. Click a lesion, enter the data, save, then start.';
         } else if (missingConsent.length) {
-            hint.textContent = 'Purple lesions still need consent. Open Surgical Consent, generate for those sites, then start.';
+            hint.textContent = 'Purple lesions still need consent. Open Consent, generate for those sites, then start.';
         } else {
             hint.textContent = 'Selected lesions are ready. Start procedure to record events and change sutures if needed. Copy IEMR, reception, and billing at Finalise visit.';
         }
@@ -1864,7 +1864,7 @@ function renderProcedureWorkspace() {
             btn.setAttribute('aria-pressed', 'false');
             let title = 'Select lesions and complete their procedure details first';
             if (detailsIncomplete.length) title = 'Complete procedure details first';
-            else if (missingConsent.length) title = 'Consent required — open Surgical Consent';
+            else if (missingConsent.length) title = 'Consent required — open Consent';
             else if (ready) title = 'Start procedure';
             btn.title = title;
         }

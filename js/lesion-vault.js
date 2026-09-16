@@ -1318,6 +1318,37 @@ function hasCurrentPatient() {
     return !!(currentPatient && currentPatient.chartId);
 }
 
+function blockOpenChartWhileVisitActive(nextChartId) {
+    if (!hasCurrentPatient()) return false;
+    const next = String(nextChartId || '').trim();
+    if (next && String(currentPatient.chartId || '') === next) return false;
+    showToast('Finalise this visit before opening another chart.');
+    return true;
+}
+
+function blockAddPatientWhileVisitActive() {
+    if (!hasCurrentPatient()) return false;
+    showToast('Finalise this visit before adding another patient.');
+    return true;
+}
+
+function syncOpenChartSearchGate() {
+    const open = hasCurrentPatient();
+    ['headerOpenChartTools', 'boardOpenChartTools'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('hidden', open);
+    });
+    if (open && typeof hideChartSearchResults === 'function') hideChartSearchResults();
+}
+
+function onHeaderPatientButtonClick() {
+    if (hasCurrentPatient()) {
+        if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
+        return;
+    }
+    focusPracticeBoardSearch();
+}
+
 function splitPatientName(full) {
     const raw = String(full || '').trim();
     if (!raw) return { firstName: '', lastName: '' };
@@ -1475,6 +1506,7 @@ function updateHeaderPatient() {
             ? [currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ')
             : 'Search the practice board to open a chart';
     }
+    if (typeof syncOpenChartSearchGate === 'function') syncOpenChartSearchGate();
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
 }
 
@@ -1500,6 +1532,9 @@ function setCurrentPatient(patient, options) {
     const dob = identity.dob;
     const clinician = (typeof loggedInDoctorName === 'function' && loggedInDoctorName()) || '';
     const chartId = identity.chartId || patientChartId(name, dob);
+    if (!options?.allowChartSwitch && blockOpenChartWhileVisitActive(chartId)) {
+        return;
+    }
     const changed = chartId !== (currentPatient.chartId || '');
     currentPatient = {
         name,
@@ -1525,7 +1560,9 @@ function setCurrentPatient(patient, options) {
         if (typeof renderLesionsTable === 'function') renderLesionsTable();
         if (typeof renderPatientConcerns === 'function') renderPatientConcerns();
         if (typeof updateOutput === 'function') updateOutput();
-        if (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator') {
+        if (typeof isClinicalWorkspaceTab === 'function'
+            ? isClinicalWorkspaceTab(activeWorkspaceTab)
+            : (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')) {
             switchWorkspaceTab('management');
         }
     }
@@ -1673,6 +1710,10 @@ function highlightChartSearchHit() {
 }
 
 function onChartSearchInput(input, resultsId) {
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        hideChartSearchResults();
+        return;
+    }
     const other = resultsId === 'boardChartSearchResults' ? 'headerChartSearchResults' : 'boardChartSearchResults';
     const otherEl = document.getElementById(other);
     if (otherEl) {
@@ -1683,6 +1724,11 @@ function onChartSearchInput(input, resultsId) {
 }
 
 function onChartSearchKeydown(event, resultsId) {
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        event.preventDefault();
+        hideChartSearchResults();
+        return;
+    }
     if (event.key === 'Escape') {
         hideChartSearchResults();
         event.target.blur();
@@ -1731,6 +1777,11 @@ async function openPatientFromSearchIndex(idx) {
 }
 
 function focusPracticeBoardSearch() {
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
+        showToast('Finalise this visit before opening another chart.');
+        return;
+    }
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
     const input = document.getElementById('boardChartSearch') || document.getElementById('headerChartSearch');
     if (input) {
@@ -1759,6 +1810,9 @@ async function openKnownPatientByIndex(idx) {
 }
 
 function openAddPatientModal() {
+    if (typeof blockAddPatientWhileVisitActive === 'function' && blockAddPatientWhileVisitActive()) {
+        return;
+    }
     if (typeof loggedInDoctorName === 'function' && !loggedInDoctorName()) {
         showToast('Sign in with a user that has a full doctor name. Charts attach to that doctor automatically.');
         return;

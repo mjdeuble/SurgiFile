@@ -21,8 +21,8 @@ function updateExcisionConsentModalActions() {
     const cancel = document.getElementById('btnCancelExcisionConsent');
     if (hint) {
         hint.textContent = issued
-            ? 'Consent copied or printed. Done closes and keeps written consent. Cancel consent undoes it.'
-            : 'Copy or print the consent first. Done stays off until then. Cancel consent closes without marking lesions consented.';
+            ? 'Consent copied or printed. Done returns to Lesions and keeps written consent. Cancel consent undoes it.'
+            : 'Copy or print the consent first. Done stays off until then. Cancel consent returns to Lesions without marking lesions consented.';
     }
     if (done) {
         done.disabled = !issued;
@@ -41,24 +41,32 @@ function updateExcisionConsentModalActions() {
     }
 }
 
-function openExcisionConsentModal() {
+function prepareExcisionConsentWorkspace() {
     if (typeof requireCurrentPatient === 'function' && !requireCurrentPatient('Open a patient chart before generating consent.')) {
-        return;
+        return false;
     }
-    const modal = document.getElementById('excisionConsentModal');
-    if (!modal) return;
-
-    resetExcisionConsentSession();
+    if (!excisionConsentSession.issued) {
+        resetExcisionConsentSession();
+        importExcisionLesions({ silent: true });
+    }
     if (typeof applyCurrentPatientToForms === 'function') applyCurrentPatientToForms();
     else if (typeof syncPatientIdentifiers === 'function') syncPatientIdentifiers('main');
-    importExcisionLesions({ silent: true });
     updateExcisionConsentModalActions();
-    modal.classList.remove('hidden');
+    return true;
+}
+
+function openExcisionConsentModal() {
+    if (typeof switchWorkspaceTab === 'function') {
+        switchWorkspaceTab('consent');
+        return;
+    }
+    prepareExcisionConsentWorkspace();
 }
 
 function closeExcisionConsentModal() {
-    const modal = document.getElementById('excisionConsentModal');
-    if (modal) modal.classList.add('hidden');
+    if (typeof switchWorkspaceTab === 'function' && typeof activeWorkspaceTab !== 'undefined' && activeWorkspaceTab === 'consent') {
+        switchWorkspaceTab('skin-check');
+    }
 }
 
 function onExcisionConsentHeaderClose() {

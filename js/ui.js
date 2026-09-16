@@ -25,16 +25,26 @@ function escapeHtml(str) {
     }[ch]));
 }
 
+function isClinicalWorkspaceTab(tabName) {
+    const tab = tabName || (typeof activeWorkspaceTab !== 'undefined' ? activeWorkspaceTab : '');
+    return tab === 'history' || tab === 'skin-check' || tab === 'excision-generator' || tab === 'consent';
+}
+
 function switchWorkspaceTab(tabName, options) {
     if (typeof requireRoomReady === 'function' && !requireRoomReady(tabName)) return;
 
     activeWorkspaceTab = tabName;
     const viewSkinCheck = document.getElementById('view-skin-check');
     const viewExcisionGen = document.getElementById('view-excision-generator');
+    const viewConsent = document.getElementById('view-consent');
     const viewManagement = document.getElementById('view-management');
-    
+    const examHistoryBlock = document.getElementById('examHistoryBlock');
+    const examLesionsBlock = document.getElementById('examLesionsBlock');
+
+    const btnHistory = document.getElementById('navTabHistory');
     const btnSkinCheck = document.getElementById('navTabSkinCheck');
     const btnExcisionGen = document.getElementById('navTabExcisionGen');
+    const btnConsent = document.getElementById('navTabConsent');
     const btnManagement = document.getElementById('navTabManagement');
 
     const headerRecall = document.getElementById('headerRecallBadgeContainer');
@@ -45,19 +55,28 @@ function switchWorkspaceTab(tabName, options) {
         btn.classList.toggle('is-active', on);
         btn.setAttribute('aria-selected', on ? 'true' : 'false');
     };
+    setTab(btnHistory, tabName === 'history');
     setTab(btnSkinCheck, tabName === 'skin-check');
     setTab(btnExcisionGen, tabName === 'excision-generator');
+    setTab(btnConsent, tabName === 'consent');
     setTab(btnManagement, tabName === 'management');
 
-    if (viewSkinCheck) viewSkinCheck.classList.toggle('hidden', tabName !== 'skin-check');
+    const showExam = tabName === 'history' || tabName === 'skin-check';
+    if (viewSkinCheck) viewSkinCheck.classList.toggle('hidden', !showExam);
+    if (examHistoryBlock) examHistoryBlock.classList.toggle('hidden', tabName !== 'history');
+    if (examLesionsBlock) examLesionsBlock.classList.toggle('hidden', tabName !== 'skin-check');
     if (viewExcisionGen) viewExcisionGen.classList.toggle('hidden', tabName !== 'excision-generator');
+    if (viewConsent) viewConsent.classList.toggle('hidden', tabName !== 'consent');
     if (viewManagement) viewManagement.classList.toggle('hidden', tabName !== 'management');
 
-    if (headerRecall) headerRecall.classList.toggle('hidden', tabName !== 'skin-check');
-    if (accordionControls) accordionControls.classList.toggle('hidden', tabName !== 'skin-check');
+    if (headerRecall) headerRecall.classList.toggle('hidden', tabName !== 'history');
+    if (accordionControls) accordionControls.classList.toggle('hidden', tabName !== 'history' && tabName !== 'skin-check');
 
-    if (tabName === 'skin-check' && typeof updateExamRequiredFields === 'function') {
+    if ((tabName === 'history' || tabName === 'skin-check') && typeof updateExamRequiredFields === 'function') {
         updateExamRequiredFields();
+    }
+    if (tabName === 'skin-check' && typeof setAccordionCollapsed === 'function') {
+        setAccordionCollapsed('sec-lesions', false);
     }
     if (tabName === 'excision-generator') {
         updateExOutputVisibility();
@@ -67,15 +86,25 @@ function switchWorkspaceTab(tabName, options) {
         }
         if (typeof renderProcedureWorkspace === 'function') renderProcedureWorkspace();
     }
+    if (tabName === 'consent' && typeof prepareExcisionConsentWorkspace === 'function') {
+        prepareExcisionConsentWorkspace();
+    }
     if (tabName === 'management') renderManagedLesions();
     const sanitation = document.getElementById('sanitationModal');
     if (sanitation) sanitation.classList.add('hidden');
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
-    if (typeof closeLesionFlyout === 'function') closeLesionFlyout();
     if (!options?.skipPersist && typeof scheduleChartSave === 'function') scheduleChartSave();
 }
 
-const EXAM_ACCORDION_IDS = ['sec-metadata', 'sec-concerns', 'sec-risks', 'sec-lesions'];
+const HISTORY_ACCORDION_IDS = ['sec-metadata', 'sec-concerns', 'sec-risks'];
+const LESION_ACCORDION_IDS = ['sec-lesions'];
+const EXAM_ACCORDION_IDS = HISTORY_ACCORDION_IDS.concat(LESION_ACCORDION_IDS);
+
+function currentExamAccordionIds() {
+    if (typeof activeWorkspaceTab !== 'undefined' && activeWorkspaceTab === 'history') return HISTORY_ACCORDION_IDS;
+    if (typeof activeWorkspaceTab !== 'undefined' && activeWorkspaceTab === 'skin-check') return LESION_ACCORDION_IDS;
+    return EXAM_ACCORDION_IDS;
+}
 
 function setAccordionCollapsed(id, collapsed) {
     const el = document.getElementById(id);
@@ -95,11 +124,11 @@ function toggleAccordion(id) {
 }
 
 function expandAllAccordions() {
-    EXAM_ACCORDION_IDS.forEach((id) => setAccordionCollapsed(id, false));
+    currentExamAccordionIds().forEach((id) => setAccordionCollapsed(id, false));
 }
 
 function collapseAllAccordions() {
-    EXAM_ACCORDION_IDS.forEach((id) => setAccordionCollapsed(id, true));
+    currentExamAccordionIds().forEach((id) => setAccordionCollapsed(id, true));
 }
 
 function collapseExamSectionWhenComplete(id) {

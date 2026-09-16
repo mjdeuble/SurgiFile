@@ -2617,6 +2617,8 @@ async function allocateManagedLesionAsCurrentCase(id) {
     const lesion = managedLesions.find((item) => item.id === id);
     if (!lesion) return;
     if (lesion.patientName && lesion.patientDob) {
+        const nextId = lesion.chartId || (typeof patientChartId === 'function' ? patientChartId(lesion.patientName, lesion.patientDob) : '');
+        if (typeof blockOpenChartWhileVisitActive === 'function' && blockOpenChartWhileVisitActive(nextId)) return;
         setCurrentPatient({
             name: lesion.patientName,
             dob: lesion.patientDob,
