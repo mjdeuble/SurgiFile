@@ -12,8 +12,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="stylesheet" href="css/tailwind.css?v=117">
-    <link rel="stylesheet" href="css/app.css?v=117">
+    <link rel="stylesheet" href="css/tailwind.css?v=118">
+    <link rel="stylesheet" href="css/app.css?v=118">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -693,9 +693,11 @@
 
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
             <div class="flex items-center justify-between gap-2 mb-3 border-b border-slate-200 pb-2">
-                <h3 class="font-bold text-sm text-slate-800">Allocate to this procedure</h3>
+                <h3 id="procAllocateHeading" class="font-bold text-sm text-slate-800">Allocate to this procedure</h3>
                 <span id="procAllocateCount" class="text-[11px] font-semibold text-slate-500"></span>
             </div>
+            <div id="procAbortList" class="hidden space-y-2"></div>
+            <p id="procAddMoreLabel" class="hidden text-[10px] font-bold uppercase tracking-wider text-slate-500 mt-3 mb-2">Add another to this procedure</p>
             <div id="procAllocateList" class="space-y-2"></div>
         </div>
 
@@ -705,7 +707,7 @@
                     <div>
                         <h2 class="text-xl font-bold text-slate-800" id="ex-form-title">Enter Operative Lesion Details</h2>
                         <p class="text-xs text-slate-500">Dedicated operative note & shorthand pathology request generator</p>
-                        <p id="procFormLockedBanner" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">Procedure started. Change sutures, ROS, or a site event from Finish procedure — not this form.</p>
+                        <p id="procFormLockedBanner" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">Procedure started. Change sutures, ROS, or a site event on the lesion rows above — not this form.</p>
                     </div>
                     <button type="button" onclick="resetExAll()" class="text-xs text-slate-500 hover:text-slate-800 underline font-medium cursor-pointer">Start Over</button>
                 </div>
@@ -929,6 +931,37 @@
                 </button>
             </div>
         </div>
+
+        <div id="procFinishPanel" class="hidden space-y-4">
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                <p class="text-xs font-bold uppercase tracking-wider text-amber-900">Episode</p>
+                <div class="flex flex-wrap gap-3 text-sm">
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompNone" checked onchange="updateProcedureComplications('none')" class="rounded text-emerald-600"> Uneventful</label>
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompVasovagal" onchange="updateProcedureComplications('flag')" class="rounded text-amber-700"> Vasovagal</label>
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompOther" onchange="updateProcedureComplications('flag')" class="rounded text-amber-700"> Other</label>
+                </div>
+                <textarea id="procCompNotes" rows="2" oninput="updateProcedureComplications('notes')" class="w-full p-2.5 border border-amber-200 rounded-lg text-sm bg-white" placeholder="Episode details…"></textarea>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Histology request</p>
+                <p id="procHistoLimitNote" class="hidden text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">Too long for the pad — print the attached report.</p>
+                <textarea id="procHistoPreview" rows="4" readonly class="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-mono bg-slate-50"></textarea>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" id="btnProcCopyHisto" onclick="copyProcedureHistology()" class="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy histology request</button>
+                    <button type="button" id="btnProcPrintHisto" onclick="printProcedureHistology()" class="hidden px-3 py-2 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold rounded-lg cursor-pointer">Print attached report</button>
+                </div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Patient advice</p>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" onclick="printAftercareSheet()" class="px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-lg cursor-pointer">Print advice PDF</button>
+                    <button type="button" onclick="downloadAftercareSheet()" class="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg cursor-pointer">Download copy</button>
+                </div>
+            </div>
+            <div class="flex justify-end">
+                <button type="button" onclick="endProcedureSession()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer">Complete procedure</button>
+            </div>
+        </div>
     </main>
     <main id="view-management" class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full space-y-4">
         <div class="space-y-3">
@@ -981,50 +1014,6 @@
             <div class="px-5 py-3 bg-slate-100 border-t border-slate-200 flex justify-between items-center">
                 <span class="text-xs text-slate-500">Formatted for Best Practice Premier (Clean Plain Text)</span>
                 <button onclick="copyEMRNotePlainText(); toggleNotePreviewModal();" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy Note & Close</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="procedureCompleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 max-h-[90vh] flex flex-col overflow-hidden">
-            <div class="px-5 py-3.5 bg-slate-900 text-white flex justify-between items-center">
-                <h3 class="font-bold text-sm">Finish procedure</h3>
-                <button type="button" onclick="closeProcedureCompleteModal()" class="text-slate-400 hover:text-white font-bold text-base cursor-pointer" aria-label="Close">&times;</button>
-            </div>
-            <div class="p-5 overflow-y-auto flex-1 space-y-4 bg-slate-50">
-                <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Lesions in this procedure</p>
-                    <div id="procAbortList" class="space-y-2"></div>
-                </div>
-                <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-                    <p class="text-xs font-bold uppercase tracking-wider text-amber-900">Episode</p>
-                    <div class="flex flex-wrap gap-3 text-sm">
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompNone" checked onchange="updateProcedureComplications('none')" class="rounded text-emerald-600"> Uneventful</label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompVasovagal" onchange="updateProcedureComplications('flag')" class="rounded text-amber-700"> Vasovagal</label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="procCompOther" onchange="updateProcedureComplications('flag')" class="rounded text-amber-700"> Other</label>
-                    </div>
-                    <textarea id="procCompNotes" rows="2" oninput="updateProcedureComplications('notes')" class="w-full p-2.5 border border-amber-200 rounded-lg text-sm bg-white" placeholder="Episode details…"></textarea>
-                </div>
-                <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Histology request</p>
-                    <p id="procHistoLimitNote" class="hidden text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">Too long for the pad — print the attached report.</p>
-                    <textarea id="procHistoPreview" rows="4" readonly class="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-mono bg-slate-50"></textarea>
-                    <div class="flex flex-wrap gap-2">
-                        <button type="button" id="btnProcCopyHisto" onclick="copyProcedureHistology()" class="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy histology request</button>
-                        <button type="button" id="btnProcPrintHisto" onclick="printProcedureHistology()" class="hidden px-3 py-2 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold rounded-lg cursor-pointer">Print attached report</button>
-                    </div>
-                </div>
-                <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Patient advice</p>
-                    <div class="flex flex-wrap gap-2">
-                        <button type="button" onclick="printAftercareSheet()" class="px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-lg cursor-pointer">Print advice PDF</button>
-                        <button type="button" onclick="downloadAftercareSheet()" class="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg cursor-pointer">Download copy</button>
-                    </div>
-                </div>
-            </div>
-            <div class="px-5 py-3 bg-slate-100 border-t border-slate-200 flex justify-between items-center gap-2">
-                <button type="button" onclick="closeProcedureCompleteModal()" class="px-3 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer">Stay in procedure</button>
-                <button type="button" onclick="endProcedureSession()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer">Complete</button>
             </div>
         </div>
     </div>
@@ -2559,30 +2548,30 @@
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=117"></script>
-    <script src="js/diagnosis-catalogue.js?v=117"></script>
-    <script src="js/crypto.js?v=117"></script>
-    <script src="js/vault.js?v=117"></script>
-    <script src="js/ui.js?v=117"></script>
-    <script src="js/topical.js?v=117"></script>
-    <script src="js/billing.js?v=117"></script>
-    <script src="js/margin-guide.js?v=117"></script>
-    <script src="js/skin-check.js?v=117"></script>
-    <script src="js/consent.js?v=117"></script>
-    <script src="js/clinic-profile.js?v=117"></script>
-    <script src="js/aftercare.js?v=117"></script>
-    <script src="js/letters.js?v=117"></script>
-    <script src="js/outputs.js?v=117"></script>
-    <script src="js/excision.js?v=117"></script>
-    <script src="js/lesion-vault.js?v=117"></script>
-    <script src="js/billing-vault.js?v=117"></script>
-    <script src="js/chart-vault.js?v=117"></script>
-    <script src="js/note-vault.js?v=117"></script>
-    <script src="js/consent-vault.js?v=117"></script>
-    <script src="js/auth.js?v=117"></script>
-    <script src="js/management.js?v=117"></script>
-    <script src="js/chart.js?v=117"></script>
-    <script src="js/procedure-session.js?v=117"></script>
-    <script src="js/app.js?v=117"></script>
+    <script src="js/state.js?v=118"></script>
+    <script src="js/diagnosis-catalogue.js?v=118"></script>
+    <script src="js/crypto.js?v=118"></script>
+    <script src="js/vault.js?v=118"></script>
+    <script src="js/ui.js?v=118"></script>
+    <script src="js/topical.js?v=118"></script>
+    <script src="js/billing.js?v=118"></script>
+    <script src="js/margin-guide.js?v=118"></script>
+    <script src="js/skin-check.js?v=118"></script>
+    <script src="js/consent.js?v=118"></script>
+    <script src="js/clinic-profile.js?v=118"></script>
+    <script src="js/aftercare.js?v=118"></script>
+    <script src="js/letters.js?v=118"></script>
+    <script src="js/outputs.js?v=118"></script>
+    <script src="js/excision.js?v=118"></script>
+    <script src="js/lesion-vault.js?v=118"></script>
+    <script src="js/billing-vault.js?v=118"></script>
+    <script src="js/chart-vault.js?v=118"></script>
+    <script src="js/note-vault.js?v=118"></script>
+    <script src="js/consent-vault.js?v=118"></script>
+    <script src="js/auth.js?v=118"></script>
+    <script src="js/management.js?v=118"></script>
+    <script src="js/chart.js?v=118"></script>
+    <script src="js/procedure-session.js?v=118"></script>
+    <script src="js/app.js?v=118"></script>
 </body>
 </html>

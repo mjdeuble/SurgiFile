@@ -1493,8 +1493,8 @@ function requestClosePatientChart() {
         return;
     }
     if (typeof procedureSession !== 'undefined' && procedureSession.started) {
-        showToast('Finish the procedure first, then finalise the visit.');
-        if (typeof openProcedureCompleteModal === 'function') openProcedureCompleteModal();
+        showToast('Complete the procedure first, then finalise the visit.');
+        if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('excision-generator', { skipCompleteModal: true });
         return;
     }
     openFinaliseVisitModal();

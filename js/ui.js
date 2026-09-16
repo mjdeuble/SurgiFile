@@ -61,10 +61,11 @@ function switchWorkspaceTab(tabName, options) {
     }
     if (tabName === 'excision-generator') {
         updateExOutputVisibility();
-        if (typeof renderProcedureWorkspace === 'function') renderProcedureWorkspace();
-        if (!options?.skipCompleteModal && typeof procedureSession !== 'undefined' && procedureSession.started && typeof openProcedureCompleteModal === 'function') {
-            openProcedureCompleteModal();
+        if (typeof procedureSession !== 'undefined' && procedureSession.started) {
+            if (typeof applyProcedureComplicationFields === 'function') applyProcedureComplicationFields();
+            if (typeof refreshProcedureCompleteOutputs === 'function') refreshProcedureCompleteOutputs();
         }
+        if (typeof renderProcedureWorkspace === 'function') renderProcedureWorkspace();
     }
     if (tabName === 'management') renderManagedLesions();
     const sanitation = document.getElementById('sanitationModal');

@@ -333,6 +333,14 @@ function isProcedureAllocationLocked(id) {
     return (procedureSession.lockedIds || []).some((item) => String(item) === String(id));
 }
 
+function isProcedureDetailFormLocked(id) {
+    if (!id || typeof procedureSession === 'undefined' || !procedureSession.started) return false;
+    if (!isProcedureAllocationLocked(id)) return false;
+    const lesion = typeof findProcedureWorkspaceLesion === 'function' ? findProcedureWorkspaceLesion(id) : null;
+    if (!lesion) return true;
+    return typeof isProcedureDetailReady === 'function' ? isProcedureDetailReady(lesion) : true;
+}
+
 function toggleProcedureAllocation(id, checked) {
     id = String(id);
     if (procedureSession.started && isProcedureAllocationLocked(id) && !checked) {
@@ -351,6 +359,12 @@ function toggleProcedureAllocation(id, checked) {
         if (!isProcedureDeselected(id)) procedureSession.deselectedIds.push(id);
     }
     renderProcedureWorkspace();
+    if (procedureSession.started && checked) {
+        const lesion = typeof findProcedureWorkspaceLesion === 'function' ? findProcedureWorkspaceLesion(id) : null;
+        if (lesion && typeof isProcedureDetailReady === 'function' && !isProcedureDetailReady(lesion)) {
+            openProcedureLesionDetail(id);
+        }
+    }
     if (procedureSession.started && typeof persistProcedureSessionToChart === 'function') {
         catchProcedureVaultWrite(persistProcedureSessionToChart());
     }
@@ -882,7 +896,7 @@ function prepareExLesionEditForChart(id) {
 
 function saveProcedureLesionFromForm() {
     const id = procedureSession.detailLesionId;
-    if (isProcedureAllocationLocked(id)) {
+    if (typeof isProcedureDetailFormLocked === 'function' ? isProcedureDetailFormLocked(id) : isProcedureAllocationLocked(id)) {
         showToast('Lesion details are locked once the procedure has started.');
         return;
     }
@@ -906,7 +920,7 @@ function saveProcedureLesionFromForm() {
 
 function maybeSaveOpenProcedureForm() {
     const id = procedureSession.detailLesionId;
-    if (!id || isProcedureAllocationLocked(id) || !isProcedureSelected(id)) return false;
+    if (!id || (typeof isProcedureDetailFormLocked === 'function' ? isProcedureDetailFormLocked(id) : isProcedureAllocationLocked(id)) || !isProcedureSelected(id)) return false;
     if (typeof isExFormComplete !== 'function' || !isExFormComplete()) return false;
     prepareExLesionEditForChart(id);
     syncProcedureFormToChart(id);
@@ -1052,7 +1066,7 @@ async function abortProcedureLesion(id) {
         closeProcedureCompleteModal();
         showToast('Aborted. Restored to ' + statusLabel + '. Nothing left in this session.');
     } else {
-        showToast('Aborted. Restored to ' + statusLabel + '. Finish the remaining lesions when ready.');
+        showToast('Aborted. Restored to ' + statusLabel + '. Complete the remaining lesions when ready.');
     }
     if (typeof renderLesionsTable === 'function') renderLesionsTable();
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
@@ -1364,7 +1378,7 @@ function renderProcedureAbortList() {
 function toggleProcedureSession() {
     ensureProcedureSession();
     if (procedureSession.started) {
-        openProcedureCompleteModal();
+        endProcedureSession();
         return;
     }
     startProcedureSession();
@@ -1403,25 +1417,30 @@ function startProcedureSession() {
     procedureSession.amendPanel = '';
     syncExLesionsFromProcedureSession();
     if (typeof updateOutput === 'function') updateOutput();
-    renderProcedureWorkspace();
     if (typeof persistProcedureSessionToChart === 'function') {
         catchProcedureVaultWrite(persistProcedureSessionToChart());
     }
-    openProcedureCompleteModal();
+    if (typeof applyProcedureComplicationFields === 'function') applyProcedureComplicationFields();
+    if (typeof refreshProcedureCompleteOutputs === 'function') refreshProcedureCompleteOutputs();
+    renderProcedureWorkspace();
+}
+
+function showProcedureFinishPhase() {
+    if (typeof procedureSession === 'undefined' || !procedureSession.started) return;
+    if (typeof activeWorkspaceTab !== 'undefined' && activeWorkspaceTab !== 'excision-generator' && typeof switchWorkspaceTab === 'function') {
+        switchWorkspaceTab('excision-generator', { skipCompleteModal: true, skipPersist: true });
+    }
+    applyProcedureComplicationFields();
+    refreshProcedureCompleteOutputs();
+    renderProcedureWorkspace();
 }
 
 function openProcedureCompleteModal() {
-    const modal = document.getElementById('procedureCompleteModal');
-    if (!modal) return;
-    syncExLesionsFromProcedureSession();
-    applyProcedureComplicationFields();
-    refreshProcedureCompleteOutputs();
-    modal.classList.remove('hidden');
+    showProcedureFinishPhase();
 }
 
 function closeProcedureCompleteModal() {
-    const modal = document.getElementById('procedureCompleteModal');
-    if (modal) modal.classList.add('hidden');
+    /* Finish UI is in-page; nothing to dismiss. */
 }
 
 function procedureHistoTechnique(lesion) {
@@ -1667,7 +1686,8 @@ async function endProcedureSession() {
     }
     if ((procedureSession.complications || {}).other && !String(procedureSession.complicationNotes || '').trim()) {
         showToast('Add a note for the episode complication.');
-        openProcedureCompleteModal();
+        document.getElementById('procCompNotes')?.focus();
+        showProcedureFinishPhase();
         return;
     }
     const siteOther = procedureSelectedLesions().find((lesion) => {
@@ -1678,7 +1698,7 @@ async function endProcedureSession() {
         procedureSession.amendLesionId = String(siteOther.id);
         procedureSession.amendPanel = 'event';
         showToast('Add a note for the site event on ' + (siteOther.location || 'that lesion') + '.');
-        openProcedureCompleteModal();
+        showProcedureFinishPhase();
         return;
     }
     const episodeNote = formatEpisodeComplications();
@@ -1780,6 +1800,28 @@ async function endProcedureSession() {
     renderProcedureWorkspace();
 }
 
+function syncProcedurePhaseUi() {
+    const started = !!(typeof procedureSession !== 'undefined' && procedureSession.started);
+    const formCard = document.getElementById('procDetailFormCard');
+    const finishPanel = document.getElementById('procFinishPanel');
+    const abortList = document.getElementById('procAbortList');
+    const addLabel = document.getElementById('procAddMoreLabel');
+    const allocateList = document.getElementById('procAllocateList');
+    const heading = document.getElementById('procAllocateHeading');
+    const incompleteAfterStart = started && typeof selectedLesionsNotReady === 'function'
+        ? selectedLesionsNotReady().length > 0
+        : false;
+    const unselected = (typeof procedureCandidateLesions === 'function' ? procedureCandidateLesions() : [])
+        .filter((item) => (typeof isProcedureSelected === 'function' ? !isProcedureSelected(item.id) : true));
+
+    if (heading) heading.textContent = started ? 'Lesions in this procedure' : 'Allocate to this procedure';
+    if (formCard) formCard.classList.toggle('hidden', started && !incompleteAfterStart);
+    if (finishPanel) finishPanel.classList.toggle('hidden', !started);
+    if (abortList) abortList.classList.toggle('hidden', !started);
+    if (addLabel) addLabel.classList.toggle('hidden', !started || !unselected.length);
+    if (allocateList) allocateList.classList.toggle('hidden', started && !unselected.length);
+}
+
 function renderProcedureWorkspace() {
     ensureProcedureSession();
     const hint = document.getElementById('procSessionHint');
@@ -1794,7 +1836,7 @@ function renderProcedureWorkspace() {
 
     if (hint) {
         if (procedureSession.started) {
-            hint.textContent = 'Procedure started. Finish: sutures, site event, histology pad, and advice. IEMR, reception, and billing are at Finalise visit.';
+            hint.textContent = 'Record sutures or a site event on a lesion, copy histology, print advice, then Complete. IEMR, reception, and billing are at Finalise visit.';
         } else if (!selected.length) {
             hint.textContent = 'Tick the lesions for this procedure. Planned punch, shave, and excision start selected; untick any you are not doing now.';
         } else if (detailsIncomplete.length) {
@@ -1807,11 +1849,11 @@ function renderProcedureWorkspace() {
     }
     if (btn) {
         if (procedureSession.started) {
-            btn.textContent = 'Finish procedure';
+            btn.textContent = 'Complete procedure';
             btn.disabled = false;
-            btn.className = 'px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg cursor-pointer';
+            btn.className = 'px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer';
             btn.setAttribute('aria-pressed', 'true');
-            btn.title = 'Open Finish procedure to change sutures and record events. IEMR, reception, and billing are at Finalise visit.';
+            btn.title = 'Mark lesions complete. Copy IEMR, reception, and billing at Finalise visit.';
         } else {
             const ready = canStartProcedure();
             btn.textContent = 'Start procedure';
@@ -1829,25 +1871,33 @@ function renderProcedureWorkspace() {
     }
     if (count) {
         const readyCount = selected.filter(isProcedureLesionReady).length;
-        count.textContent = selected.length
-            ? `${selected.length} allocated · ${readyCount} ready`
-            : 'None allocated';
+        count.textContent = procedureSession.started
+            ? `${selected.length} in this procedure`
+            : (selected.length
+                ? `${selected.length} allocated · ${readyCount} ready`
+                : 'None allocated');
     }
 
+    const lockForm = !!procedureSession.started && !detailsIncomplete.length;
     if (!list) {
         if (typeof renderProcedureAbortList === 'function') renderProcedureAbortList();
-        setProcedureDetailFormLocked(!!procedureSession.started);
+        setProcedureDetailFormLocked(lockForm);
+        syncProcedurePhaseUi();
         return;
     }
     const candidates = procedureCandidateLesions();
-    if (!candidates.length) {
+    const allocateCandidates = procedureSession.started
+        ? candidates.filter((item) => !isProcedureSelected(item.id))
+        : candidates;
+    if (!procedureSession.started && !candidates.length) {
         list.innerHTML = '<p class="text-xs text-slate-400 italic">No planned procedures on this chart yet. Add a punch, shave, or excision in Lesions.</p>';
         if (typeof renderProcedureAbortList === 'function') renderProcedureAbortList();
-        setProcedureDetailFormLocked(!!procedureSession.started);
+        setProcedureDetailFormLocked(lockForm);
+        syncProcedurePhaseUi();
         return;
     }
 
-    list.innerHTML = candidates.map((lesion) => {
+    list.innerHTML = allocateCandidates.map((lesion) => {
         const id = String(lesion.id);
         const checked = isProcedureSelected(id);
         const detailsOk = isProcedureDetailReady(lesion);
@@ -1897,5 +1947,6 @@ function renderProcedureWorkspace() {
             </div>`;
     }).join('');
     if (typeof renderProcedureAbortList === 'function') renderProcedureAbortList();
-    setProcedureDetailFormLocked(!!procedureSession.started);
+    setProcedureDetailFormLocked(lockForm);
+    syncProcedurePhaseUi();
 }

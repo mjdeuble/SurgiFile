@@ -574,12 +574,13 @@ function addOrUpdateExLesion() {
 }
 
 function startEditExLesion(id) {
-    if (typeof procedureSession !== 'undefined' && procedureSession.started) {
-        showToast('Lesion details are locked once the procedure has started. Change sutures from Finish procedure.');
-        return;
-    }
     const lesion = exLesions.find(l => l.id === id);
     if (!lesion) return;
+    const chartId = lesion.sourceLesionId || (typeof procedureSession !== 'undefined' ? procedureSession.detailLesionId : '');
+    if (typeof isProcedureDetailFormLocked === 'function' ? isProcedureDetailFormLocked(chartId) : (typeof procedureSession !== 'undefined' && procedureSession.started)) {
+        showToast('Lesion details are locked once the procedure has started. Change sutures on the lesion row.');
+        return;
+    }
     editingExLesionId = id;
 
     const setVal = (elId, val) => { const el = document.getElementById(elId); if (el) el.value = val || ''; };
@@ -681,7 +682,7 @@ function resetExLesionForm(resetProcType = true) {
 
 function resetExAll() {
     if (typeof procedureSession !== 'undefined' && procedureSession.started) {
-        showToast('Lesion details are locked once the procedure has started. Change sutures from Finish procedure.');
+        showToast('Lesion details are locked once the procedure has started. Change sutures on the lesion row.');
         return;
     }
     exLesions = [];
