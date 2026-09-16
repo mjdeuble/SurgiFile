@@ -799,40 +799,11 @@ function canUpdateResult(lesion) {
         || !!lesion.procedureCompletedAt || !!lesion.histologyResult;
 }
 
-function canBookReexcision(lesion) {
-    return typeof lesionCanBookReexcision === 'function'
-        ? lesionCanBookReexcision(lesion)
-        : !!(lesion
-            && String(lesion.histologyResult || '').trim()
-            && lesion.resultAdvisedAt
-            && (lesion.resultPlan === 'further_management' || lesion.resultPlan === 'plan_excision')
-            && !(typeof findLinkedReexcisionChild === 'function' && findLinkedReexcisionChild(lesion.id)));
-}
-
-function canAssignExcision(lesion) {
-    const status = lesionLifecycleStatus(lesion);
-    if (typeof isOpenManagementChild === 'function' && isOpenManagementChild(lesion)) {
-        return true;
-    }
-    if (lesion?.priorLesionId && typeof lesionIsOpenReexcisionPlan === 'function' && lesionIsOpenReexcisionPlan(lesion)) {
-        return true;
-    }
-    if (canBookReexcision(lesion)) return false;
-    if (status === 'needs_contact' || status === 'appointment_requested' || status === 'awaiting_histology') return false;
-    if (typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!(lesion.procedureCompletedAt || lesion.excisionFinalisedAt)) {
-        return false;
-    }
-    return ['awaiting_assessment', 'planned_procedure', 'topical_followup'].includes(status);
-}
-
 function renderManagedLesionActions(lesion, options) {
     const id = String(lesion.id || '').replace(/'/g, '');
-    const status = typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus;
-    const type = typeof lesionType === 'function' ? lesionType(lesion) : '';
     const bill = typeof billingForLesion === 'function' ? billingForLesion(id) : null;
     const chartBoard = !!(options && options.chartBoard);
     const btns = [];
-    const managementChild = typeof isOpenManagementChild === 'function' && isOpenManagementChild(lesion);
     btns.push(`<button type="button" onclick="openLesionCommsModal('${id}')" class="mgmt-action-btn">Log contact</button>`);
     if (canUpdateResult(lesion)) {
         btns.push(`<button type="button" onclick="openHistologyModal('${id}')" class="mgmt-action-btn">Update result</button>`);
@@ -840,68 +811,16 @@ function renderManagedLesionActions(lesion, options) {
     if (!chartBoard && bill && bill.status !== 'confirmed' && bill.status !== 'processed') {
         btns.push(`<button type="button" onclick="openProcessBillingModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Process billing</button>`);
     }
-    if (canBookReexcision(lesion)) {
-        btns.push(`<button type="button" onclick="openAssignExcisionModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Book re-excision</button>`);
-    } else if (canAssignExcision(lesion)) {
-        const isReexcisionChild = !!lesion.priorLesionId;
-        const label = status === 'planned_procedure' && type === 'excision'
-            ? (isReexcisionChild ? 'Update re-excision' : 'Update excision')
-            : 'Assign excision';
-        btns.push(`<button type="button" onclick="openAssignExcisionModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">${label}</button>`);
-    }
-    if (managementChild && (status === 'awaiting_assessment' || status === 'needs_contact' || status === 'appointment_requested')) {
-        if (String(lesion.proposedPlan || '') === 'topical' || status === 'awaiting_assessment') {
-            btns.push(`<button type="button" onclick="planManagementChildTopical('${id}')" class="mgmt-action-btn">Topical follow-up</button>`);
-        }
-        if (String(lesion.proposedPlan || '') === 'refer') {
-            btns.push(`<button type="button" onclick="openLetterModalForRefer('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Generate letter</button>`);
-        }
-        btns.push(`<button type="button" onclick="planLesionBiopsy('${id}')" class="mgmt-action-btn">Needs biopsy</button>`);
-        btns.push(actionBtn(id, 'no_followup', 'No follow-up'));
-    }
-    if ((String(lesion.proposedPlan || '') === 'refer' || (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan)))
-        && !btns.some((b) => b.includes('openLetterModalForRefer'))) {
+    if (String(lesion.proposedPlan || '') === 'refer' || (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan))) {
         btns.push(`<button type="button" onclick="openLetterModalForRefer('${id}')" class="mgmt-action-btn">Generate letter</button>`);
-    }
-    if (status === 'planned_procedure') {
-        btns.push(`<button type="button" onclick="openLesionForProcedure('${id}')" class="mgmt-action-btn">Open procedure</button>`);
-        btns.push(actionBtn(id, 'no_followup', type === 'excision' ? 'Cancel plan' : 'No follow-up'));
-    }
-    if (status === 'awaiting_assessment' && !managementChild) {
-        btns.push(`<button type="button" onclick="planLesionBiopsy('${id}')" class="mgmt-action-btn">Needs biopsy</button>`);
-        btns.push(actionBtn(id, 'no_followup', 'No follow-up'));
-    }
-    if (status === 'topical_followup') {
-        btns.push(actionBtn(id, 'no_followup', 'Complete follow-up'));
-        btns.push(`<button type="button" onclick="planLesionBiopsy('${id}')" class="mgmt-action-btn">Needs biopsy</button>`);
-    }
-    if (status === 'current_case') {
-        btns.push(`<button type="button" onclick="openLesionForProcedure('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Open procedure</button>`);
-        btns.push(actionBtn(id, 'planned_procedure', 'Unassign'));
     }
     return btns.join('');
 }
 
-async function planManagementChildTopical(id) {
-    const lesion = managedLesions.find((item) => String(item.id) === String(id));
-    if (!lesion) return;
-    lesion.proposedPlan = lesion.proposedPlan || 'topical';
-    lesion.type = 'topical';
-    lesion.managementStatus = 'topical_followup';
-    lesion.currentPlan = typeof formatProposedManagementPlan === 'function'
-        ? formatProposedManagementPlan(lesion)
-        : 'Topical follow-up';
-    if (typeof appendLesionTimeline === 'function') {
-        appendLesionTimeline(lesion, {
-            type: 'plan',
-            note: 'Topical / field treatment planned',
-            planAfter: lesion.currentPlan
-        });
-    }
-    await saveManagedLesionRecord(lesion, 'plan:topical', lesion.currentPlan);
-    showToast('Topical follow-up set on linked lesion.');
-    if (typeof renderManagedLesions === 'function') renderManagedLesions();
-    if (typeof renderChartSidebar === 'function') renderChartSidebar();
+function openLesionDocumentation(id) {
+    if (typeof requireRoomReady === 'function' && !requireRoomReady('skin-check')) return;
+    if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('skin-check');
+    if (typeof openLesionModal === 'function') openLesionModal(id);
 }
 
 async function openChartFromLesion(id) {
@@ -948,43 +867,6 @@ async function openChartFromLesion(id) {
 
 function focusPatientFromLesion(id) {
     return openChartFromLesion(id);
-}
-
-function actionBtn(id, status, label) {
-    return `<button type="button" onclick="setManagedLesionStatus('${id}', '${status}')" class="mgmt-action-btn">${label}</button>`;
-}
-
-async function planLesionBiopsy(id) {
-    const lesion = managedLesions.find((item) => String(item.id) === String(id));
-    if (!lesion) return;
-    if (!lesion.type || lesion.type === 'none') lesion.type = 'punch';
-    lesion.currentPlan = 'Biopsy planned';
-    if (typeof appendLesionTimeline === 'function') {
-        appendLesionTimeline(lesion, {
-            type: 'plan',
-            note: 'Needs biopsy',
-            planAfter: lesion.currentPlan
-        });
-    }
-    await setManagedLesionStatus(id, 'planned_procedure', 'Needs biopsy', {
-        type: lesion.type,
-        currentPlan: lesion.currentPlan
-    });
-}
-
-async function openLesionForProcedure(id) {
-    await openChartFromLesion(id);
-    if (typeof isBedSanitised !== 'undefined' && !isBedSanitised) {
-        if (typeof pulseSanitiseControl === 'function') pulseSanitiseControl();
-        showToast('Click Sanitised to unlock procedures, then finish the biopsy from Procedure.');
-        return;
-    }
-    if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('excision-generator');
-    if (typeof offerLesionToProcedureSession === 'function') {
-        const lesion = typeof findLesionRecordById === 'function' ? findLesionRecordById(id) : null;
-        if (lesion) offerLesionToProcedureSession(lesion);
-    }
-    if (typeof openProcedureLesionDetail === 'function') openProcedureLesionDetail(id);
 }
 
 function lesionCommsTypeFromForm(channel, outcome) {
@@ -1127,9 +1009,9 @@ async function submitLesionCommsModal() {
             } else {
                 const openId = follow.openChildId || lesion.id;
                 showToast(follow.spawnedManagement
-                    ? 'Patient advised. Further management opened — assign the plan on the linked lesion.'
-                    : 'Patient advised. Assign excision on the linked lesion next.');
-                openExcisionProcedureModal(openId);
+                    ? 'Patient advised. Set the plan on the linked lesion in Lesions.'
+                    : 'Patient advised. Book the excision in Lesions.');
+                openLesionDocumentation(openId);
             }
             if (typeof renderChartSidebar === 'function') renderChartSidebar();
             return;
@@ -2430,7 +2312,7 @@ async function submitHistologyModal() {
         return true;
     }
     const openId = saved?.openChildId || id;
-    if (saved?.openExcision) openExcisionProcedureModal(openId);
+    if (saved?.openExcision) openLesionDocumentation(openId);
     return true;
 }
 
