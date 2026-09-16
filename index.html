@@ -12,8 +12,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="stylesheet" href="css/tailwind.css?v=125">
-    <link rel="stylesheet" href="css/app.css?v=125">
+    <link rel="stylesheet" href="css/tailwind.css?v=126">
+    <link rel="stylesheet" href="css/app.css?v=126">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -1543,7 +1543,7 @@
                 </div>
                 <div id="finaliseBillingWrap" class="space-y-2">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Best Practice item numbers</p>
-                    <p id="finaliseBillingHint" class="text-xs text-slate-500">Copy each site or each item number into Best Practice. HOLD lesions show expected items as a placeholder until histology.</p>
+                    <p id="finaliseBillingHint" class="text-xs text-slate-500">One consult item for the visit, then each lesion. Billing waits until histology is in for every lesion in the procedure.</p>
                     <div id="finaliseBillingChips" class="space-y-2"></div>
                     <textarea id="finaliseBillingPreview" rows="4" readonly class="hidden w-full p-2.5 border border-slate-200 rounded-lg text-xs font-mono bg-slate-50"></textarea>
                     <button type="button" id="btnFinaliseCopyBilling" onclick="copyFinaliseVisitBilling()" class="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg cursor-pointer">Copy all item numbers</button>
@@ -1689,14 +1689,6 @@
                     <input type="checkbox" id="histologyFileNoCall" class="rounded text-blue-600">
                     <span>File, no call (NFA only — agreed we’ll call if anything)</span>
                 </label>
-                <div id="histologyBillingRow" class="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-1.5">
-                    <p id="histologyBillingSummary" class="text-slate-600">Billing can be confirmed now even if the patient has not been contacted.</p>
-                    <label id="histologyConfirmBillingWrap" class="hidden flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="histologyConfirmBilling" class="rounded text-blue-600">
-                        <span id="histologyConfirmBillingLabel">Confirm billing now</span>
-                    </label>
-                    <button type="button" id="btnHistologyOpenBilling" onclick="openProcessBillingFromHistology()" class="hidden mgmt-action-btn">Process billing</button>
-                </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="histologyCallNote">Call / review note (optional)</label>
                     <textarea id="histologyCallNote" rows="2" class="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="e.g. Morning review — desk to phone after 10"></textarea>
@@ -1712,22 +1704,18 @@
     </div>
 
     <div id="processBillingModal" class="fixed inset-0 z-[56] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-xl w-full border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
             <div class="bg-emerald-800 p-4 text-white">
-                <h3 class="font-bold text-base">Process billing</h3>
-                <p id="processBillingSummary" class="text-xs text-emerald-100 mt-0.5">MBS items from lesion location and size.</p>
+                <h3 class="font-bold text-base">Process session billing</h3>
+                <p id="processBillingSummary" class="text-xs text-emerald-100 mt-0.5">One consult item for the procedure, then each lesion.</p>
             </div>
             <div class="p-5 space-y-4 text-sm overflow-y-auto">
                 <input type="hidden" id="processBillingLesionId">
                 <input type="hidden" id="processBillingBillId">
                 <div id="processBillingMeta"></div>
-                <div id="processBillingTypeWrap">
-                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="processBillingType">Lesion type</label>
-                    <select id="processBillingType" onchange="onProcessBillingTypeChange()" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-sm"></select>
-                </div>
                 <div>
                     <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Suggested items</p>
-                    <p class="text-[11px] text-slate-500 mb-1.5">Accept or reject each item. Orange is pending. Green is accepted or a custom replacement.</p>
+                    <p class="text-[11px] text-slate-500 mb-1.5">One consult for the whole session. Accept or reject each lesion item. Orange is pending. Green is accepted or a custom replacement.</p>
                     <div id="processBillingSuggest" class="space-y-1.5"></div>
                 </div>
                 <div>
@@ -2520,30 +2508,30 @@
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=125"></script>
-    <script src="js/diagnosis-catalogue.js?v=125"></script>
-    <script src="js/crypto.js?v=125"></script>
-    <script src="js/vault.js?v=125"></script>
-    <script src="js/ui.js?v=125"></script>
-    <script src="js/topical.js?v=125"></script>
-    <script src="js/billing.js?v=125"></script>
-    <script src="js/margin-guide.js?v=125"></script>
-    <script src="js/skin-check.js?v=125"></script>
-    <script src="js/consent.js?v=125"></script>
-    <script src="js/clinic-profile.js?v=125"></script>
-    <script src="js/aftercare.js?v=125"></script>
-    <script src="js/letters.js?v=125"></script>
-    <script src="js/outputs.js?v=125"></script>
-    <script src="js/excision.js?v=125"></script>
-    <script src="js/lesion-vault.js?v=125"></script>
-    <script src="js/billing-vault.js?v=125"></script>
-    <script src="js/chart-vault.js?v=125"></script>
-    <script src="js/note-vault.js?v=125"></script>
-    <script src="js/consent-vault.js?v=125"></script>
-    <script src="js/auth.js?v=125"></script>
-    <script src="js/management.js?v=125"></script>
-    <script src="js/chart.js?v=125"></script>
-    <script src="js/procedure-session.js?v=125"></script>
-    <script src="js/app.js?v=125"></script>
+    <script src="js/state.js?v=126"></script>
+    <script src="js/diagnosis-catalogue.js?v=126"></script>
+    <script src="js/crypto.js?v=126"></script>
+    <script src="js/vault.js?v=126"></script>
+    <script src="js/ui.js?v=126"></script>
+    <script src="js/topical.js?v=126"></script>
+    <script src="js/billing.js?v=126"></script>
+    <script src="js/margin-guide.js?v=126"></script>
+    <script src="js/skin-check.js?v=126"></script>
+    <script src="js/consent.js?v=126"></script>
+    <script src="js/clinic-profile.js?v=126"></script>
+    <script src="js/aftercare.js?v=126"></script>
+    <script src="js/letters.js?v=126"></script>
+    <script src="js/outputs.js?v=126"></script>
+    <script src="js/excision.js?v=126"></script>
+    <script src="js/lesion-vault.js?v=126"></script>
+    <script src="js/billing-vault.js?v=126"></script>
+    <script src="js/chart-vault.js?v=126"></script>
+    <script src="js/note-vault.js?v=126"></script>
+    <script src="js/consent-vault.js?v=126"></script>
+    <script src="js/auth.js?v=126"></script>
+    <script src="js/management.js?v=126"></script>
+    <script src="js/chart.js?v=126"></script>
+    <script src="js/procedure-session.js?v=126"></script>
+    <script src="js/app.js?v=126"></script>
 </body>
 </html>

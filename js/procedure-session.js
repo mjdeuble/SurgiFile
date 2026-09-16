@@ -1582,32 +1582,36 @@ function refreshProcedureBillingPanel() {
         : { rows: [], allProcess: false, allHold: false, mixed: false };
     if (summary.allReady) {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-900 font-semibold';
-        banner.textContent = 'Every lesion in this set can be billed today (punch/shave 30071, suspected melanoma, or histology confirmed). Codes below. Complete will mark them billed.';
+        banner.textContent = 'Histology is in for every lesion. Bill the session together — one consult item plus each lesion.';
     } else if (summary.allProcess) {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-900 font-semibold';
-        banner.textContent = 'All procedures are OK to bill today, but some codes still need procedure area or size. Enter those, then Complete.';
+        banner.textContent = 'Histology is in, but some codes still need procedure area or size. Enter those, then process session billing.';
     } else if (summary.allHold) {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 font-semibold';
-        banner.textContent = 'Hold billing for reception until histology is back. Expected item numbers below are a placeholder from size and expected diagnosis — change if the result differs.';
+        banner.textContent = 'Hold billing until histology is in for every lesion in this procedure. Same-day procedures are billed together, with one consult item.';
     } else {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-sky-300 bg-sky-50 text-sky-950 font-semibold';
-        banner.textContent = 'Hold the whole session. Same-day procedures are billed together, and at least one item still needs histology.';
+        banner.textContent = 'Hold the whole session. Bill after histology is in for every lesion — one consult for the procedure, not per lesion.';
     }
+    const firstUnsent = selected.find((lesion) => {
+        const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
+        return !(typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill));
+    });
+    const firstId = String(firstUnsent?.id || '').replace(/'/g, '');
+    const sessionAction = summary.allReady && firstId
+        ? `<div class="flex justify-end"><button type="button" onclick="openProcessBillingModal('${firstId}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button></div>`
+        : '';
     const listHtml = summary.rows.map((row) => {
-        const id = String(row.lesion.id || '').replace(/'/g, '');
         const bill = typeof billingForLesion === 'function' ? billingForLesion(row.lesion.id) : null;
         const sent = typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill);
         const badge = row.hold
             ? '<span class="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">Hold</span>'
-            : '<span class="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">Bill today</span>';
-        const sessionHold = !!(summary.holdRows && summary.holdRows.length);
+            : '<span class="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">Ready</span>';
         const action = sent
             ? '<span class="text-[11px] font-semibold text-emerald-800">Billed</span>'
-            : (summary.allReady
-                ? '<span class="text-[11px] font-semibold text-emerald-800">Billed on Complete</span>'
-                : (row.ok && !sessionHold
-                    ? `<button type="button" onclick="openProcessBillingModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Confirm billing</button>`
-                    : '<span class="text-[11px] text-amber-800">Hold for histology</span>'));
+            : (row.hold
+                ? '<span class="text-[11px] text-amber-800">Hold for histology</span>'
+                : '<span class="text-[11px] text-emerald-800">Included in session billing</span>');
         return `<div class="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
             <div class="min-w-0">
                 <p class="text-sm font-semibold text-slate-800">${escapeHtml(row.site)} · ${escapeHtml(row.tag || '')} ${badge}</p>
@@ -1619,11 +1623,11 @@ function refreshProcedureBillingPanel() {
     }).join('');
     const copyBlock = summary.doctorText
         ? `<div class="flex flex-wrap items-center justify-between gap-2">
-                <p class="text-[11px] text-slate-500">${summary.holdRows && summary.holdRows.length ? 'HOLD expected items for reception. Also claim 23 if a consult was performed today.' : 'Also claim 23 if a consult was performed today.'}</p>
+                <p class="text-[11px] text-slate-500">${summary.holdRows && summary.holdRows.length ? 'HOLD expected items until histology is in for every lesion. One consult (23) for the procedure.' : 'One consult (23) for the procedure, then each lesion item.'}</p>
                 <button type="button" onclick="copyProcedureBillingCodes()" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold rounded-lg cursor-pointer">Copy billing codes</button>
            </div>`
         : '';
-    rowsEl.innerHTML = copyBlock + listHtml;
+    rowsEl.innerHTML = sessionAction + copyBlock + listHtml;
 }
 
 function copyProcedureBillingCodes() {
@@ -1780,9 +1784,9 @@ async function endProcedureSession() {
         ? procedureSessionBillingSummary(finishedLesions)
         : null;
     if (billed?.allReady) {
-        showToast('Procedure finished. Copy item numbers and mark billing processed when you finalise the visit.');
+        showToast('Procedure finished. Process session billing when histology is in for every lesion.');
     } else if (billed?.allHold || billed?.mixed) {
-        showToast('Procedure finished. Hold billing when you finalise the visit.');
+        showToast('Procedure finished. Billing waits until histology is in for every lesion.');
     } else {
         showToast('Procedure finished. Copy IEMR, reception, and billing when you finalise the visit.');
     }

@@ -909,15 +909,96 @@ function copySuggestedBillingItems(id) {
     copyTextToClipboard(codes, 'Billing codes copied.');
 }
 
+function procedureBillingDayKey(lesion) {
+    if (typeof lesionEpisodeDayKey === 'function') return lesionEpisodeDayKey(lesion);
+    const iso = lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt || '';
+    if (!iso) return 'none';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return 'none';
+    return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+}
+
+function procedureBillingGroupKey(lesion) {
+    if (!lesion) return '';
+    const batch = typeof histologyBatchIdOf === 'function' ? histologyBatchIdOf(lesion) : String(lesion.histologyBatchId || '').trim();
+    if (batch) return 'batch:' + batch;
+    const chartId = typeof lesionChartId === 'function' ? lesionChartId(lesion) : String(lesion.chartId || '');
+    const day = procedureBillingDayKey(lesion);
+    if (chartId && day && day !== 'none') return 'day:' + chartId + ':' + day;
+    return 'lesion:' + String(lesion.id || '');
+}
+
+function procedureBillingPool() {
+    if (typeof collectLesionRecordsForHistology === 'function') return collectLesionRecordsForHistology();
+    const map = new Map();
+    (typeof managedLesions !== 'undefined' ? managedLesions : []).forEach((item) => {
+        if (item?.id) map.set(String(item.id), item);
+    });
+    if (typeof lesions !== 'undefined' && Array.isArray(lesions)) {
+        lesions.forEach((item) => {
+            if (item?.id && !map.has(String(item.id))) map.set(String(item.id), item);
+        });
+    }
+    return Array.from(map.values());
+}
+
+function procedureBillingGroup(lesion) {
+    if (!lesion) return [];
+    const key = procedureBillingGroupKey(lesion);
+    if (!key) return [lesion];
+    const group = procedureBillingPool().filter((item) => procedureBillingGroupKey(item) === key);
+    return group.length ? group : [lesion];
+}
+
+function lesionHasBillingHistology(lesion) {
+    return typeof lesionHasSavedHistology === 'function'
+        ? lesionHasSavedHistology(lesion)
+        : !!String(lesion?.histologyResult || '').trim();
+}
+
+function procedureGroupBillingReady(lesion) {
+    const group = procedureBillingGroup(lesion);
+    if (!group.length) return { ok: false, hold: true, group, pending: [], reason: 'No procedure to bill.' };
+    const pending = group.filter((item) => !lesionHasBillingHistology(item));
+    if (pending.length) {
+        const sites = pending.map((item) => item.location || 'site').join(', ');
+        return {
+            ok: false,
+            hold: true,
+            group,
+            pending,
+            reason: pending.length === 1
+                ? 'Enter histology for ' + sites + ' before billing this procedure.'
+                : 'Enter histology for all lesions in this procedure before billing (' + sites + ' still pending).'
+        };
+    }
+    return { ok: true, hold: false, group, pending: [] };
+}
+
+function canOpenProcessBilling(lesion) {
+    if (!lesion) return false;
+    const lesionId = lesion.lesionId || lesion.id;
+    const record = (typeof managedLesions !== 'undefined' ? managedLesions : [])
+        .find((item) => String(item.id) === String(lesionId)) || lesion;
+    const bill = typeof billingForLesion === 'function' ? billingForLesion(lesionId) : null;
+    if (bill && typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill)) return false;
+    const ready = procedureGroupBillingReady(record);
+    return !!(ready && ready.ok);
+}
+
 function lesionCanBillAtProcedure(lesion) {
     if (!lesion) {
         return { ok: false, hold: true, reason: 'No lesion selected.', kind: 'hold' };
+    }
+    const groupReady = procedureGroupBillingReady(lesion);
+    if (!groupReady.ok) {
+        return { ok: false, hold: true, reason: groupReady.reason, kind: 'hold' };
     }
     if (isDiagnosticBiopsyForBilling(lesion)) {
         return {
             ok: true,
             hold: false,
-            reason: 'Diagnostic biopsy (30071) can be billed now.',
+            reason: 'Diagnostic biopsy (30071) can be billed now that histology is in for the procedure.',
             kind: 'biopsy'
         };
     }
@@ -934,7 +1015,7 @@ function lesionCanBillAtProcedure(lesion) {
         return {
             ok: true,
             hold: false,
-            reason: 'Suspected melanoma items can be billed before histology. Enter them in Best Practice now.',
+            reason: 'Suspected melanoma items can be billed now that histology is in for the procedure.',
             kind: 'suspected_melanoma'
         };
     }
@@ -949,7 +1030,7 @@ function lesionCanBillAtProcedure(lesion) {
     return {
         ok: false,
         hold: true,
-        reason: 'Hold billing until histology is back, unless this excision is billed as suspected melanoma.',
+        reason: 'Hold billing until histology is in for every lesion in this procedure.',
         kind: 'hold'
     };
 }

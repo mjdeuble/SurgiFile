@@ -706,8 +706,11 @@ function renderLesionBillingBlock(lesion) {
         actions = `
             <button type="button" onclick="copySuggestedBillingItems('${billId}')" class="mgmt-action-btn">Copy codes</button>
             <button type="button" onclick="returnBillingToConfirmed('${billId}')" class="mgmt-action-btn">Return to confirmed</button>`;
+    } else if (lesionId && typeof canOpenProcessBilling === 'function' && canOpenProcessBilling(lesion)) {
+        actions = `<button type="button" onclick="openProcessBillingModal('${lesionId}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button>`;
     } else if (lesionId) {
-        actions = `<button type="button" onclick="openProcessBillingModal('${lesionId}')" class="mgmt-action-btn mgmt-action-btn-primary">Process billing</button>`;
+        const hold = typeof procedureGroupBillingReady === 'function' ? procedureGroupBillingReady(lesion) : null;
+        actions = `<p class="text-[11px] text-amber-800">${escapeHtml(hold?.reason || 'Enter histology for all lesions in this procedure before billing.')}</p>`;
     }
     return `
         <div class="rounded-lg border border-slate-200 bg-white p-2.5 space-y-1.5">
@@ -808,15 +811,14 @@ function canUpdateResult(lesion) {
 
 function renderManagedLesionActions(lesion, options) {
     const id = String(lesion.id || '').replace(/'/g, '');
-    const bill = typeof billingForLesion === 'function' ? billingForLesion(id) : null;
     const chartBoard = !!(options && options.chartBoard);
     const btns = [];
     btns.push(`<button type="button" onclick="openLesionCommsModal('${id}')" class="mgmt-action-btn">Log contact</button>`);
     if (canUpdateResult(lesion)) {
         btns.push(`<button type="button" onclick="openHistologyModal('${id}')" class="mgmt-action-btn">Update result</button>`);
     }
-    if (!chartBoard && bill && bill.status !== 'confirmed' && bill.status !== 'processed') {
-        btns.push(`<button type="button" onclick="openProcessBillingModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Process billing</button>`);
+    if (!chartBoard && typeof canOpenProcessBilling === 'function' && canOpenProcessBilling(lesion)) {
+        btns.push(`<button type="button" onclick="openProcessBillingModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button>`);
     }
     if (String(lesion.proposedPlan || '') === 'refer' || (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan))) {
         btns.push(`<button type="button" onclick="openLetterModalForRefer('${id}')" class="mgmt-action-btn">Generate letter</button>`);
@@ -1155,14 +1157,16 @@ function renderBillingQueueCard(view, options) {
                 <p class="text-[11px] text-slate-500">${escapeHtml(billingCardMeta(view))}</p>
             </div>
             ${view.billWhen === 'hold' || (typeof lesionCanBillAtProcedure === 'function' && lesionCanBillAtProcedure(view).hold)
-                ? '<p class="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">Reception: HOLD until histology. Item numbers below are the expected claim from size and expected diagnosis — placeholder only, change if the result differs.</p>'
-                : '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Reception: OK to bill now — enter codes in Best Practice.</p>'}
-            ${!suggestion.ready ? `<p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">Need location and size (and type for excision) to suggest items. You can still process billing and enter type there.</p>` : ''}
+                ? '<p class="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">HOLD until histology is in for every lesion in this procedure. Then bill the session together, with one consult item.</p>'
+                : '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Histology is in for the procedure. Process session billing — one consult plus each lesion.</p>'}
+            ${!suggestion.ready ? `<p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">Need location and size (and type for excision) to suggest items. You can still process session billing and enter type there.</p>` : ''}
             <div id="billingSuggest-${view.id}" class="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/60">
                 ${renderBillingSuggestionHtml(suggestionLesion)}
             </div>
             <div class="flex flex-wrap gap-1.5">
-                <button type="button" onclick="openProcessBillingModal('${escapeHtml(String(view.lesionId || ''))}')" class="mgmt-action-btn mgmt-action-btn-primary">Process billing</button>
+                ${typeof canOpenProcessBilling === 'function' && canOpenProcessBilling(view)
+                    ? `<button type="button" onclick="openProcessBillingModal('${escapeHtml(String(view.lesionId || ''))}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button>`
+                    : ''}
                 <button type="button" onclick="openHistologyModal('${escapeHtml(String(view.lesionId || ''))}')" class="mgmt-action-btn">Update result</button>
             </div>
         </article>`;
@@ -1328,6 +1332,7 @@ async function confirmBillingCodes(id) {
 let processBillingContext = {
     lesionId: '',
     billId: '',
+    group: [],
     items: [],
     accepted: {},
     rejected: {},
@@ -1403,24 +1408,61 @@ function onProcessBillingCodesInput() {
     updateProcessBillingSendState();
 }
 
-function buildProcessBillingSuggestedItems(view) {
-    const suggestion = suggestMbsItems(view || {});
-    const flap = typeof flapWasUsed === 'function' && flapWasUsed(view);
-    const items = [{
-        key: 'consult',
-        code: CONSULT_ITEM_CODE,
-        label: itemLabel(CONSULT_ITEM_CODE),
-        kind: 'consult'
-    }];
-    (suggestion.items || []).forEach((item, index) => {
+function processBillingTypeSelectHtml(lesionId, selected) {
+    const id = String(lesionId || '').replace(/'/g, '');
+    const options = (typeof BILLING_LESION_TYPES !== 'undefined' ? BILLING_LESION_TYPES : []).map((opt) =>
+        `<option value="${opt.id}" ${opt.id === selected ? 'selected' : ''}>${opt.label}</option>`
+    ).join('');
+    return `<label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="processBillingType-${id}">Lesion type</label>
+        <select id="processBillingType-${id}" onchange="onProcessBillingLesionTypeChange('${id}')" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-sm">
+            <option value="">Select type...</option>${options}
+        </select>`;
+}
+
+function procedureGroupAlreadyHasConsult(group) {
+    const consult = typeof CONSULT_ITEM_CODE !== 'undefined' ? CONSULT_ITEM_CODE : '23';
+    return (group || []).some((item) => {
+        const bill = typeof billingForLesion === 'function' ? billingForLesion(item.id) : null;
+        if (!bill || (typeof billingHasBeenSent === 'function' && !billingHasBeenSent(bill))) return false;
+        if (bill.consultItem) return true;
+        return String(bill.assignedMbsItems || '').split(/\s*\+\s*/).map((part) => part.trim()).includes(consult);
+    });
+}
+
+function buildProcessBillingSuggestedItems(group) {
+    const lesions = Array.isArray(group) && group.length
+        ? group
+        : [processBillingView()].filter(Boolean);
+    const items = [];
+    if (!procedureGroupAlreadyHasConsult(processBillingContext.allGroup || lesions)) {
         items.push({
-            key: 'proc-' + index,
-            code: item.code,
-            label: item.label || itemLabel(item.code, { flap }),
-            kind: item.code === '45201' ? 'flap' : 'procedure'
+            key: 'consult',
+            code: CONSULT_ITEM_CODE,
+            label: itemLabel(CONSULT_ITEM_CODE) + ' — one consult for this procedure',
+            kind: 'consult',
+            lesionId: ''
+        });
+    }
+    const notes = [];
+    lesions.forEach((lesion) => {
+        const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
+        const view = bill && typeof billingViewModel === 'function' ? billingViewModel(bill) : lesion;
+        const suggestion = suggestMbsItems(view || {});
+        const site = lesion.location || view.location || 'site';
+        (suggestion.notes || []).forEach((note) => notes.push(site + ': ' + note));
+        (suggestion.items || []).forEach((item, index) => {
+            const flap = typeof flapWasUsed === 'function' && flapWasUsed(view);
+            items.push({
+                key: 'proc-' + String(lesion.id) + '-' + index,
+                code: item.code,
+                label: site + ' — ' + (item.label || itemLabel(item.code, { flap })),
+                kind: item.code === '45201' ? 'flap' : 'procedure',
+                lesionId: String(lesion.id)
+            });
         });
     });
-    return { suggestion, items };
+    const firstSuggestion = lesions[0] ? suggestMbsItems(lesions[0]) : { notes: [] };
+    return { suggestion: { notes, kind: firstSuggestion.kind }, items };
 }
 
 function processBillingItemStatus(item) {
@@ -1429,7 +1471,8 @@ function processBillingItemStatus(item) {
     return 'pending';
 }
 
-function renderProcessBillingLesionDetails(view) {
+function renderProcessBillingLesionDetails(view, options) {
+    options = options || {};
     const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(view) : {};
     const length = firstFilled(view.excisionLengthMm, detail.length);
     const width = firstFilled(view.excisionWidthMm, detail.width);
@@ -1463,9 +1506,12 @@ function renderProcessBillingLesionDetails(view) {
         : `<div><dt>Lesion size</dt><dd>${escapeHtml(lesionSize)}</dd></div>
            <div><dt>Margin</dt><dd>${margin ? escapeHtml(String(margin)) + ' mm' : '—'}</dd></div>
            <div><dt>Overall size</dt><dd>${escapeHtml(nedText)}<span class="billing-detail-sub">NED ${escapeHtml(nedCalc)}</span></dd></div>`;
+    const typeSelect = options.typeSelect && kind !== 'biopsy'
+        ? `<div class="pt-1">${processBillingTypeSelectHtml(view.lesionId || view.id, inferBillingLesionType(view))}</div>`
+        : '';
     return `
         <div class="billing-detail-card space-y-2">
-            <h4>Lesion details</h4>
+            <h4>${escapeHtml(view.location || 'Lesion')}</h4>
             <dl class="billing-detail-grid">
                 <div><dt>Site</dt><dd>${escapeHtml(view.location || '—')}</dd></div>
                 <div><dt>Diagnosis</dt><dd>${escapeHtml(diagnosis || '—')}</dd></div>
@@ -1479,6 +1525,7 @@ function renderProcessBillingLesionDetails(view) {
             <dl class="billing-detail-grid">
                 ${sizeRows}
             </dl>
+            ${typeSelect}
         </div>`;
 }
 
@@ -1548,70 +1595,99 @@ async function openProcessBillingModal(lesionId) {
         showToast('Lesion not found.');
         return;
     }
-    let bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
-    if (billingHasBeenSent(bill)) {
-        showToast('This billing has already been confirmed. Print or mark it processed from Billing.');
+    const ready = typeof procedureGroupBillingReady === 'function' ? procedureGroupBillingReady(lesion) : { ok: true, group: [lesion] };
+    if (!ready.ok) {
+        showToast(ready.reason || 'Enter histology for all lesions in this procedure before billing.');
         return;
     }
-    if (typeof createOrUpdateBillingFromLesion === 'function') {
-        bill = await createOrUpdateBillingFromLesion(lesion) || bill;
+    const group = (ready.group || [lesion]).slice();
+    const bills = [];
+    for (const item of group) {
+        let bill = typeof billingForLesion === 'function' ? billingForLesion(item.id) : null;
+        if (bill && billingHasBeenSent(bill)) continue;
+        if (typeof createOrUpdateBillingFromLesion === 'function') {
+            bill = await createOrUpdateBillingFromLesion(item) || bill;
+        }
+        if (bill) bills.push({ lesion: item, bill });
     }
-    if (!bill) {
-        showToast('Could not open billing for this lesion.');
+    if (!bills.length) {
+        showToast('Billing for this procedure is already confirmed.');
         return;
     }
-    processBillingContext = { lesionId: lesion.id, billId: bill.id, items: [], accepted: {}, rejected: {}, customByKey: {}, noConsult: false };
-    document.getElementById('processBillingLesionId').value = lesion.id;
-    document.getElementById('processBillingBillId').value = bill.id;
+    const first = bills[0];
+    processBillingContext = {
+        lesionId: first.lesion.id,
+        billId: first.bill.id,
+        group: bills.map((row) => row.lesion),
+        allGroup: group,
+        items: [],
+        accepted: {},
+        rejected: {},
+        customByKey: {},
+        noConsult: false
+    };
+    document.getElementById('processBillingLesionId').value = first.lesion.id;
+    document.getElementById('processBillingBillId').value = first.bill.id;
     setProcessBillingClaim([]);
-    const patient = lesion.patientName || bill.patientName || 'Patient';
-    const site = lesion.location || bill.location || 'site';
-    document.getElementById('processBillingSummary').textContent = patient + ' — ' + site;
-    fillProcessBillingTypeSelect(inferBillingLesionType(billingViewModel(bill)));
+    const patient = first.lesion.patientName || first.bill.patientName || 'Patient';
+    const n = bills.length;
+    document.getElementById('processBillingSummary').textContent = patient
+        + ' — ' + n + ' lesion' + (n === 1 ? '' : 's')
+        + ' · one consult item for the procedure';
     refreshProcessBillingPreview();
     document.getElementById('processBillingModal')?.classList.remove('hidden');
 }
 
 function closeProcessBillingModal() {
     document.getElementById('processBillingModal')?.classList.add('hidden');
-    processBillingContext = { lesionId: '', billId: '', items: [], accepted: {}, rejected: {}, customByKey: {}, noConsult: false };
+    processBillingContext = { lesionId: '', billId: '', group: [], allGroup: [], items: [], accepted: {}, rejected: {}, customByKey: {}, noConsult: false };
 }
 
 function refreshProcessBillingPreview() {
-    const bill = findManagedBilling(processBillingContext.billId);
-    if (!bill) return;
-    const typeEl = document.getElementById('processBillingType');
-    if (typeEl?.value) bill.billingLesionType = typeEl.value;
-    const view = billingViewModel(bill);
-    const built = buildProcessBillingSuggestedItems(view);
+    const group = processBillingContext.group && processBillingContext.group.length
+        ? processBillingContext.group
+        : [managedLesions.find((item) => String(item.id) === String(processBillingContext.lesionId))].filter(Boolean);
+    if (!group.length) return;
+    const built = buildProcessBillingSuggestedItems(group);
     processBillingContext.items = built.items;
     processBillingContext.suggestionNotes = built.suggestion.notes || [];
     const typeWrap = document.getElementById('processBillingTypeWrap');
-    if (typeWrap) typeWrap.classList.toggle('hidden', built.suggestion.kind === 'biopsy');
+    if (typeWrap) typeWrap.classList.add('hidden');
     const meta = document.getElementById('processBillingMeta');
-    if (meta) meta.innerHTML = renderProcessBillingLesionDetails(view);
+    if (meta) {
+        meta.innerHTML = '<div class="space-y-3">' + group.map((lesion) => {
+            const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
+            const view = bill && typeof billingViewModel === 'function' ? billingViewModel(bill) : lesion;
+            return renderProcessBillingLesionDetails(view, { typeSelect: true });
+        }).join('') + '</div>';
+    }
     renderProcessBillingSuggestedItems();
     const note = document.getElementById('processBillingGateNote');
     if (note) {
         note.textContent = claimCodesFromBox().length
-            ? 'Confirm to add this claim to Confirmed billings for the practice manager.'
-            : 'Accept or reject each suggested item. Confirm when the claim is ready.';
+            ? 'Confirm to add this session claim to Confirmed billings for the practice manager.'
+            : 'Accept or reject the session consult and each lesion item. Confirm when the claim is ready.';
     }
     updateProcessBillingSendState();
 }
 
-function onProcessBillingTypeChange() {
+function onProcessBillingLesionTypeChange(lesionId) {
     processBillingContext.accepted = {};
     processBillingContext.rejected = {};
     processBillingContext.customByKey = {};
     processBillingContext.noConsult = false;
     setProcessBillingClaim([]);
-    const bill = findManagedBilling(processBillingContext.billId);
-    const lesion = managedLesions.find((item) => String(item.id) === String(processBillingContext.lesionId));
-    const type = document.getElementById('processBillingType')?.value || '';
+    const type = document.getElementById('processBillingType-' + String(lesionId || '').replace(/'/g, ''))?.value || '';
+    const bill = typeof billingForLesion === 'function' ? billingForLesion(lesionId) : null;
+    const lesion = managedLesions.find((item) => String(item.id) === String(lesionId));
     if (bill) bill.billingLesionType = type;
     if (lesion) lesion.billingLesionType = type;
     refreshProcessBillingPreview();
+}
+
+function onProcessBillingTypeChange() {
+    const lesionId = processBillingContext.lesionId;
+    if (lesionId) onProcessBillingLesionTypeChange(lesionId);
 }
 
 function updateProcessBillingSendState() {
@@ -1620,22 +1696,51 @@ function updateProcessBillingSendState() {
 }
 
 async function submitProcessBilling() {
-    const codes = claimCodesFromBox().join(' + ');
-    if (!codes) {
+    const codes = claimCodesFromBox();
+    if (!codes.length) {
         showToast('Accept at least one item, or enter a custom item number.');
         return;
     }
-    const bill = findManagedBilling(processBillingContext.billId);
-    if (!bill || billingHasBeenSent(bill)) return;
-    const typeEl = document.getElementById('processBillingType');
-    if (typeEl?.value) bill.billingLesionType = typeEl.value;
-    const exclude = !!processBillingContext.noConsult || !claimCodesFromBox().includes(CONSULT_ITEM_CODE);
-    await persistProcessedBilling(bill, codes, {
-        excludeConsult: exclude,
-        consultItem: exclude ? '' : CONSULT_ITEM_CODE,
-        recommendationAccepted: true
-    });
+    const group = processBillingContext.group && processBillingContext.group.length
+        ? processBillingContext.group
+        : [managedLesions.find((item) => String(item.id) === String(processBillingContext.lesionId))].filter(Boolean);
+    const consultAccepted = !!processBillingContext.accepted.consult
+        && codes.includes(CONSULT_ITEM_CODE);
+    let consultAssigned = false;
+    let confirmed = 0;
+    for (const lesion of group) {
+        let bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
+        if (bill && billingHasBeenSent(bill)) continue;
+        if (!bill && typeof createOrUpdateBillingFromLesion === 'function') {
+            bill = await createOrUpdateBillingFromLesion(lesion);
+        }
+        if (!bill || billingHasBeenSent(bill)) continue;
+        const typeEl = document.getElementById('processBillingType-' + String(lesion.id).replace(/'/g, ''));
+        if (typeEl?.value) {
+            bill.billingLesionType = typeEl.value;
+            lesion.billingLesionType = typeEl.value;
+        }
+        const procCodes = processBillingContext.items
+            .filter((item) => item.lesionId === String(lesion.id) && processBillingContext.accepted[item.key])
+            .map((item) => processBillingContext.accepted[item.key]);
+        const giveConsult = consultAccepted && !consultAssigned;
+        const claim = giveConsult ? [CONSULT_ITEM_CODE].concat(procCodes) : procCodes;
+        if (!claim.length) continue;
+        if (giveConsult) consultAssigned = true;
+        await persistProcessedBilling(bill, claim.join(' + '), {
+            excludeConsult: !giveConsult,
+            consultItem: giveConsult ? CONSULT_ITEM_CODE : '',
+            recommendationAccepted: true,
+            silentToast: true
+        });
+        confirmed += 1;
+    }
+    if (!confirmed) {
+        showToast('Accept at least one item for a lesion in this procedure.');
+        return;
+    }
     closeProcessBillingModal();
+    showToast('Session billing confirmed for ' + confirmed + ' lesion' + (confirmed === 1 ? '' : 's') + '. Print for the practice manager from Billing.');
     if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
         if (typeof renderManagedLesions === 'function') renderManagedLesions();
     } else {
@@ -2044,34 +2149,6 @@ function syncHistologyFollowUpUi() {
         fileWrap.classList.toggle('flex', showFile);
     }
     if (fileEl && !showFile) fileEl.checked = false;
-    refreshHistologyBillingRow(lesion);
-}
-
-function refreshHistologyBillingRow(lesion) {
-    const summary = document.getElementById('histologyBillingSummary');
-    const confirmWrap = document.getElementById('histologyConfirmBillingWrap');
-    const confirmLabel = document.getElementById('histologyConfirmBillingLabel');
-    const openBtn = document.getElementById('btnHistologyOpenBilling');
-    const bill = lesion && typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
-    const sent = !!(bill && typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill));
-    const suggestion = lesion && typeof suggestMbsItems === 'function' ? suggestMbsItems(lesion) : null;
-    if (summary) {
-        if (sent) summary.textContent = 'Billing already confirmed.';
-        else if (suggestion?.ready && suggestion.summary) summary.textContent = 'Suggested claim: ' + suggestion.summary + '. Can confirm now even if the patient has not been contacted.';
-        else summary.textContent = 'Billing can be confirmed now even if the patient has not been contacted. Open Process billing if item numbers still need size or region.';
-    }
-    const showConfirm = !sent && !!(suggestion?.ready && suggestion.summary);
-    if (confirmWrap) {
-        confirmWrap.classList.toggle('hidden', !showConfirm);
-        confirmWrap.classList.toggle('flex', showConfirm);
-    }
-    if (confirmLabel && suggestion?.summary) confirmLabel.textContent = 'Confirm billing now (' + suggestion.summary + ')';
-    if (openBtn) openBtn.classList.toggle('hidden', sent);
-}
-
-function openProcessBillingFromHistology() {
-    const id = document.getElementById('histologyLesionId')?.value;
-    if (id && typeof openProcessBillingModal === 'function') openProcessBillingModal(id);
 }
 
 function copyHistologyResultNote() {
@@ -2198,10 +2275,6 @@ function openHistologyModal(id) {
     const fileEl = document.getElementById('histologyFileNoCall');
     if (fileEl) fileEl.checked = lesion?.contactState === 'file_no_call';
     syncHistologyFollowUpUi();
-    const confirmEl = document.getElementById('histologyConfirmBilling');
-    if (confirmEl && !document.getElementById('histologyConfirmBillingWrap')?.classList.contains('hidden')) {
-        confirmEl.checked = true;
-    }
     if (modal) modal.classList.remove('hidden');
 }
 
@@ -2226,8 +2299,6 @@ async function submitHistologyModal() {
     const caseNumber = document.getElementById('histologyCaseNumber')?.value.trim() || '';
     const pot = document.getElementById('histologyPot')?.value.trim() || '';
     const applySiblings = !!document.getElementById('histologyApplyCaseToSiblings')?.checked;
-    const confirmBilling = !!document.getElementById('histologyConfirmBilling')?.checked
-        && !document.getElementById('histologyConfirmBillingWrap')?.classList.contains('hidden');
     if (!id) return false;
     if (!result) {
         showToast('Enter the histology result.');
@@ -2256,18 +2327,6 @@ async function submitHistologyModal() {
     }
     const lesion = managedLesions.find((item) => String(item.id) === String(id));
     if (lesion) lesion.billingLesionType = billingType;
-    if (confirmBilling && lesion && typeof suggestMbsItems === 'function') {
-        const suggestion = suggestMbsItems(lesion);
-        if (suggestion.ready && suggestion.summary) {
-            let bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
-            if (!bill && typeof createOrUpdateBillingFromLesion === 'function') {
-                bill = await createOrUpdateBillingFromLesion(lesion);
-            }
-            if (bill && typeof billingHasBeenSent === 'function' && !billingHasBeenSent(bill) && typeof persistProcessedBilling === 'function') {
-                await persistProcessedBilling(bill, suggestion.summary, { silentToast: true });
-            }
-        }
-    }
     const saved = await recordHistologyOutcome(id, result, next, billingType, {
         callNote,
         contact,
