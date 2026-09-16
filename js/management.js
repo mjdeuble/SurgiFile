@@ -598,7 +598,11 @@ function lesionCardEvents(lesion) {
 
 function renderLesionCardEventLine(event) {
     const when = formatLesionCardWhen(event.at) || '';
-    const head = [lesionTimelineTypeLabel(event.type), event.outcome].filter(Boolean).join(' · ');
+    const typeLabel = lesionTimelineTypeLabel(event.type);
+    const outcome = String(event.outcome || '').trim();
+    const head = outcome && outcome.toLowerCase() !== typeLabel.toLowerCase()
+        ? typeLabel + ' · ' + outcome
+        : typeLabel;
     const noteBits = [];
     if (event.note) noteBits.push(event.note);
     if (event.planAfter && event.planAfter !== event.note) noteBits.push('Plan: ' + event.planAfter);
