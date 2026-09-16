@@ -12,8 +12,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="stylesheet" href="css/tailwind.css?v=100">
-    <link rel="stylesheet" href="css/app.css?v=100">
+    <link rel="stylesheet" href="css/tailwind.css?v=116">
+    <link rel="stylesheet" href="css/app.css?v=116">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -79,16 +79,16 @@
                         </button>
                         <div class="output-action-tooltip" role="tooltip">
                             <div class="output-action-tooltip-title">Admin</div>
-                            <p class="output-action-tooltip-desc">Practice board of active lesions. Open a patient chart to examine or operate.</p>
+                            <p class="output-action-tooltip-desc">Practice board of active lesions. Open a patient chart to document lesions or operate.</p>
                         </div>
                     </div>
                     <div class="header-icon-btn-wrap">
-                        <button type="button" id="navTabSkinCheck" onclick="switchWorkspaceTab('skin-check')" class="header-icon-btn" role="tab" aria-selected="false" aria-label="Examination">
+                        <button type="button" id="navTabSkinCheck" onclick="switchWorkspaceTab('skin-check')" class="header-icon-btn" role="tab" aria-selected="false" aria-label="Lesions">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 4v5a6 6 0 0012 0V4M6 4h1.5M16.5 4H18"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v1a3 3 0 003 3"/><circle cx="18" cy="16" r="2.5" stroke-width="2"/></svg>
                         </button>
                         <div class="output-action-tooltip" role="tooltip">
-                            <div class="output-action-tooltip-title">Examination</div>
-                            <p class="output-action-tooltip-desc">Skin check, lesions, and session copy outputs. Unlocked after Sanitised.</p>
+                            <div class="output-action-tooltip-title">Lesions</div>
+                            <p class="output-action-tooltip-desc">Skin check, lesion list, and session copy outputs. Unlocked after consult type.</p>
                         </div>
                     </div>
                     <div class="header-icon-btn-wrap">
@@ -97,7 +97,7 @@
                         </button>
                         <div class="output-action-tooltip" role="tooltip">
                             <div class="output-action-tooltip-title">Procedure</div>
-                            <p class="output-action-tooltip-desc">Operative note and shorthand pathology request. Unlocked after Sanitised.</p>
+                            <p class="output-action-tooltip-desc">Operative note and shorthand pathology request. Unlocked after consult type.</p>
                         </div>
                     </div>
                 </nav>
@@ -106,20 +106,20 @@
                     <div class="chart-rail-rule"></div>
                     <div class="chart-rail-stack">
                         <div class="header-icon-btn-wrap">
-                            <button type="button" id="sidebarSanitiseBtn" onclick="markChartSanitised()" class="header-icon-btn" aria-label="Sanitised">
+                            <button type="button" id="sidebarSanitiseBtn" onclick="openConsultTypeModal()" class="header-icon-btn" aria-label="Consult type">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                             </button>
                             <div class="output-action-tooltip" role="tooltip">
-                                <div class="output-action-tooltip-title">Sanitised</div>
-                                <p id="sidebarSanitiseHint" class="output-action-tooltip-desc">Click once to unlock examination and procedures for this patient. Cannot be turned off until the chart is closed.</p>
+                                <div class="output-action-tooltip-title">Consult type</div>
+                                <p id="sidebarSanitiseHint" class="output-action-tooltip-desc">Choose chart review, phone, or face to face (sanitation). Unlocks Lesions and Procedure.</p>
                             </div>
                         </div>
                         <div class="header-icon-btn-wrap">
-                            <button type="button" id="btnRailLesions" onclick="toggleLesionFlyout()" class="header-icon-btn" aria-label="Lesions">
+                            <button type="button" id="btnRailLesions" onclick="toggleLesionFlyout()" class="header-icon-btn" aria-label="Lesion list">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="2.75" stroke-width="2"/><circle cx="16" cy="15" r="3.25" stroke-width="2"/></svg>
                             </button>
                             <div class="output-action-tooltip" role="tooltip">
-                                <div class="output-action-tooltip-title">Lesions</div>
+                                <div class="output-action-tooltip-title">Lesion list</div>
                                 <p class="output-action-tooltip-desc">Previous chart lesions, this visit, and patient concerns.</p>
                             </div>
                         </div>
@@ -187,6 +187,16 @@
                             <div class="output-action-tooltip" role="tooltip">
                                 <div class="output-action-tooltip-title">Surgical Consent</div>
                                 <p class="output-action-tooltip-desc">Generate the informed consent form for booked excisions.</p>
+                            </div>
+                        </div>
+
+                        <div id="railLetterAction" class="output-action-btn-wrap is-letter" data-rail="always">
+                            <button type="button" id="btnGenerateLetter" onclick="openLetterModal()" class="output-action-btn" aria-label="Generate GP or specialist letter">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                            </button>
+                            <div class="output-action-tooltip" role="tooltip">
+                                <div class="output-action-tooltip-title">Generate letter</div>
+                                <p class="output-action-tooltip-desc">GP advice or specialist referral — choose lesions, then copy plain text into a Best Practice letter.</p>
                             </div>
                         </div>
 
@@ -649,7 +659,7 @@
                             </thead>
                             <tbody id="lesionsTableBody" class="divide-y divide-slate-200">
                                 <tr>
-                                    <td colspan="6" class="p-4 text-center text-slate-400 italic">No lesions on this chart yet. Click "+ Add Lesion" during examination.</td>
+                                    <td colspan="6" class="p-4 text-center text-slate-400 italic">No lesions on this chart yet. Click "+ Add Lesion" to start.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -932,7 +942,7 @@
             <!-- RECORDED LESIONS -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 class="text-base font-bold text-slate-800 mb-3 border-b border-slate-200 pb-2">Recorded Lesions</h3>
-                <p class="text-[11px] text-slate-500 mb-3">Copy the histology request from Finish procedure after Start. Copy the visit note from Examination when the procedure is complete — not from this screen.</p>
+                <p class="text-[11px] text-slate-500 mb-3">Copy the histology request from Finish procedure after Start. Copy the visit note from Lesions when the procedure is complete — not from this screen.</p>
                 <div id="ex-lesions-list" class="space-y-2">
                     <p class="text-xs text-slate-400 italic">No lesions added yet.</p>
                 </div>
@@ -1047,7 +1057,7 @@
                     <h3 class="font-bold text-lg">Clinic Vault</h3>
                     <p id="authModalSubtitle" class="text-xs text-slate-300 mt-1">Connect the clinic folder, then sign in.</p>
                 </div>
-                <button type="button" onclick="dismissAuthModal()" class="text-slate-400 hover:text-white font-bold text-lg leading-none cursor-pointer" aria-label="Close">&times;</button>
+                <button type="button" id="authModalCloseBtn" onclick="dismissAuthModal()" class="text-slate-400 hover:text-white font-bold text-lg leading-none cursor-pointer disabled:cursor-not-allowed" aria-label="Close">&times;</button>
             </div>
             <form class="p-5 space-y-4 text-sm" onsubmit="event.preventDefault(); submitAuthForm();">
                 <div>
@@ -1084,6 +1094,12 @@
                     <button type="button" id="authShowCreateBtn" onclick="setAuthCreateMode(true)" class="text-xs font-semibold text-blue-700 hover:text-blue-900 cursor-pointer">Add user</button>
                     <button type="button" id="authShowSignInBtn" onclick="setAuthCreateMode(false)" class="hidden text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer">Back to sign in</button>
                 </p>
+                <div id="authLoadProgress" class="hidden pt-1 space-y-1.5" role="status" aria-live="polite">
+                    <div class="auth-load-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="authLoadProgressLabel">
+                        <div id="authLoadProgressBar" class="auth-load-bar"></div>
+                    </div>
+                    <p id="authLoadProgressLabel" class="text-[11px] text-slate-500">Loading clinic files…</p>
+                </div>
             </form>
         </div>
     </div>
@@ -1113,6 +1129,29 @@
                     <button type="button" id="passwordChangeDismiss" onclick="dismissPasswordUpgrade()" class="text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer">Later</button>
                 </p>
             </form>
+        </div>
+    </div>
+
+    <div id="consultTypeModal" class="fixed inset-0 z-[56] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            <div class="bg-slate-900 p-4 text-white">
+                <h3 class="font-bold text-base">Consult type</h3>
+                <p class="text-xs text-slate-300 mt-0.5">Choose how you are working with this patient today. Sanitation is recorded only for face-to-face.</p>
+            </div>
+            <div class="p-5 space-y-2.5 text-sm">
+                <button type="button" onclick="selectVisitConsultType('chart_review')" class="w-full text-left px-4 py-3 rounded-xl border border-slate-200 hover:border-slate-400 hover:bg-slate-50 cursor-pointer">
+                    <span class="block font-semibold text-slate-900">Chart review</span>
+                    <span class="block text-[11px] text-slate-500 mt-0.5">Desk work on an open chart — no sanitation note.</span>
+                </button>
+                <button type="button" onclick="selectVisitConsultType('phone')" class="w-full text-left px-4 py-3 rounded-xl border border-slate-200 hover:border-slate-400 hover:bg-slate-50 cursor-pointer">
+                    <span class="block font-semibold text-slate-900">Phone consult</span>
+                    <span class="block text-[11px] text-slate-500 mt-0.5">Results, planning, booking, consent — no sanitation note.</span>
+                </button>
+                <button type="button" onclick="selectVisitConsultType('face_to_face')" class="w-full text-left px-4 py-3 rounded-xl border border-teal-300 bg-teal-50/60 hover:border-teal-500 hover:bg-teal-50 cursor-pointer">
+                    <span class="block font-semibold text-teal-950">Face to face — confirm sanitation</span>
+                    <span class="block text-[11px] text-teal-800 mt-0.5">In-person visit. Records room sanitised and unlocks examination notes.</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1334,9 +1373,10 @@
                 </div>
                 <div id="finaliseBillingWrap" class="space-y-2">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-700">Best Practice item numbers</p>
-                    <p id="finaliseBillingHint" class="text-xs text-slate-500">Site and item numbers for this visit. Same-day procedures bill together.</p>
-                    <textarea id="finaliseBillingPreview" rows="4" readonly class="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-mono bg-slate-50"></textarea>
-                    <button type="button" id="btnFinaliseCopyBilling" onclick="copyFinaliseVisitBilling()" class="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg cursor-pointer">Copy item numbers</button>
+                    <p id="finaliseBillingHint" class="text-xs text-slate-500">Copy each site or each item number into Best Practice. HOLD lesions show expected items as a placeholder until histology.</p>
+                    <div id="finaliseBillingChips" class="space-y-2"></div>
+                    <textarea id="finaliseBillingPreview" rows="4" readonly class="hidden w-full p-2.5 border border-slate-200 rounded-lg text-xs font-mono bg-slate-50"></textarea>
+                    <button type="button" id="btnFinaliseCopyBilling" onclick="copyFinaliseVisitBilling()" class="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg cursor-pointer">Copy all item numbers</button>
                 </div>
             </div>
             <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-between gap-2">
@@ -1378,6 +1418,7 @@
                             <option value="no answer">No answer</option>
                             <option value="voicemail">Voicemail</option>
                             <option value="spoke">Spoke</option>
+                            <option value="patient not ready">Patient not ready</option>
                             <option value="declined">Declined</option>
                             <option value="booked">Booked</option>
                         </select>
@@ -1449,8 +1490,21 @@
                     <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Plan</p>
                     <div class="space-y-2">
                         <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyNext" value="no_followup" class="text-blue-600" onchange="syncHistologyFollowUpUi()"> No further action</label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyNext" value="plan_excision" class="text-blue-600" onchange="syncHistologyFollowUpUi()"> Further procedure after advised</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyNext" value="further_management" class="text-blue-600" onchange="syncHistologyFollowUpUi()"> Needs further management</label>
                     </div>
+                </div>
+                <div id="histologyProposedPlanWrap" class="hidden space-y-2 pl-1 border-l-2 border-slate-200 ml-1">
+                    <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Proposed plan <span class="font-normal normal-case text-slate-500">(optional)</span></p>
+                    <div class="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyProposedPlan" value="" class="text-blue-600" checked> Undecided</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyProposedPlan" value="topical" class="text-blue-600"> Topical / field</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyProposedPlan" value="excision" class="text-blue-600"> Excision</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyProposedPlan" value="biopsy" class="text-blue-600"> Biopsy</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyProposedPlan" value="monitor" class="text-blue-600"> Monitor</label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyProposedPlan" value="refer" class="text-blue-600"> Refer</label>
+                    </div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="histologyProposedPlanNote">Note</label>
+                    <input type="text" id="histologyProposedPlanNote" class="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="e.g. Efudix forehead · discuss with patient" autocomplete="off">
                 </div>
                 <div>
                     <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Contact</p>
@@ -1717,6 +1771,7 @@
                         <option value="Punch / Shave Biopsy">Punch / Shave Biopsy</option>
                         <option value="Formally Book Excision Procedure">Formally Book Excision Procedure</option>
                         <option value="Topical / Field Treatment">Topical / Field Treatment (Cryotherapy / Efudix / PDT)</option>
+                        <option value="Refer / Specialist">Refer / Specialist</option>
                     </select>
                 </div>
 
@@ -2441,35 +2496,114 @@
         </div>
     </div>
 
+    <!-- CLINICAL LETTER MODAL (GP advice / specialist referral) -->
+    <div id="letterModal" class="fixed inset-0 z-[57] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full border border-slate-200 max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-3.5 bg-slate-900 text-white flex justify-between items-start gap-3 shrink-0">
+                <div>
+                    <h3 id="letterModalTitle" class="font-bold text-sm">Clinical letter</h3>
+                    <p id="letterModalSubtitle" class="text-[11px] text-slate-300 mt-0.5">GP advice or specialist referral — plain text for Best Practice letters.</p>
+                </div>
+                <button type="button" onclick="closeLetterModal()" class="text-slate-400 hover:text-white font-bold text-lg cursor-pointer" aria-label="Close letter">&times;</button>
+            </div>
+            <div class="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-2 gap-0">
+                <div class="p-5 space-y-4 border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50">
+                    <div class="space-y-2">
+                        <p class="text-xs font-bold uppercase tracking-wider text-slate-600">Letter type</p>
+                        <div class="flex flex-wrap gap-3 text-sm">
+                            <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="letterType" id="letterTypeGp" value="gp_advice" class="text-blue-600" onchange="onLetterTypeChanged()" checked> GP — advising of management</label>
+                            <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="letterType" id="letterTypeSpecialist" value="specialist_referral" class="text-blue-600" onchange="onLetterTypeChanged()"> Specialist — organising management</label>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="letterRecipientName">Recipient</label>
+                            <input type="text" id="letterRecipientName" oninput="onLetterOptionsChanged()" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white" placeholder="e.g. Dr Smith" autocomplete="off">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="letterRecipientClinic">Clinic / specialty (optional)</label>
+                            <input type="text" id="letterRecipientClinic" oninput="onLetterOptionsChanged()" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white" placeholder="e.g. Plastic surgery, City Clinic" autocomplete="off">
+                        </div>
+                    </div>
+                    <div id="letterUrgencyWrap" class="hidden">
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="letterUrgency">Urgency</label>
+                        <select id="letterUrgency" onchange="onLetterOptionsChanged()" class="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white">
+                            <option value="routine">Routine</option>
+                            <option value="soon">Semi-urgent / soon</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label id="letterClinicalQuestionLabel" class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="letterClinicalQuestion">Key message (optional)</label>
+                        <textarea id="letterClinicalQuestion" rows="2" oninput="onLetterOptionsChanged()" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white" placeholder="e.g. Please advise regarding WLE margins for confirmed melanoma"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="letterAdditionalNotes">Additional notes (optional)</label>
+                        <textarea id="letterAdditionalNotes" rows="2" oninput="onLetterOptionsChanged()" class="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white" placeholder="Patient preferences, comorbidities, prior treatments…"></textarea>
+                    </div>
+                    <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="letterIncludeHistory" class="rounded text-blue-600" checked onchange="onLetterOptionsChanged()">
+                        <span>Include relevant history on file (allergies, anticoagulants, healing risks)</span>
+                    </label>
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <p class="text-xs font-bold uppercase tracking-wider text-slate-600">Lesions to include</p>
+                            <div class="flex gap-2 text-[11px]">
+                                <button type="button" onclick="letterSelectAllLesions(true)" class="text-blue-700 hover:underline cursor-pointer">All</button>
+                                <button type="button" onclick="letterSelectAllLesions(false)" class="text-slate-500 hover:underline cursor-pointer">None</button>
+                            </div>
+                        </div>
+                        <div id="letterLesionList" class="space-y-2 max-h-64 overflow-y-auto pr-1"></div>
+                    </div>
+                </div>
+                <div class="p-5 flex flex-col bg-white min-h-[280px]">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <p class="text-xs font-bold uppercase tracking-wider text-slate-600">Preview</p>
+                        <p id="letterPreviewMeta" class="text-[11px] text-slate-500">ASCII plain text for BP</p>
+                    </div>
+                    <pre id="letterPreviewText" class="flex-1 overflow-auto p-3 rounded-lg border border-slate-200 bg-slate-50 text-[11px] leading-relaxed text-slate-800 whitespace-pre-wrap font-mono"></pre>
+                </div>
+            </div>
+            <div class="px-5 py-3 bg-slate-100 border-t border-slate-200 flex flex-wrap justify-between items-center gap-2 shrink-0">
+                <span class="text-xs text-slate-500">Copy into a Best Practice letter body. Edit recipient details in BP if needed.</span>
+                <div class="flex gap-2">
+                    <button type="button" onclick="closeLetterModal()" class="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer">Close</button>
+                    <button type="button" onclick="copyClinicalLetter()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer">Copy letter</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- TOAST NOTIFICATION CONTAINER -->
     <div id="toastNotification" class="fixed bottom-5 right-5 z-[80] transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-3">
         <div class="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></div>
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=100"></script>
-    <script src="js/diagnosis-catalogue.js?v=100"></script>
-    <script src="js/crypto.js?v=100"></script>
-    <script src="js/vault.js?v=100"></script>
-    <script src="js/ui.js?v=100"></script>
-    <script src="js/topical.js?v=100"></script>
-    <script src="js/billing.js?v=100"></script>
-    <script src="js/margin-guide.js?v=100"></script>
-    <script src="js/skin-check.js?v=100"></script>
-    <script src="js/consent.js?v=100"></script>
-    <script src="js/clinic-profile.js?v=100"></script>
-    <script src="js/aftercare.js?v=100"></script>
-    <script src="js/outputs.js?v=100"></script>
-    <script src="js/excision.js?v=100"></script>
-    <script src="js/lesion-vault.js?v=100"></script>
-    <script src="js/billing-vault.js?v=100"></script>
-    <script src="js/chart-vault.js?v=100"></script>
-    <script src="js/note-vault.js?v=100"></script>
-    <script src="js/consent-vault.js?v=100"></script>
-    <script src="js/auth.js?v=100"></script>
-    <script src="js/management.js?v=100"></script>
-    <script src="js/chart.js?v=100"></script>
-    <script src="js/procedure-session.js?v=100"></script>
-    <script src="js/app.js?v=100"></script>
+    <script src="js/state.js?v=116"></script>
+    <script src="js/diagnosis-catalogue.js?v=116"></script>
+    <script src="js/crypto.js?v=116"></script>
+    <script src="js/vault.js?v=116"></script>
+    <script src="js/ui.js?v=116"></script>
+    <script src="js/topical.js?v=116"></script>
+    <script src="js/billing.js?v=116"></script>
+    <script src="js/margin-guide.js?v=116"></script>
+    <script src="js/skin-check.js?v=116"></script>
+    <script src="js/consent.js?v=116"></script>
+    <script src="js/clinic-profile.js?v=116"></script>
+    <script src="js/aftercare.js?v=116"></script>
+    <script src="js/letters.js?v=116"></script>
+    <script src="js/outputs.js?v=116"></script>
+    <script src="js/excision.js?v=116"></script>
+    <script src="js/lesion-vault.js?v=116"></script>
+    <script src="js/billing-vault.js?v=116"></script>
+    <script src="js/chart-vault.js?v=116"></script>
+    <script src="js/note-vault.js?v=116"></script>
+    <script src="js/consent-vault.js?v=116"></script>
+    <script src="js/auth.js?v=116"></script>
+    <script src="js/management.js?v=116"></script>
+    <script src="js/chart.js?v=116"></script>
+    <script src="js/procedure-session.js?v=116"></script>
+    <script src="js/app.js?v=116"></script>
 </body>
 </html>
