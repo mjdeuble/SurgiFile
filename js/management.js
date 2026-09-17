@@ -519,8 +519,12 @@ function lesionProcedureTypeLabel(lesion) {
     if (type === 'punch' || detail.procedure === 'Punch') {
         return detail.punchType || lesion?.biopsyType || 'Punch biopsy';
     }
-    if (type === 'excision' || detail.procedure === 'Excision') {
-        const bits = [lesion?.priorLesionId ? 'Re-excision' : 'Excision'];
+        if (type === 'excision' || detail.procedure === 'Excision') {
+        const bits = [lesion?.priorLesionId
+            ? 'Re-excision'
+            : ((typeof lesionHasCopiedPriorHistology === 'function' && lesionHasCopiedPriorHistology(lesion))
+                ? 'Excision after prior histology'
+                : 'Excision')];
         if (detail.excisionClosureType) bits.push(detail.excisionClosureType);
         if (detail.graftType) bits.push(detail.graftType);
         return bits.join(' · ');
@@ -743,7 +747,8 @@ function renderManagedLesionCard(lesion, options) {
         : (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion.impression) : (lesion.impression || ''));
     const status = typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion.plan || '');
     const missed = typeof lastUnsuccessfulCall === 'function' ? lastUnsuccessfulCall(lesion) : null;
-    const prior = typeof formatPriorHistologyCitation === 'function' && lesion.priorLesionId
+    const prior = typeof formatPriorHistologyCitation === 'function'
+        && (lesion.priorLesionId || (typeof lesionHasCopiedPriorHistology === 'function' && lesionHasCopiedPriorHistology(lesion)))
         ? formatPriorHistologyCitation(lesion)
         : '';
 

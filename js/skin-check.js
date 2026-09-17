@@ -1,10 +1,83 @@
 /* Skin check workflow: sanitation, concerns, risk screening, lesions */
 
 const PUNCH_SHAVE_BIOPSY_PLAN = 'Punch / Shave Biopsy';
+const CONFIRMED_HISTOLOGY_EXCISION_PLAN = 'Histology already confirmed — book excision';
 
 function isPunchShaveBiopsyPlan(plan) {
     const p = String(plan || '');
     return p.includes('Punch / Shave Biopsy') || p.includes('Biopsy Today');
+}
+
+function isConfirmedHistologyExcisionPlan(plan) {
+    const p = String(plan || '');
+    return p === CONFIRMED_HISTOLOGY_EXCISION_PLAN || p.includes('Histology already confirmed');
+}
+
+function isExcisionBookingPlan(plan) {
+    const p = String(plan || '');
+    return p.includes('Formally Book Excision') || isConfirmedHistologyExcisionPlan(p);
+}
+
+function readPriorHistologyDiagnosis() {
+    if (typeof readDiagnosisTypeahead === 'function') return readDiagnosisTypeahead('priorHistologyDiagnosis');
+    return document.getElementById('priorHistologyDiagnosis')?.value.trim() || '';
+}
+
+function fillPriorHistologyForm(item) {
+    if (typeof setDiagnosisTypeahead === 'function') {
+        setDiagnosisTypeahead('priorHistologyDiagnosis', item?.priorHistologyDiagnosis || '');
+    } else {
+        const dxEl = document.getElementById('priorHistologyDiagnosis');
+        if (dxEl) dxEl.value = item?.priorHistologyDiagnosis || '';
+    }
+    const resultEl = document.getElementById('priorHistologyResult');
+    if (resultEl) resultEl.value = item?.priorHistologyResult || '';
+    const caseEl = document.getElementById('priorHistologyCaseNumber');
+    if (caseEl) caseEl.value = item?.priorHistologyCaseNumber || '';
+    const potEl = document.getElementById('priorHistologyPot');
+    if (potEl) potEl.value = item?.priorHistologyPot || '';
+    const kindEl = document.getElementById('priorProcedureKind');
+    if (kindEl) kindEl.value = item?.priorProcedureKind || '';
+    const dateEl = document.getElementById('priorProcedureDate');
+    if (dateEl) dateEl.value = String(item?.priorProcedureAt || '').slice(0, 10);
+    const sourceEl = document.getElementById('priorHistologySource');
+    if (sourceEl) sourceEl.value = item?.priorHistologySource || 'own_notes';
+    const nameEl = document.getElementById('priorHistologySourceName');
+    if (nameEl) nameEl.value = item?.priorHistologySourceName || '';
+    const bresEl = document.getElementById('priorBreslowMm');
+    if (bresEl) bresEl.value = item?.priorBreslowMm || '';
+    if (typeof syncPriorHistologySourceUi === 'function') syncPriorHistologySourceUi();
+}
+
+function clearPriorHistologyForm() {
+    fillPriorHistologyForm({});
+}
+
+function syncPriorHistologySourceUi() {
+    const source = document.getElementById('priorHistologySource')?.value || '';
+    document.getElementById('priorHistologySourceNameWrap')?.classList.toggle('hidden', source !== 'colleague');
+}
+
+function collectCopiedPriorHistology() {
+    const diagnosis = readPriorHistologyDiagnosis();
+    const result = document.getElementById('priorHistologyResult')?.value.trim() || '';
+    const caseNumber = typeof normalizeHistologyCaseNumber === 'function'
+        ? normalizeHistologyCaseNumber(document.getElementById('priorHistologyCaseNumber')?.value)
+        : (document.getElementById('priorHistologyCaseNumber')?.value.trim() || '');
+    const pot = typeof normalizeHistologyPot === 'function'
+        ? normalizeHistologyPot(document.getElementById('priorHistologyPot')?.value)
+        : (document.getElementById('priorHistologyPot')?.value.trim() || '');
+    return {
+        priorHistologyDiagnosis: diagnosis,
+        priorHistologyResult: result || diagnosis,
+        priorHistologyCaseNumber: caseNumber,
+        priorHistologyPot: pot,
+        priorProcedureKind: document.getElementById('priorProcedureKind')?.value || '',
+        priorProcedureAt: document.getElementById('priorProcedureDate')?.value || '',
+        priorHistologySource: document.getElementById('priorHistologySource')?.value || 'own_notes',
+        priorHistologySourceName: document.getElementById('priorHistologySourceName')?.value.trim() || '',
+        priorBreslowMm: document.getElementById('priorBreslowMm')?.value.trim() || ''
+    };
 }
 
 function syncPatientIdentifiers(source) {
@@ -548,6 +621,11 @@ function openLesionModal(lesionId = null) {
             if (isTopicalPlan(item.plan) && planEl.value !== item.plan) {
                 planEl.value = 'Topical / Field Treatment';
             }
+            if (isConfirmedHistologyExcisionPlan(item.plan)
+                || (!item.priorLesionId && lesionHasCopiedPriorHistology(item))) {
+                planEl.value = CONFIRMED_HISTOLOGY_EXCISION_PLAN;
+            }
+            fillPriorHistologyForm(item);
 
             const biopsyRadios = document.getElementsByName('biopsyType');
             biopsyRadios.forEach(r => {
@@ -598,6 +676,7 @@ function openLesionModal(lesionId = null) {
         if (graftEl) graftEl.value = 'Full-Thickness Skin Graft (FTSG)';
 
         resetTopicalForm();
+        clearPriorHistologyForm();
     }
 
     handlePlanChange();
@@ -658,15 +737,22 @@ function handlePlanChange() {
     const bFields = document.getElementById('planBiopsyFields');
     const eFields = document.getElementById('planExcisionFields');
     const tFields = document.getElementById('planTopicalFields');
+    const hFields = document.getElementById('planConfirmedHistoFields');
 
     if (bFields) bFields.classList.add('hidden');
     if (eFields) eFields.classList.add('hidden');
     if (tFields) tFields.classList.add('hidden');
+    if (hFields) hFields.classList.add('hidden');
 
     if (isPunchShaveBiopsyPlan(plan)) {
         if (bFields) bFields.classList.remove('hidden');
         handleBiopsyTypeChange();
-    } else if (plan.includes('Formally Book Excision')) {
+    } else if (isConfirmedHistologyExcisionPlan(plan)) {
+        if (hFields) hFields.classList.remove('hidden');
+        if (eFields) eFields.classList.remove('hidden');
+        if (typeof syncPriorHistologySourceUi === 'function') syncPriorHistologySourceUi();
+        if (typeof updateConsultExcisionClosureUI === 'function') updateConsultExcisionClosureUI();
+    } else if (isExcisionBookingPlan(plan)) {
         if (eFields) eFields.classList.remove('hidden');
         if (typeof updateConsultExcisionClosureUI === 'function') updateConsultExcisionClosureUI();
     } else if (isTopicalPlan(plan)) {
@@ -690,14 +776,22 @@ function saveLesion() {
     }
 
     const editId = document.getElementById('editLesionId').value;
-    const impression = readExamImpression();
-    if (!impression) {
+    const plan = document.getElementById('lesionPlan').value;
+    let impression = readExamImpression();
+    let copiedPrior = null;
+    if (isConfirmedHistologyExcisionPlan(plan)) {
+        copiedPrior = collectCopiedPriorHistology();
+        if (!copiedPrior.priorHistologyDiagnosis && !copiedPrior.priorHistologyResult) {
+            showToast('Enter the confirmed diagnosis or the prior histology result.');
+            return;
+        }
+        if (!impression) impression = copiedPrior.priorHistologyDiagnosis || copiedPrior.priorHistologyResult;
+    } else if (!impression) {
         showToast('Please choose or enter a diagnosis.');
         return;
     }
     const macroscopic = document.getElementById('lesionMacroscopic').value.trim() || 'Unspecified';
     const dermoscopy = document.getElementById('lesionDermoscopy').value.trim() || 'Unspecified';
-    const plan = document.getElementById('lesionPlan').value;
 
     let biopsyType = '';
     let excisionMargin = '';
@@ -739,7 +833,7 @@ function saveLesion() {
                 return;
             }
         }
-    } else if (plan.includes('Formally Book Excision')) {
+    } else if (isExcisionBookingPlan(plan)) {
         const excisionMarginNum = typeof readMmInputValue === 'function'
             ? readMmInputValue('excisionMargin')
             : (document.getElementById('excisionMargin')?.value.trim() || '');
@@ -787,11 +881,15 @@ function saveLesion() {
         excisionClosureType,
         graftType,
         billingGraftType: graftType,
-        billingReconstruction: plan.includes('Formally Book Excision')
+        billingReconstruction: isExcisionBookingPlan(plan)
             ? inferBillingReconstruction({ excisionReconstruction, excisionClosureType })
             : '',
-        ...topicalFields
+        ...topicalFields,
+        ...(copiedPrior || {})
     };
+    if (copiedPrior && typeof inferBillingLesionType === 'function') {
+        lesionRecord.billingLesionType = inferBillingLesionType(lesionRecord);
+    }
 
     const suggestMeta = typeof suggestionMetaIfMatches === 'function'
         ? (suggestionMetaIfMatches('excisionMargin') || suggestionMetaIfMatches('examLesionMargin'))
@@ -816,8 +914,10 @@ function saveLesion() {
 
     if (isPunchShaveBiopsyPlan(plan)) {
         lesionRecord.type = biopsyType.includes('Punch') ? 'punch' : 'shave';
-    } else if (plan.includes('Formally Book Excision')) {
+    } else if (isExcisionBookingPlan(plan)) {
         lesionRecord.type = 'excision';
+        lesionRecord.managementStatus = 'planned_procedure';
+        if (copiedPrior) lesionRecord.currentPlan = 'Excision planned after prior histology';
     } else if (isTopicalPlan(plan)) {
         lesionRecord.type = 'topical';
     } else {
@@ -893,7 +993,9 @@ function renderLesionsTable() {
                                     ? 'Refer / Specialist'
                                     : (l.priorLesionId
                                         ? 'Re-excision'
-                                        : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`)))}
+                                        : (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(l.plan)
+                                            ? 'Prior histology · excision'
+                                            : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`))))}
                         </span>
             </td>
             <td class="p-3 text-right space-x-2">

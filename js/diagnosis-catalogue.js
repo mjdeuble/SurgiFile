@@ -592,6 +592,15 @@ function initDiagnosisTypeaheads() {
             if (typeof syncHistologyBillingTypeFromResult === 'function') syncHistologyBillingTypeFromResult();
         }
     });
+    bindDiagnosisTypeahead('priorHistologyDiagnosis', {
+        onChange: (value) => {
+            const impression = document.getElementById('lesionImpression');
+            if (impression && !String(impression.value || '').trim() && value) {
+                if (typeof setDiagnosisTypeahead === 'function') setDiagnosisTypeahead('lesionImpression', value);
+                else impression.value = value;
+            }
+        }
+    });
     bindDiagnosisTypeahead('exPathologySearch', {
         multi: true,
         hiddenId: 'exProvisionalDiagnoses',

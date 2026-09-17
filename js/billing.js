@@ -399,7 +399,7 @@ function billingOwnHistologyText(lesion) {
 
 function billingPriorHistologyText(lesion) {
     if (!lesion) return '';
-    const cited = String(lesion.priorHistologyResult || '').trim();
+    const cited = [lesion.priorHistologyDiagnosis, lesion.priorHistologyResult].filter(Boolean).join('; ').trim();
     if (cited) return cited;
     if (!lesion.priorLesionId || typeof findLesionRecordById !== 'function') return '';
     const prior = findLesionRecordById(lesion.priorLesionId);

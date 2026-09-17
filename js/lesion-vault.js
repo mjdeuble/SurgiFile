@@ -590,8 +590,16 @@ function stampHistologyBatchForProcedure(lesionList) {
     return batchId;
 }
 
+function lesionHasCopiedPriorHistology(lesion) {
+    if (!lesion) return false;
+    return !!(String(lesion.priorHistologyResult || '').trim()
+        || String(lesion.priorHistologyDiagnosis || '').trim()
+        || String(lesion.priorHistologyCaseNumber || '').trim());
+}
+
 function histologyAccessionParts(lesion, mode) {
-    const autoPrior = mode === 'prior' || (mode !== 'own' && lesion?.priorLesionId);
+    const autoPrior = mode === 'prior'
+        || (mode !== 'own' && !!(lesion?.priorLesionId || lesionHasCopiedPriorHistology(lesion)));
     if (autoPrior) {
         return {
             number: normalizeHistologyCaseNumber(lesion?.priorHistologyCaseNumber),
@@ -614,16 +622,53 @@ function formatHistologyAccession(lesion, mode) {
     return parts.pot ? (parts.number + ', pot ' + parts.pot) : parts.number;
 }
 
+function formatPriorProcedureDate(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function priorHistologySourceLabel(lesion) {
+    const named = String(lesion?.priorHistologySourceName || '').trim();
+    if (named) return named;
+    const source = String(lesion?.priorHistologySource || '');
+    if (source === 'colleague') return 'colleague / external clinic';
+    if (source === 'own_notes') return 'old chart';
+    return '';
+}
+
 function formatPriorHistologyCitation(lesion) {
     const cited = typeof lesionWithPriorHistologyCitation === 'function'
         ? lesionWithPriorHistologyCitation(lesion)
         : lesion;
-    const accession = formatHistologyAccession(cited, 'prior');
-    if (!accession) return '';
     const parts = histologyAccessionParts(cited, 'prior');
-    let text = 'Previous histology ' + accession;
-    if (parts.kind) text += ' (' + parts.kind + ')';
-    if (parts.result) text += ': ' + parts.result;
+    const accession = formatHistologyAccession(cited, 'prior');
+    const dx = typeof formatDiagnosisDisplay === 'function'
+        ? formatDiagnosisDisplay(cited?.priorHistologyDiagnosis || '')
+        : String(cited?.priorHistologyDiagnosis || '').trim();
+    const result = parts.result || '';
+    const date = formatPriorProcedureDate(cited?.priorProcedureAt);
+    const source = priorHistologySourceLabel(cited);
+    if (!accession && !result && !dx && !date && !parts.kind) return '';
+    let text = 'Previous histology';
+    if (date) text += ' ' + date;
+    if (accession) text += ' ' + accession;
+    if (parts.kind) {
+        const kindLabel = ({
+            punch: 'punch biopsy',
+            shave: 'shave',
+            excision: 'excision',
+            incisional: 'incisional biopsy'
+        })[parts.kind] || parts.kind;
+        text += ' (' + kindLabel + ')';
+    }
+    if (source) text += ' · ' + source;
+    const detail = dx && result && dx.toLowerCase() !== result.toLowerCase()
+        ? dx + '. ' + result
+        : (dx || result);
+    if (detail) text += ': ' + detail;
     return text;
 }
 
@@ -663,7 +708,13 @@ function copyPriorHistologyFromLesion(prior, extras) {
     return {
         priorHistologyCaseNumber: normalizeHistologyCaseNumber(extras.priorHistologyCaseNumber || prior?.histologyCaseNumber),
         priorHistologyPot: normalizeHistologyPot(extras.priorHistologyPot || prior?.histologyPot),
-        priorHistologyResult: String(extras.priorHistologyResult || prior?.histologyResult || '').trim()
+        priorHistologyResult: String(extras.priorHistologyResult || prior?.histologyResult || '').trim(),
+        priorHistologyDiagnosis: String(extras.priorHistologyDiagnosis || prior?.histologyDiagnosis || '').trim(),
+        priorProcedureKind: extras.priorProcedureKind || prior?.priorProcedureKind || '',
+        priorProcedureAt: extras.priorProcedureAt || prior?.histologyAt || prior?.priorProcedureAt || '',
+        priorHistologySource: extras.priorHistologySource || prior?.priorHistologySource || '',
+        priorHistologySourceName: extras.priorHistologySourceName || prior?.priorHistologySourceName || '',
+        priorBreslowMm: extras.priorBreslowMm || prior?.priorBreslowMm || ''
     };
 }
 
@@ -991,6 +1042,11 @@ function defaultPlanLine(lesion) {
     if (status === 'current_case') return 'In theatre now';
     if (status === 'planned_procedure') {
         if (lesion?.priorLesionId && type === 'excision') return 'Re-excision planned';
+        if (typeof lesionHasCopiedPriorHistology === 'function'
+            ? lesionHasCopiedPriorHistology(lesion)
+            : !!(lesion?.priorHistologyResult || lesion?.priorHistologyCaseNumber)) {
+            return type === 'excision' ? 'Excision planned after prior histology' : 'Procedure planned after prior histology';
+        }
         if (type === 'excision') return 'Excision planned';
         if (type === 'shave') return 'Shave biopsy planned';
         if (type === 'punch') return 'Punch biopsy planned';
@@ -2087,7 +2143,13 @@ async function persistSessionLesionToVault(sessionLesion) {
         resultAdvisedAt: sessionLesion.resultAdvisedAt || existing.resultAdvisedAt || '',
         priorHistologyCaseNumber: sessionLesion.priorHistologyCaseNumber || existing.priorHistologyCaseNumber || '',
         priorHistologyPot: sessionLesion.priorHistologyPot || existing.priorHistologyPot || '',
-        priorHistologyResult: sessionLesion.priorHistologyResult || existing.priorHistologyResult || ''
+        priorHistologyResult: sessionLesion.priorHistologyResult || existing.priorHistologyResult || '',
+        priorHistologyDiagnosis: sessionLesion.priorHistologyDiagnosis || existing.priorHistologyDiagnosis || '',
+        priorProcedureAt: sessionLesion.priorProcedureAt || existing.priorProcedureAt || '',
+        priorHistologySource: sessionLesion.priorHistologySource || existing.priorHistologySource || '',
+        priorHistologySourceName: sessionLesion.priorHistologySourceName || existing.priorHistologySourceName || '',
+        priorBreslowMm: sessionLesion.priorBreslowMm || existing.priorBreslowMm || '',
+        priorProcedureKind: sessionLesion.priorProcedureKind || existing.priorProcedureKind || ''
     };
     if (repairLesionAwaitingAfterResult(next)) {
         managementStatus = next.managementStatus;
