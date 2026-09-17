@@ -844,6 +844,9 @@ function saveLesion() {
         excisionClosureType = document.getElementById('excisionReconstruction')?.value || 'Ellipse';
         excisionReconstruction = closureToReconstruction(excisionClosureType);
         graftType = document.getElementById('consultExcisionGraftType')?.value || '';
+        if (typeof closureNeedsGraftType === 'function' && !closureNeedsGraftType(excisionClosureType)) {
+            graftType = '';
+        }
     } else if (isTopicalPlan(plan)) {
         topicalFields = readTopicalFieldsFromForm();
         if (topicalFields.topicalDiscussed.length === 0) {
