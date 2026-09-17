@@ -43,6 +43,7 @@ function bindSavedVaultQueueClicks() {
 
 function lesionsForCurrentChart() {
     if (!hasCurrentPatient()) return managedLesions;
+    if (typeof chartLesions === 'function') return chartLesions();
     return managedLesions.filter((item) => (typeof lesionBelongsToOpenChart === 'function'
         ? lesionBelongsToOpenChart(item)
         : lesionChartId(item) === currentPatient.chartId));

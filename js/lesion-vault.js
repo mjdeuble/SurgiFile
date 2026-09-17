@@ -665,6 +665,8 @@ function formatPriorHistologyCitation(lesion) {
         text += ' (' + kindLabel + ')';
     }
     if (source) text += ' · ' + source;
+    const breslow = String(cited?.priorBreslowMm || '').trim();
+    if (breslow) text += ' · Breslow ' + breslow + ' mm';
     const detail = dx && result && dx.toLowerCase() !== result.toLowerCase()
         ? dx + '. ' + result
         : (dx || result);
@@ -683,6 +685,11 @@ function lesionWithPriorHistologyCitation(lesion) {
         priorHistologyCaseNumber: lesion.priorHistologyCaseNumber || prior.histologyCaseNumber || '',
         priorHistologyPot: lesion.priorHistologyPot || prior.histologyPot || '',
         priorHistologyResult: lesion.priorHistologyResult || prior.histologyResult || '',
+        priorHistologyDiagnosis: lesion.priorHistologyDiagnosis || prior.histologyDiagnosis || '',
+        priorProcedureAt: lesion.priorProcedureAt || prior.histologyAt || prior.priorProcedureAt || '',
+        priorHistologySource: lesion.priorHistologySource || prior.priorHistologySource || '',
+        priorHistologySourceName: lesion.priorHistologySourceName || prior.priorHistologySourceName || '',
+        priorBreslowMm: lesion.priorBreslowMm || prior.priorBreslowMm || '',
         priorProcedureKind: kind
     };
 }

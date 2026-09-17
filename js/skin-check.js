@@ -864,6 +864,7 @@ function saveLesion() {
         }
     }
 
+    const patientSnap = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : null;
     const lesionRecord = {
         location: loc,
         impression,
@@ -885,7 +886,8 @@ function saveLesion() {
             ? inferBillingReconstruction({ excisionReconstruction, excisionClosureType })
             : '',
         ...topicalFields,
-        ...(copiedPrior || {})
+        ...(copiedPrior || {}),
+        ...(patientSnap || {})
     };
     if (copiedPrior && typeof inferBillingLesionType === 'function') {
         lesionRecord.billingLesionType = inferBillingLesionType(lesionRecord);
@@ -945,6 +947,10 @@ function saveLesion() {
             showToast(err.message || 'Lesion saved in this session, but the encrypted file was not written.');
         });
     }
+    if (saved && typeof offerLesionToProcedureSession === 'function') {
+        offerLesionToProcedureSession(saved);
+    }
+    if (typeof renderManagedLesions === 'function') renderManagedLesions();
 
     closeLesionModal();
     renderLesionsTable();

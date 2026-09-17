@@ -55,7 +55,11 @@ function lesionStatusLabel(lesion) {
         label = proposed ? ('Further management · ' + proposed) : 'Further management';
     }
     else if (status === 'planned_procedure' && type === 'excision') {
-        label = lesion?.priorLesionId ? 'Planned procedure · Re-excision' : 'Planned procedure · Excision';
+        label = lesion?.priorLesionId
+            ? 'Planned procedure · Re-excision'
+            : ((typeof lesionHasCopiedPriorHistology === 'function' && lesionHasCopiedPriorHistology(lesion))
+                ? 'Planned procedure · Excision after prior histology'
+                : 'Planned procedure · Excision');
     }
     else if (status === 'planned_procedure' && type === 'punch') label = 'Planned procedure · Punch';
     else if (status === 'planned_procedure' && type === 'shave') label = 'Planned procedure · Shave';
