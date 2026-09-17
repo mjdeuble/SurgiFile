@@ -59,6 +59,9 @@ function formatLesionPlanIemr(lesion) {
         ? isPunchShaveBiopsyPlan(lesion.plan)
         : /Biopsy/i.test(String(lesion.plan || ''));
     if (lesion.priorLesionId) return 'Re-excision';
+    if (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(lesion.plan)) {
+        return 'Excision after prior histology';
+    }
     if (biopsyPlan) {
         const type = String(lesion.biopsyType || '').trim();
         if (/punch/i.test(type)) {

@@ -147,14 +147,20 @@ function inferBreslowBand(text, family) {
 }
 
 function lesionHasConfirmedHistology(lesion) {
-    return !!(lesion && String(lesion.histologyResult || '').trim());
+    return !!(lesion && (
+        String(lesion.histologyResult || '').trim()
+        || String(lesion.priorHistologyResult || '').trim()
+        || String(lesion.priorHistologyDiagnosis || '').trim()
+    ));
 }
 
 function collectMarginHistologyText(lesion, prior) {
     return [
         lesion?.histologyDiagnosis,
         lesion?.histologyResult,
+        lesion?.priorHistologyDiagnosis,
         lesion?.priorHistologyResult,
+        lesion?.priorBreslowMm ? ('Breslow ' + lesion.priorBreslowMm + ' mm') : '',
         prior?.histologyDiagnosis,
         prior?.histologyResult
     ].filter(Boolean).join('\n');

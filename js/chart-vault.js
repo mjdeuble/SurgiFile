@@ -165,7 +165,7 @@ function collectVisitSessionFromDom() {
         || !!(prev?.visitDate === today && prev?.screeningAsked);
     return {
         visitDate: today,
-        workspaceTab: (tab === 'skin-check' || tab === 'excision-generator') ? tab : 'management',
+    workspaceTab: (typeof isClinicalWorkspaceTab === 'function' ? isClinicalWorkspaceTab(tab) : (tab === 'skin-check' || tab === 'excision-generator')) ? tab : 'management',
         consultType,
         sanitised: consultType === 'face_to_face' || (typeof isBedSanitised !== 'undefined' ? !!isBedSanitised : false),
         patientConcerns: Array.isArray(patientConcerns) ? patientConcerns.slice() : [],
@@ -183,7 +183,7 @@ function isVisitSessionActive(session) {
     if (session.sanitised) return true;
     if ((session.visitLesionIds || []).length) return true;
     if ((session.patientConcerns || []).length) return true;
-    if (session.workspaceTab === 'skin-check' || session.workspaceTab === 'excision-generator') return true;
+    if (typeof isClinicalWorkspaceTab === 'function' ? isClinicalWorkspaceTab(session.workspaceTab) : (session.workspaceTab === 'skin-check' || session.workspaceTab === 'excision-generator')) return true;
     return false;
 }
 
@@ -441,8 +441,9 @@ function chartHasLiveWorkspace(chart, chartId) {
         if (typeof procedureSession !== 'undefined' && procedureSession.started && !procedureSession.completedAt) return true;
         if (typeof lesions !== 'undefined' && lesions.length) return true;
         if (typeof patientConcerns !== 'undefined' && patientConcerns.length) return true;
-        if (typeof activeWorkspaceTab !== 'undefined'
-            && (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')) return true;
+        if (typeof isClinicalWorkspaceTab === 'function'
+            ? isClinicalWorkspaceTab(activeWorkspaceTab)
+            : (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')) return true;
         if (typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete) return true;
         if (typeof groupStates !== 'undefined'
             && ['canc', 'all', 'bld', 'dia', 'hea'].some((key) => groupStates[key] === 'YES' || groupStates[key] === 'NO')) {
@@ -1334,8 +1335,12 @@ async function openPatientChart(patient, options) {
         return false;
     }
     if (hasCurrentPatient() && currentPatient.chartId !== chartId) {
-        await saveCurrentChartFromDom();
-        resetScreeningAndExamForm();
+        if (typeof blockOpenChartWhileVisitActive === 'function') {
+            blockOpenChartWhileVisitActive(chartId);
+        } else {
+            showToast('Finalise this visit before opening another chart.');
+        }
+        return false;
     }
     setCurrentPatient({ ...identity, name, dob, clinician, chartId }, options);
     const chart = await ensureChartRecord({
@@ -1361,7 +1366,7 @@ async function openPatientChart(patient, options) {
             switchWorkspaceTab('excision-generator', { skipCompleteModal: true, skipPersist: true });
         } else {
             const tab = chart?.visitSession?.workspaceTab;
-            if (tab === 'skin-check' || tab === 'excision-generator') {
+            if (typeof isClinicalWorkspaceTab === 'function' ? isClinicalWorkspaceTab(tab) : (tab === 'skin-check' || tab === 'excision-generator')) {
                 switchWorkspaceTab(tab, { skipCompleteModal: true, skipPersist: true });
             }
         }
@@ -1424,7 +1429,9 @@ async function resumeLastChartAfterLogin() {
         return 'procedure';
     }
     if (hasActiveVisit || (typeof activeWorkspaceTab !== 'undefined'
-        && (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator'))) {
+        && (typeof isClinicalWorkspaceTab === 'function'
+            ? isClinicalWorkspaceTab(activeWorkspaceTab)
+            : (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')))) {
         showToast('Visit restored after sign-in.');
         return 'visit';
     }
@@ -1493,8 +1500,8 @@ function requestClosePatientChart() {
         return;
     }
     if (typeof procedureSession !== 'undefined' && procedureSession.started) {
-        showToast('Finish the procedure first, then finalise the visit.');
-        if (typeof openProcedureCompleteModal === 'function') openProcedureCompleteModal();
+        showToast('Complete the procedure first, then finalise the visit.');
+        if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('excision-generator', { skipCompleteModal: true });
         return;
     }
     openFinaliseVisitModal();
@@ -1738,9 +1745,15 @@ if (typeof document !== 'undefined') {
 function updateChartChrome() {
     const open = hasCurrentPatient();
     const closeBtn = document.getElementById('btnHeaderCloseChart');
-    const mgmtClose = document.getElementById('btnMgmtCloseChart');
     if (closeBtn) closeBtn.classList.toggle('hidden', !open);
-    if (mgmtClose) mgmtClose.classList.toggle('hidden', !open);
+    if (typeof syncOpenChartSearchGate === 'function') syncOpenChartSearchGate();
+    const filterBar = document.getElementById('mgmtFilterBar');
+    if (filterBar) filterBar.classList.toggle('hidden', open);
+    const counts = document.getElementById('mgmtCounts');
+    if (counts && open) {
+        counts.classList.add('hidden');
+        counts.textContent = '';
+    }
     const banner = document.getElementById('mgmtChartBanner');
     const title = document.getElementById('mgmtBoardTitle');
     const iemrEl = document.getElementById('mgmtIemrStatus');
@@ -1750,7 +1763,6 @@ function updateChartChrome() {
     if (sub) {
         sub.textContent = open
             ? ([currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ')
-                + ' · This chart only. Close the chart to see every patient’s lesions.'
                 + (typeof formatScratchpadExpiry === 'function' && formatScratchpadExpiry(currentPatient.chartId)
                     ? ' · Finished work is kept 14 days (' + formatScratchpadExpiry(currentPatient.chartId) + ').'
                     : ''))
