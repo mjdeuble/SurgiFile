@@ -1829,6 +1829,15 @@ function onChartSearchKeydown(event, resultsId) {
 async function openPatientFromSearchIndex(idx) {
     const patient = lastChartSearchHits[idx];
     if (!patient) return;
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Opening chart…', async () => openPatientFromSearchIndexWork(idx), {});
+    }
+    return openPatientFromSearchIndexWork(idx);
+}
+
+async function openPatientFromSearchIndexWork(idx) {
+    const patient = lastChartSearchHits[idx];
+    if (!patient) return;
     hideChartSearchResults();
     const headerSearch = document.getElementById('headerChartSearch');
     const boardSearch = document.getElementById('boardChartSearch');
@@ -1920,6 +1929,10 @@ function closePatientModal() {
 }
 
 async function submitAddPatientModal() {
+    if (typeof isAppBusy === 'function' && isAppBusy()) {
+        if (typeof showToast === 'function') showToast('Wait until the current action finishes.');
+        return;
+    }
     const firstName = document.getElementById('chartPatientFirstName')?.value.trim() || '';
     const lastName = document.getElementById('chartPatientLastName')?.value.trim() || '';
     const dob = document.getElementById('chartPatientDob')?.value.trim() || '';
@@ -1942,27 +1955,36 @@ async function submitAddPatientModal() {
         showToast('Date of birth needs digits so the chart can be identified.');
         return;
     }
-    closePatientModal();
     const billing = typeof readAddPatientBilling === 'function'
         ? readAddPatientBilling()
         : { consultBilling: 'Private Bill', biopsyBilling: '$20 OOP per biopsy (Item 30071)' };
     const patient = { name, firstName, lastName, dob, phone, clinician, ...billing };
-    if (typeof openPatientChart === 'function') {
-        await openPatientChart(patient);
-    } else {
-        setCurrentPatient(patient);
-        showToast('Chart set to ' + name + '.');
+    const finish = async () => {
+        closePatientModal();
+        if (typeof openPatientChart === 'function') {
+            await openPatientChart(patient);
+        } else {
+            setCurrentPatient(patient);
+            showToast('Chart set to ' + name + '.');
+        }
+        if (pendingSanitise) {
+            pendingSanitise = false;
+            markChartSanitised();
+            return;
+        }
+        if (pendingWorkspaceTab) {
+            const tab = pendingWorkspaceTab;
+            pendingWorkspaceTab = '';
+            switchWorkspaceTab(tab);
+        }
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Creating chart…', finish, {
+            button: document.getElementById('patientModalSubmit'),
+            buttonText: 'Creating chart…'
+        });
     }
-    if (pendingSanitise) {
-        pendingSanitise = false;
-        markChartSanitised();
-        return;
-    }
-    if (pendingWorkspaceTab) {
-        const tab = pendingWorkspaceTab;
-        pendingWorkspaceTab = '';
-        switchWorkspaceTab(tab);
-    }
+    return finish();
 }
 
 async function submitPatientModal() {

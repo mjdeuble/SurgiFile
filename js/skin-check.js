@@ -945,20 +945,30 @@ function saveLesion() {
     }
 
     const saved = lesions.find(l => editId ? String(l.id) === String(editId) : l.id === lesions[lesions.length - 1].id);
-    if (saved && typeof persistSessionLesionToVault === 'function') {
-        persistSessionLesionToVault(saved).catch((err) => {
-            showToast(err.message || 'Lesion saved in this session, but the encrypted file was not written.');
+    const finish = async () => {
+        if (saved && typeof persistSessionLesionToVault === 'function') {
+            try {
+                await persistSessionLesionToVault(saved);
+            } catch (err) {
+                showToast(err.message || 'Lesion saved in this session, but the encrypted file was not written.');
+            }
+        }
+        if (saved && typeof offerLesionToProcedureSession === 'function') {
+            offerLesionToProcedureSession(saved);
+        }
+        if (typeof renderManagedLesions === 'function') renderManagedLesions();
+        closeLesionModal();
+        renderLesionsTable();
+        if (typeof renderChartSidebar === 'function') renderChartSidebar();
+        updateOutput();
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving lesion…', finish, {
+            button: document.getElementById('btnSaveLesion'),
+            buttonText: 'Saving…'
         });
     }
-    if (saved && typeof offerLesionToProcedureSession === 'function') {
-        offerLesionToProcedureSession(saved);
-    }
-    if (typeof renderManagedLesions === 'function') renderManagedLesions();
-
-    closeLesionModal();
-    renderLesionsTable();
-    if (typeof renderChartSidebar === 'function') renderChartSidebar();
-    updateOutput();
+    return finish();
 }
 
 function deleteLesion(id) {

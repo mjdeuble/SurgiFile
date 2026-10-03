@@ -850,9 +850,21 @@ async function handleConnectClinicFolder() {
         if (btn) btn.disabled = true;
         setAuthFolderStatus('Opening folder picker…', 'info');
         await pickClinicFolder();
-        await refreshAuthFolderStatus();
-        await populateAuthUserList();
-        showToast('Clinic folder connected.');
+        const finish = async ({ progress }) => {
+            if (progress) progress('Reading clinic folder…', 0.35);
+            await refreshAuthFolderStatus();
+            if (progress) progress('Loading users…', 0.75);
+            await populateAuthUserList();
+            showToast('Clinic folder connected.');
+        };
+        if (typeof runBusyAction === 'function') {
+            await runBusyAction('Connecting clinic folder…', finish, {
+                button: btn,
+                buttonText: 'Connecting…'
+            });
+        } else {
+            await finish({});
+        }
     } catch (err) {
         if (err && err.name === 'AbortError') {
             setAuthFolderStatus('No folder selected. Choose the clinic folder again.', 'warn');

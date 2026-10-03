@@ -1325,6 +1325,15 @@ function knownPatientCharts() {
 }
 
 async function openPatientChart(patient, options) {
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Opening chart…', () => openPatientChartWork(patient, options), {
+            join: typeof isAppBusy === 'function' && isAppBusy()
+        });
+    }
+    return openPatientChartWork(patient, options);
+}
+
+async function openPatientChartWork(patient, options) {
     const identity = typeof patientIdentityFromRecord === 'function' ? patientIdentityFromRecord(patient) : patient;
     const name = String(identity?.name || '').trim();
     const dob = String(identity?.dob || '').trim();
@@ -1665,6 +1674,21 @@ function copyFinaliseVisitBilling() {
 }
 
 async function submitFinaliseVisit() {
+    const work = async ({ progress }) => {
+        if (progress) progress('Finalising visit…', 0.15);
+        await submitFinaliseVisitWork();
+        if (progress) progress('Visit closed', 1);
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Finalising visit…', work, {
+            button: document.getElementById('btnFinaliseVisitClose'),
+            buttonText: 'Finalising…'
+        });
+    }
+    return submitFinaliseVisitWork();
+}
+
+async function submitFinaliseVisitWork() {
     const lesions = typeof visitProcedureLesionsForFinalise === 'function' ? visitProcedureLesionsForFinalise() : [];
     const state = typeof visitFinaliseBillingState === 'function'
         ? visitFinaliseBillingState(lesions)

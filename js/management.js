@@ -988,77 +988,88 @@ async function submitLesionCommsModal() {
         if (typeof openHistologyModal === 'function') openHistologyModal(id);
         return;
     }
-    if (hasResult && typeof repairLesionAwaitingAfterResult === 'function') {
-        repairLesionAwaitingAfterResult(lesion);
-    }
     if (!note && !newPlan && type === 'plan') {
         showToast('Enter a note or a new plan.');
         return;
     }
-    const planAfter = newPlan || lesion.currentPlan || '';
-    appendLesionTimeline(lesion, {
-        type,
-        outcome: useOutcome,
-        note,
-        planAfter
-    });
-    if (newPlan) lesion.currentPlan = newPlan;
-    if (useOutcome && typeof applyContactOutcomeToLesion === 'function') {
-        applyContactOutcomeToLesion(lesion, useOutcome);
-    }
-    await saveManagedLesionRecord(lesion, 'comms:' + type, note || planAfter);
-    closeLesionCommsModal();
-    if (advised && typeof applyAdviceFromContact === 'function') {
-        const follow = await applyAdviceFromContact(lesion);
-        if (follow?.needResult) {
-            showToast('Record the histology result first.');
-            if (typeof openHistologyModal === 'function') openHistologyModal(id);
-            if (typeof renderChartSidebar === 'function') renderChartSidebar();
-            return;
+    const save = async ({ progress }) => {
+        if (hasResult && typeof repairLesionAwaitingAfterResult === 'function') {
+            repairLesionAwaitingAfterResult(lesion);
         }
-        if (follow?.openExcision) {
-            if (typeof lesionHasSavedHistology === 'function' && !lesionHasSavedHistology(lesion)
-                && !(typeof isOpenManagementChild === 'function' && isOpenManagementChild(lesion))) {
-                showToast('Save histology before booking a re-excision.');
+        const planAfter = newPlan || lesion.currentPlan || '';
+        appendLesionTimeline(lesion, {
+            type,
+            outcome: useOutcome,
+            note,
+            planAfter
+        });
+        if (newPlan) lesion.currentPlan = newPlan;
+        if (useOutcome && typeof applyContactOutcomeToLesion === 'function') {
+            applyContactOutcomeToLesion(lesion, useOutcome);
+        }
+        if (progress) progress('Saving contact…', 0.4);
+        await saveManagedLesionRecord(lesion, 'comms:' + type, note || planAfter);
+        closeLesionCommsModal();
+        if (advised && typeof applyAdviceFromContact === 'function') {
+            if (progress) progress('Updating plan…', 0.75);
+            const follow = await applyAdviceFromContact(lesion);
+            if (follow?.needResult) {
+                showToast('Record the histology result first.');
                 if (typeof openHistologyModal === 'function') openHistologyModal(id);
-            } else {
+                if (typeof renderChartSidebar === 'function') renderChartSidebar();
+                return;
+            }
+            if (follow?.openExcision) {
+                if (typeof lesionHasSavedHistology === 'function' && !lesionHasSavedHistology(lesion)
+                    && !(typeof isOpenManagementChild === 'function' && isOpenManagementChild(lesion))) {
+                    showToast('Save histology before booking a re-excision.');
+                    if (typeof openHistologyModal === 'function') openHistologyModal(id);
+                } else {
+                    const openId = follow.openChildId || lesion.id;
+                    showToast(follow.spawnedManagement
+                        ? 'Patient advised. Set the plan on the linked lesion in Lesions.'
+                        : 'Patient advised. Book the excision in Lesions.');
+                    openLesionDocumentation(openId);
+                }
+                if (typeof renderChartSidebar === 'function') renderChartSidebar();
+                return;
+            }
+            if (follow?.openLetter) {
                 const openId = follow.openChildId || lesion.id;
                 showToast(follow.spawnedManagement
-                    ? 'Patient advised. Set the plan on the linked lesion in Lesions.'
-                    : 'Patient advised. Book the excision in Lesions.');
-                openLesionDocumentation(openId);
+                    ? 'Patient advised. Further management opened — generate the referral letter when ready.'
+                    : 'Patient advised. Generate the referral letter when ready.');
+                if (typeof openLetterModalForRefer === 'function') openLetterModalForRefer(openId);
+                else if (typeof openLetterModal === 'function') openLetterModal({ letterType: 'specialist_referral', preferLesionIds: [openId] });
+                if (typeof renderChartSidebar === 'function') renderChartSidebar();
+                return;
             }
-            if (typeof renderChartSidebar === 'function') renderChartSidebar();
-            return;
+            if (follow?.closed) {
+                showToast('Patient advised. No further action.');
+                if (typeof renderChartSidebar === 'function') renderChartSidebar();
+                return;
+            }
+            if (follow?.billingHold) {
+                showToast('Patient advised. Confirm billing before the lesion can leave the board.');
+                if (typeof renderChartSidebar === 'function') renderChartSidebar();
+                return;
+            }
+            if (follow?.needPlan) {
+                showToast('Patient advised. Record the plan in Update result.');
+                if (typeof renderChartSidebar === 'function') renderChartSidebar();
+                return;
+            }
         }
-        if (follow?.openLetter) {
-            const openId = follow.openChildId || lesion.id;
-            showToast(follow.spawnedManagement
-                ? 'Patient advised. Further management opened — generate the referral letter when ready.'
-                : 'Patient advised. Generate the referral letter when ready.');
-            if (typeof openLetterModalForRefer === 'function') openLetterModalForRefer(openId);
-            else if (typeof openLetterModal === 'function') openLetterModal({ letterType: 'specialist_referral', preferLesionIds: [openId] });
-            if (typeof renderChartSidebar === 'function') renderChartSidebar();
-            return;
-        }
-        if (follow?.closed) {
-            showToast('Patient advised. No further action.');
-            if (typeof renderChartSidebar === 'function') renderChartSidebar();
-            return;
-        }
-        if (follow?.billingHold) {
-            showToast('Patient advised. Confirm billing before the lesion can leave the board.');
-            if (typeof renderChartSidebar === 'function') renderChartSidebar();
-            return;
-        }
-        if (follow?.needPlan) {
-            showToast('Patient advised. Record the plan in Update result.');
-            if (typeof renderChartSidebar === 'function') renderChartSidebar();
-            return;
-        }
+        showToast('Communication saved.');
+        if (typeof renderChartSidebar === 'function') renderChartSidebar();
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving contact…', save, {
+            button: document.getElementById('btnSaveLesionComms'),
+            buttonText: 'Saving…'
+        });
     }
-    showToast('Communication saved.');
-    if (typeof renderChartSidebar === 'function') renderChartSidebar();
+    return save({});
 }
 
 function renderBillingQueue(items) {
@@ -1707,51 +1718,62 @@ async function submitProcessBilling() {
         showToast('Accept at least one item, or enter a custom item number.');
         return;
     }
-    const group = processBillingContext.group && processBillingContext.group.length
-        ? processBillingContext.group
-        : [managedLesions.find((item) => String(item.id) === String(processBillingContext.lesionId))].filter(Boolean);
-    const consultAccepted = !!processBillingContext.accepted.consult
-        && codes.includes(CONSULT_ITEM_CODE);
-    let consultAssigned = false;
-    let confirmed = 0;
-    for (const lesion of group) {
-        let bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
-        if (bill && billingHasBeenSent(bill)) continue;
-        if (!bill && typeof createOrUpdateBillingFromLesion === 'function') {
-            bill = await createOrUpdateBillingFromLesion(lesion);
+    const send = async ({ progress }) => {
+        const group = processBillingContext.group && processBillingContext.group.length
+            ? processBillingContext.group
+            : [managedLesions.find((item) => String(item.id) === String(processBillingContext.lesionId))].filter(Boolean);
+        const consultAccepted = !!processBillingContext.accepted.consult
+            && codes.includes(CONSULT_ITEM_CODE);
+        let consultAssigned = false;
+        let confirmed = 0;
+        for (let i = 0; i < group.length; i++) {
+            const lesion = group[i];
+            if (progress) progress('Confirming billing…', 0.15 + (0.7 * ((i + 1) / Math.max(group.length, 1))));
+            let bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
+            if (bill && billingHasBeenSent(bill)) continue;
+            if (!bill && typeof createOrUpdateBillingFromLesion === 'function') {
+                bill = await createOrUpdateBillingFromLesion(lesion);
+            }
+            if (!bill || billingHasBeenSent(bill)) continue;
+            const typeEl = document.getElementById('processBillingType-' + String(lesion.id).replace(/'/g, ''));
+            if (typeEl?.value) {
+                bill.billingLesionType = typeEl.value;
+                lesion.billingLesionType = typeEl.value;
+            }
+            const procCodes = processBillingContext.items
+                .filter((item) => item.lesionId === String(lesion.id) && processBillingContext.accepted[item.key])
+                .map((item) => processBillingContext.accepted[item.key]);
+            const giveConsult = consultAccepted && !consultAssigned;
+            const claim = giveConsult ? [CONSULT_ITEM_CODE].concat(procCodes) : procCodes;
+            if (!claim.length) continue;
+            if (giveConsult) consultAssigned = true;
+            await persistProcessedBilling(bill, claim.join(' + '), {
+                excludeConsult: !giveConsult,
+                consultItem: giveConsult ? CONSULT_ITEM_CODE : '',
+                recommendationAccepted: true,
+                silentToast: true
+            });
+            confirmed += 1;
         }
-        if (!bill || billingHasBeenSent(bill)) continue;
-        const typeEl = document.getElementById('processBillingType-' + String(lesion.id).replace(/'/g, ''));
-        if (typeEl?.value) {
-            bill.billingLesionType = typeEl.value;
-            lesion.billingLesionType = typeEl.value;
+        if (!confirmed) {
+            showToast('Accept at least one item for a lesion in this procedure.');
+            return;
         }
-        const procCodes = processBillingContext.items
-            .filter((item) => item.lesionId === String(lesion.id) && processBillingContext.accepted[item.key])
-            .map((item) => processBillingContext.accepted[item.key]);
-        const giveConsult = consultAccepted && !consultAssigned;
-        const claim = giveConsult ? [CONSULT_ITEM_CODE].concat(procCodes) : procCodes;
-        if (!claim.length) continue;
-        if (giveConsult) consultAssigned = true;
-        await persistProcessedBilling(bill, claim.join(' + '), {
-            excludeConsult: !giveConsult,
-            consultItem: giveConsult ? CONSULT_ITEM_CODE : '',
-            recommendationAccepted: true,
-            silentToast: true
+        closeProcessBillingModal();
+        showToast('Session billing confirmed for ' + confirmed + ' lesion' + (confirmed === 1 ? '' : 's') + '. Print for the practice manager from Billing.');
+        if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+            if (typeof renderManagedLesions === 'function') renderManagedLesions();
+        } else {
+            setMgmtFilter('billing');
+        }
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Confirming billing…', send, {
+            button: document.getElementById('btnProcessBillingSend'),
+            buttonText: 'Confirming…'
         });
-        confirmed += 1;
     }
-    if (!confirmed) {
-        showToast('Accept at least one item for a lesion in this procedure.');
-        return;
-    }
-    closeProcessBillingModal();
-    showToast('Session billing confirmed for ' + confirmed + ' lesion' + (confirmed === 1 ? '' : 's') + '. Print for the practice manager from Billing.');
-    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
-        if (typeof renderManagedLesions === 'function') renderManagedLesions();
-    } else {
-        setMgmtFilter('billing');
-    }
+    return send({});
 }
 
 async function markSuspectedMelanomaForBilling(id) {
@@ -1860,21 +1882,31 @@ async function markBillingsAsProcessed(ids, extra) {
         if (!silentToast) showToast('Select confirmed billings to mark processed.');
         return;
     }
-    const now = new Date().toISOString();
-    for (const bill of list) {
-        bill.status = 'processed';
-        bill.processedAt = now;
-        bill.expiresAt = typeof billingProcessedExpiresAt === 'function' ? billingProcessedExpiresAt(now) : '';
-        if (!bill.confirmedAt) bill.confirmedAt = now;
-        await saveManagedBillingRecord(bill, 'processed', bill.assignedMbsItems || '');
-        if (typeof stampLesionBillingProcessed === 'function') {
-            await stampLesionBillingProcessed(bill.lesionId, now);
+    const work = async ({ progress }) => {
+        const now = new Date().toISOString();
+        for (let i = 0; i < list.length; i++) {
+            const bill = list[i];
+            if (progress) progress('Marking billing processed…', (i + 1) / list.length);
+            bill.status = 'processed';
+            bill.processedAt = now;
+            bill.expiresAt = typeof billingProcessedExpiresAt === 'function' ? billingProcessedExpiresAt(now) : '';
+            if (!bill.confirmedAt) bill.confirmedAt = now;
+            await saveManagedBillingRecord(bill, 'processed', bill.assignedMbsItems || '');
+            if (typeof stampLesionBillingProcessed === 'function') {
+                await stampLesionBillingProcessed(bill.lesionId, now);
+            }
         }
+        if (!silentToast) {
+            showToast(list.length === 1 ? 'Moved to processed billings.' : list.length + ' billings moved to processed.');
+        }
+        renderManagedLesions();
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Marking billing processed…', work, {
+            join: typeof isAppBusy === 'function' && isAppBusy()
+        });
     }
-    if (!silentToast) {
-        showToast(list.length === 1 ? 'Moved to processed billings.' : list.length + ' billings moved to processed.');
-    }
-    renderManagedLesions();
+    return work({});
 }
 
 function printConfirmedBillings(onlyId) {
@@ -2333,59 +2365,70 @@ async function submitHistologyModal() {
     }
     const lesion = managedLesions.find((item) => String(item.id) === String(id));
     if (lesion) lesion.billingLesionType = billingType;
-    const saved = await recordHistologyOutcome(id, result, next, billingType, {
-        callNote,
-        contact,
-        fileNoCall,
-        urgent: billingType === 'confirmed_melanoma',
-        histologyCaseNumber: caseNumber,
-        histologyPot: pot,
-        histologyDiagnosis,
-        proposedPlan: (next === 'further_management' || next === 'plan_excision') ? proposedPlan : '',
-        proposedPlanNote: (next === 'further_management' || next === 'plan_excision') ? proposedPlanNote : ''
-    });
-    let siblingNote = '';
-    if (applySiblings && caseNumber && typeof applyHistologyCaseToSiblings === 'function') {
-        const share = await applyHistologyCaseToSiblings(id, caseNumber);
-        const applied = typeof share === 'number' ? share : (share?.applied || 0);
-        const skipped = typeof share === 'object' ? (share?.skipped || 0) : 0;
-        if (applied) {
-            siblingNote = ' Case number also set on ' + applied + ' other pot' + (applied === 1 ? '' : 's') + ' from this procedure.';
+    const save = async ({ progress }) => {
+        if (progress) progress('Saving histology…', 0.25);
+        const saved = await recordHistologyOutcome(id, result, next, billingType, {
+            callNote,
+            contact,
+            fileNoCall,
+            urgent: billingType === 'confirmed_melanoma',
+            histologyCaseNumber: caseNumber,
+            histologyPot: pot,
+            histologyDiagnosis,
+            proposedPlan: (next === 'further_management' || next === 'plan_excision') ? proposedPlan : '',
+            proposedPlanNote: (next === 'further_management' || next === 'plan_excision') ? proposedPlanNote : ''
+        });
+        let siblingNote = '';
+        if (applySiblings && caseNumber && typeof applyHistologyCaseToSiblings === 'function') {
+            if (progress) progress('Updating other pots…', 0.7);
+            const share = await applyHistologyCaseToSiblings(id, caseNumber);
+            const applied = typeof share === 'number' ? share : (share?.applied || 0);
+            const skipped = typeof share === 'object' ? (share?.skipped || 0) : 0;
+            if (applied) {
+                siblingNote = ' Case number also set on ' + applied + ' other pot' + (applied === 1 ? '' : 's') + ' from this procedure.';
+            }
+            if (skipped) {
+                siblingNote += ' Left ' + skipped + ' pot' + (skipped === 1 ? '' : 's') + ' that already had a different lab number.';
+            }
         }
-        if (skipped) {
-            siblingNote += ' Left ' + skipped + ' pot' + (skipped === 1 ? '' : 's') + ' that already had a different lab number.';
+        closeHistologyModal();
+        const further = next === 'further_management' || next === 'plan_excision';
+        const messages = {
+            advised_now: further
+                ? 'Result saved. Patient advised. Further management opened on a linked lesion.'
+                : (saved?.billingHold
+                    ? 'Result saved. Patient advised. Confirm billing before the lesion can leave the board.'
+                    : 'Result saved. Patient advised. No further action.'),
+            appointment_requested: further
+                ? 'Result saved. Appointment requested — contact stays on the linked management lesion.'
+                : 'Result saved. Appointment requested to discuss the result.',
+            not_reached: further
+                ? 'Result saved. Not reached — linked management lesion stays on Needs contact.'
+                : 'Result saved. Not reached — stays on Needs contact.',
+            mark_for_contact: further
+                ? 'Result saved. Linked management lesion marked for contact.'
+                : 'Result saved. Marked for contact.',
+            file_no_call: saved?.billingHold
+                ? 'Result saved. Filed with no call. Confirm billing before the lesion can leave the board.'
+                : 'Result saved. Filed with no call. No further action.'
+        };
+        const key = fileNoCall ? 'file_no_call' : contact;
+        showToast((messages[key] || 'Result saved.') + siblingNote);
+        if (saved?.needResult) {
+            showToast('Save a histology result before opening further management.');
+            return true;
         }
-    }
-    closeHistologyModal();
-    const further = next === 'further_management' || next === 'plan_excision';
-    const messages = {
-        advised_now: further
-            ? 'Result saved. Patient advised. Further management opened on a linked lesion.'
-            : (saved?.billingHold
-                ? 'Result saved. Patient advised. Confirm billing before the lesion can leave the board.'
-                : 'Result saved. Patient advised. No further action.'),
-        appointment_requested: further
-            ? 'Result saved. Appointment requested — contact stays on the linked management lesion.'
-            : 'Result saved. Appointment requested to discuss the result.',
-        not_reached: further
-            ? 'Result saved. Not reached — linked management lesion stays on Needs contact.'
-            : 'Result saved. Not reached — stays on Needs contact.',
-        mark_for_contact: further
-            ? 'Result saved. Linked management lesion marked for contact.'
-            : 'Result saved. Marked for contact.',
-        file_no_call: saved?.billingHold
-            ? 'Result saved. Filed with no call. Confirm billing before the lesion can leave the board.'
-            : 'Result saved. Filed with no call. No further action.'
-    };
-    const key = fileNoCall ? 'file_no_call' : contact;
-    showToast((messages[key] || 'Result saved.') + siblingNote);
-    if (saved?.needResult) {
-        showToast('Save a histology result before opening further management.');
+        const openId = saved?.openChildId || id;
+        if (saved?.openExcision) openLesionDocumentation(openId);
         return true;
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving histology…', save, {
+            button: document.getElementById('btnSaveHistology'),
+            buttonText: 'Saving…'
+        });
     }
-    const openId = saved?.openChildId || id;
-    if (saved?.openExcision) openLesionDocumentation(openId);
-    return true;
+    return save({});
 }
 
 function findLesionForExcisionProcedure(id) {

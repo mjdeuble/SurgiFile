@@ -899,53 +899,65 @@ async function generateExcisionConsent(options) {
         showToast('Could not build the consent text.');
         return;
     }
-    let saved = null;
-    let saveFailed = false;
-    if (typeof saveGeneratedConsentDoc === 'function') {
-        try {
-            saved = await saveGeneratedConsentDoc(data, text, printHtml);
-            if (typeof isVaultLoggedIn === 'function' && isVaultLoggedIn() && !saved?.id) saveFailed = true;
-            if (saved?.id) {
-                if (excisionConsentSession.docId && excisionConsentSession.docId !== saved.id && typeof deleteManagedConsentDoc === 'function') {
-                    await deleteManagedConsentDoc(excisionConsentSession.docId);
+    const generate = async ({ progress }) => {
+        let saved = null;
+        let saveFailed = false;
+        if (progress) progress('Saving consent…', 0.25);
+        if (typeof saveGeneratedConsentDoc === 'function') {
+            try {
+                saved = await saveGeneratedConsentDoc(data, text, printHtml);
+                if (typeof isVaultLoggedIn === 'function' && isVaultLoggedIn() && !saved?.id) saveFailed = true;
+                if (saved?.id) {
+                    if (excisionConsentSession.docId && excisionConsentSession.docId !== saved.id && typeof deleteManagedConsentDoc === 'function') {
+                        await deleteManagedConsentDoc(excisionConsentSession.docId);
+                    }
+                    excisionConsentSession.docId = saved.id;
                 }
-                excisionConsentSession.docId = saved.id;
+            } catch (err) {
+                saveFailed = true;
+                console.warn('Could not save consent document', err);
+                if (typeof toastVaultWriteError === 'function') {
+                    toastVaultWriteError('Consent could not be saved to the clinic folder. Check folder access.');
+                } else if (typeof showToast === 'function') {
+                    showToast('Consent could not be saved to the clinic folder. Check folder access.');
+                }
             }
-        } catch (err) {
+        } else if (typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
             saveFailed = true;
-            console.warn('Could not save consent document', err);
-            if (typeof toastVaultWriteError === 'function') {
-                toastVaultWriteError('Consent could not be saved to the clinic folder. Check folder access.');
+        }
+        if (saveFailed) {
+            if (typeof copyTextToClipboard === 'function') {
+                copyTextToClipboard(text, 'Consent copied for BP Premier, but it was not saved in DermRecord.');
             } else if (typeof showToast === 'function') {
-                showToast('Consent could not be saved to the clinic folder. Check folder access.');
+                showToast('Consent was not saved to the clinic folder. Check folder access.');
             }
+            return;
         }
-    } else if (typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
-        saveFailed = true;
-    }
-    if (saveFailed) {
         if (typeof copyTextToClipboard === 'function') {
-            copyTextToClipboard(text, 'Consent copied for BP Premier, but it was not saved in DermRecord.');
-        } else if (typeof showToast === 'function') {
-            showToast('Consent was not saved to the clinic folder. Check folder access.');
+            copyTextToClipboard(text, options?.print ? 'Consent copied for BP Premier. Opening print…' : 'Consent copied for BP Premier.');
+        } else {
+            showToast('Consent text is ready, but copy is unavailable.');
         }
-        return;
+        try {
+            if (progress) progress('Marking lesions consented…', 0.75);
+            await markListedLesionsWrittenConsent(data.procedures);
+            importExcisionLesions({ silent: true });
+        } catch (err) {
+            console.warn('Could not mark lesions consented', err);
+            if (typeof showToast === 'function') showToast('Consent was saved, but lesions could not be marked consented.');
+        }
+        excisionConsentSession.issued = true;
+        updateExcisionConsentModalActions();
+        if (options?.print) printConsentHtml(data);
+        if (progress) progress('Consent ready', 1);
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving consent…', generate, {
+            button: document.getElementById('btnGenerateExcisionConsent'),
+            buttonText: options?.print ? 'Printing…' : 'Saving…'
+        });
     }
-    if (typeof copyTextToClipboard === 'function') {
-        copyTextToClipboard(text, options?.print ? 'Consent copied for BP Premier. Opening print…' : 'Consent copied for BP Premier.');
-    } else {
-        showToast('Consent text is ready, but copy is unavailable.');
-    }
-    try {
-        await markListedLesionsWrittenConsent(data.procedures);
-        importExcisionLesions({ silent: true });
-    } catch (err) {
-        console.warn('Could not mark lesions consented', err);
-        if (typeof showToast === 'function') showToast('Consent was saved, but lesions could not be marked consented.');
-    }
-    excisionConsentSession.issued = true;
-    updateExcisionConsentModalActions();
-    if (options?.print) printConsentHtml(data);
+    return generate({});
 }
 
 function printConsentHtml(data) {

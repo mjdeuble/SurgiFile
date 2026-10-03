@@ -1378,10 +1378,9 @@ function renderProcedureAbortList() {
 function toggleProcedureSession() {
     ensureProcedureSession();
     if (procedureSession.started) {
-        endProcedureSession();
-        return;
+        return endProcedureSession();
     }
-    startProcedureSession();
+    return startProcedureSession();
 }
 
 function startProcedureSession() {
@@ -1403,26 +1402,35 @@ function startProcedureSession() {
         renderProcedureWorkspace();
         return;
     }
-    procedureSession.started = true;
-    procedureSession.startedAt = new Date().toISOString();
-    procedureSession.completedAt = '';
-    procedureSession.lockedIds = procedureSession.selectedIds.map(String);
-    procedureSession.preStartByLesionId = captureProcedurePreStartSnapshots(
-        typeof procedureSelectedLesions === 'function' ? procedureSelectedLesions() : []
-    );
-    procedureSession.complications = emptyEpisodeComplications();
-    procedureSession.complicationNotes = '';
-    procedureSession.siteComplications = {};
-    procedureSession.amendLesionId = '';
-    procedureSession.amendPanel = '';
-    syncExLesionsFromProcedureSession();
-    if (typeof updateOutput === 'function') updateOutput();
-    if (typeof persistProcedureSessionToChart === 'function') {
-        catchProcedureVaultWrite(persistProcedureSessionToChart());
+    const start = async () => {
+        procedureSession.started = true;
+        procedureSession.startedAt = new Date().toISOString();
+        procedureSession.completedAt = '';
+        procedureSession.lockedIds = procedureSession.selectedIds.map(String);
+        procedureSession.preStartByLesionId = captureProcedurePreStartSnapshots(
+            typeof procedureSelectedLesions === 'function' ? procedureSelectedLesions() : []
+        );
+        procedureSession.complications = emptyEpisodeComplications();
+        procedureSession.complicationNotes = '';
+        procedureSession.siteComplications = {};
+        procedureSession.amendLesionId = '';
+        procedureSession.amendPanel = '';
+        syncExLesionsFromProcedureSession();
+        if (typeof updateOutput === 'function') updateOutput();
+        if (typeof persistProcedureSessionToChart === 'function') {
+            await persistProcedureSessionToChart();
+        }
+        if (typeof applyProcedureComplicationFields === 'function') applyProcedureComplicationFields();
+        if (typeof refreshProcedureCompleteOutputs === 'function') refreshProcedureCompleteOutputs();
+        renderProcedureWorkspace();
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Starting procedure…', start, {
+            button: document.getElementById('btnToggleProcedure'),
+            buttonText: 'Starting…'
+        });
     }
-    if (typeof applyProcedureComplicationFields === 'function') applyProcedureComplicationFields();
-    if (typeof refreshProcedureCompleteOutputs === 'function') refreshProcedureCompleteOutputs();
-    renderProcedureWorkspace();
+    return start();
 }
 
 function showProcedureFinishPhase() {
@@ -1705,103 +1713,133 @@ async function endProcedureSession() {
         showProcedureFinishPhase();
         return;
     }
-    const episodeNote = formatEpisodeComplications();
-    const ids = procedureSession.selectedIds.slice();
-    if (!ids.length) {
+    const complete = async ({ progress }) => {
+        const episodeNote = formatEpisodeComplications();
+        const ids = procedureSession.selectedIds.slice();
+        if (!ids.length) {
+            procedureSession.started = false;
+            procedureSession.completedAt = new Date().toISOString();
+            closeProcedureCompleteModal();
+            renderProcedureWorkspace();
+            if (typeof persistProcedureSessionToChart === 'function') {
+                if (progress) progress('Saving procedure…', 0.6);
+                try {
+                    await persistProcedureSessionToChart();
+                } catch (err) {
+                    if (typeof warnVaultWriteFailure === 'function') {
+                        warnVaultWriteFailure(err, 'Procedure session could not be saved to the clinic folder. Check folder access.');
+                    } else {
+                        console.warn('Procedure session persist failed', err);
+                    }
+                }
+            }
+            return;
+        }
+        const ordered = typeof procedureSelectedLesions === 'function'
+            ? procedureSelectedLesions()
+            : ids.map((id) => (
+                (typeof managedLesions !== 'undefined' ? managedLesions : []).find((item) => String(item.id) === String(id))
+                || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(id))
+            )).filter(Boolean);
+        if (typeof stampHistologyBatchForProcedure === 'function') {
+            stampHistologyBatchForProcedure(ordered.length ? ordered : ids.map((id) => ({ id })));
+        }
+        for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            if (progress) progress('Saving procedure lesions…', 0.15 + (0.65 * ((i + 1) / ids.length)));
+            let lesion = managedLesions.find((item) => String(item.id) === String(id))
+                || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(id));
+            if (!lesion) continue;
+            const stamped = ordered.find((item) => String(item.id) === String(id));
+            if (stamped?.histologyBatchId) lesion.histologyBatchId = stamped.histologyBatchId;
+            if (stamped?.histologyPot && (typeof normalizeHistologyPot === 'function' ? !normalizeHistologyPot(lesion.histologyPot) : !String(lesion.histologyPot || '').trim())) {
+                lesion.histologyPot = stamped.histologyPot;
+            }
+            lesion.procedureCompletedAt = new Date().toISOString();
+            lesion.procedureEpisodeComplications = episodeNote;
+            lesion.procedureSiteComplications = formatSiteComplications(id);
+            lesion.procedureComplications = formatLesionComplicationStamp(id);
+            lesion.managementStatus = 'awaiting_histology';
+            lesion.schemaVersion = typeof LESION_SCHEMA_VERSION !== 'undefined' ? LESION_SCHEMA_VERSION : 2;
+            lesion.currentPlan = 'Awaiting histology';
+            if (typeof appendLesionTimeline === 'function') {
+                appendLesionTimeline(lesion, {
+                    type: 'procedure',
+                    note: lesion.procedureComplications || 'Procedure completed',
+                    planAfter: 'Awaiting histology'
+                });
+            }
+            const sessionIdx = lesions.findIndex((item) => String(item.id) === String(id));
+            if (sessionIdx !== -1) lesions[sessionIdx] = { ...lesions[sessionIdx], ...lesion };
+            try {
+                if (typeof persistSessionLesionToVault === 'function' && isVaultLoggedIn()) {
+                    await persistSessionLesionToVault(lesion);
+                }
+                if (typeof setManagedLesionStatus === 'function' && isVaultLoggedIn()) {
+                    await setManagedLesionStatus(id, 'awaiting_histology', lesion.procedureComplications || 'Procedure completed');
+                }
+                if (typeof createOrUpdateBillingFromLesion === 'function') {
+                    await createOrUpdateBillingFromLesion(lesion);
+                }
+            } catch (err) {
+                lesion.managementStatus = 'awaiting_histology';
+                if (typeof warnVaultWriteFailure === 'function') {
+                    warnVaultWriteFailure(err, 'Procedure lesion could not be saved to the clinic folder. Check folder access.');
+                } else {
+                    console.warn('Procedure lesion persist failed', err);
+                }
+                if (typeof createOrUpdateBillingFromLesion === 'function') {
+                    try { await createOrUpdateBillingFromLesion(lesion); } catch (billErr) { /* in-memory billing still attempted */ }
+                }
+            }
+        }
+        const finishedLesions = ids.map((id) => managedLesions.find((item) => String(item.id) === String(id))).filter(Boolean);
         procedureSession.started = false;
         procedureSession.completedAt = new Date().toISOString();
+        procedureSession.selectedIds = [];
+        procedureSession.detailLesionId = '';
+        procedureSession.preStartByLesionId = {};
         closeProcedureCompleteModal();
-        renderProcedureWorkspace();
+        const billed = typeof procedureSessionBillingSummary === 'function'
+            ? procedureSessionBillingSummary(finishedLesions)
+            : null;
+        if (billed?.allReady) {
+            showToast('Procedure finished. Process session billing when histology is in for every lesion.');
+        } else if (billed?.allHold || billed?.mixed) {
+            showToast('Procedure finished. Billing waits until histology is in for every lesion.');
+        } else {
+            showToast('Procedure finished. Copy IEMR, reception, and billing when you finalise the visit.');
+        }
+        if (typeof renderLesionsTable === 'function') renderLesionsTable();
+        if (typeof renderChartSidebar === 'function') renderChartSidebar();
+        if (typeof renderManagedLesions === 'function') renderManagedLesions();
+        if (typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
+        if (typeof updateOutput === 'function') updateOutput();
+        if (typeof saveCurrentVisitNotes === 'function') {
+            saveCurrentVisitNotes().catch(() => { /* snapshot is best-effort */ });
+        }
         if (typeof persistProcedureSessionToChart === 'function') {
-            catchProcedureVaultWrite(persistProcedureSessionToChart());
-        }
-        return;
-    }
-    const ordered = typeof procedureSelectedLesions === 'function'
-        ? procedureSelectedLesions()
-        : ids.map((id) => (
-            (typeof managedLesions !== 'undefined' ? managedLesions : []).find((item) => String(item.id) === String(id))
-            || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(id))
-        )).filter(Boolean);
-    if (typeof stampHistologyBatchForProcedure === 'function') {
-        stampHistologyBatchForProcedure(ordered.length ? ordered : ids.map((id) => ({ id })));
-    }
-    for (const id of ids) {
-        let lesion = managedLesions.find((item) => String(item.id) === String(id))
-            || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(id));
-        if (!lesion) continue;
-        const stamped = ordered.find((item) => String(item.id) === String(id));
-        if (stamped?.histologyBatchId) lesion.histologyBatchId = stamped.histologyBatchId;
-        if (stamped?.histologyPot && (typeof normalizeHistologyPot === 'function' ? !normalizeHistologyPot(lesion.histologyPot) : !String(lesion.histologyPot || '').trim())) {
-            lesion.histologyPot = stamped.histologyPot;
-        }
-        lesion.procedureCompletedAt = new Date().toISOString();
-        lesion.procedureEpisodeComplications = episodeNote;
-        lesion.procedureSiteComplications = formatSiteComplications(id);
-        lesion.procedureComplications = formatLesionComplicationStamp(id);
-        lesion.managementStatus = 'awaiting_histology';
-        lesion.schemaVersion = typeof LESION_SCHEMA_VERSION !== 'undefined' ? LESION_SCHEMA_VERSION : 2;
-        lesion.currentPlan = 'Awaiting histology';
-        if (typeof appendLesionTimeline === 'function') {
-            appendLesionTimeline(lesion, {
-                type: 'procedure',
-                note: lesion.procedureComplications || 'Procedure completed',
-                planAfter: 'Awaiting histology'
-            });
-        }
-        const sessionIdx = lesions.findIndex((item) => String(item.id) === String(id));
-        if (sessionIdx !== -1) lesions[sessionIdx] = { ...lesions[sessionIdx], ...lesion };
-        try {
-            if (typeof persistSessionLesionToVault === 'function' && isVaultLoggedIn()) {
-                await persistSessionLesionToVault(lesion);
-            }
-            if (typeof setManagedLesionStatus === 'function' && isVaultLoggedIn()) {
-                await setManagedLesionStatus(id, 'awaiting_histology', lesion.procedureComplications || 'Procedure completed');
-            }
-            if (typeof createOrUpdateBillingFromLesion === 'function') {
-                await createOrUpdateBillingFromLesion(lesion);
-            }
-        } catch (err) {
-            lesion.managementStatus = 'awaiting_histology';
-            if (typeof warnVaultWriteFailure === 'function') {
-                warnVaultWriteFailure(err, 'Procedure lesion could not be saved to the clinic folder. Check folder access.');
-            } else {
-                console.warn('Procedure lesion persist failed', err);
-            }
-            if (typeof createOrUpdateBillingFromLesion === 'function') {
-                try { await createOrUpdateBillingFromLesion(lesion); } catch (billErr) { /* in-memory billing still attempted */ }
+            if (progress) progress('Saving procedure…', 0.92);
+            try {
+                await persistProcedureSessionToChart();
+            } catch (err) {
+                if (typeof warnVaultWriteFailure === 'function') {
+                    warnVaultWriteFailure(err, 'Procedure session could not be saved to the clinic folder. Check folder access.');
+                } else {
+                    console.warn('Procedure session persist failed', err);
+                }
             }
         }
+        renderProcedureWorkspace();
+        if (progress) progress('Procedure complete', 1);
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Completing procedure…', complete, {
+            button: document.getElementById('btnCompleteProcedure') || document.getElementById('btnToggleProcedure'),
+            buttonText: 'Completing…'
+        });
     }
-    const finishedLesions = ids.map((id) => managedLesions.find((item) => String(item.id) === String(id))).filter(Boolean);
-    procedureSession.started = false;
-    procedureSession.completedAt = new Date().toISOString();
-    procedureSession.selectedIds = [];
-    procedureSession.detailLesionId = '';
-    procedureSession.preStartByLesionId = {};
-    closeProcedureCompleteModal();
-    const billed = typeof procedureSessionBillingSummary === 'function'
-        ? procedureSessionBillingSummary(finishedLesions)
-        : null;
-    if (billed?.allReady) {
-        showToast('Procedure finished. Process session billing when histology is in for every lesion.');
-    } else if (billed?.allHold || billed?.mixed) {
-        showToast('Procedure finished. Billing waits until histology is in for every lesion.');
-    } else {
-        showToast('Procedure finished. Copy IEMR, reception, and billing when you finalise the visit.');
-    }
-    if (typeof renderLesionsTable === 'function') renderLesionsTable();
-    if (typeof renderChartSidebar === 'function') renderChartSidebar();
-    if (typeof renderManagedLesions === 'function') renderManagedLesions();
-    if (typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
-    if (typeof updateOutput === 'function') updateOutput();
-    if (typeof saveCurrentVisitNotes === 'function') {
-        saveCurrentVisitNotes().catch(() => { /* snapshot is best-effort */ });
-    }
-    if (typeof persistProcedureSessionToChart === 'function') {
-        catchProcedureVaultWrite(persistProcedureSessionToChart());
-    }
-    renderProcedureWorkspace();
+    return complete({});
 }
 
 function syncProcedurePhaseUi() {

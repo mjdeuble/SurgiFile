@@ -161,6 +161,116 @@ function copyViaTextarea(text) {
     return successful;
 }
 
+let appBusy = {
+    depth: 0,
+    label: '',
+    button: null,
+    buttonText: '',
+    paint: 0,
+    frac: 0
+};
+
+function isAppBusy() {
+    return appBusy.depth > 0 || (typeof vaultAuthBusy !== 'undefined' && vaultAuthBusy);
+}
+
+function paintAppBusy() {
+    appBusy.paint = 0;
+    const overlay = document.getElementById('appBusyOverlay');
+    const bar = document.getElementById('appBusyBar');
+    const label = document.getElementById('appBusyLabel');
+    const track = overlay ? overlay.querySelector('[role="progressbar"]') : null;
+    const on = appBusy.depth > 0;
+    if (overlay) {
+        overlay.classList.toggle('hidden', !on);
+        overlay.setAttribute('aria-hidden', on ? 'false' : 'true');
+    }
+    document.body.classList.toggle('is-app-busy', on);
+    if (label) label.textContent = appBusy.label || 'Working…';
+    if (bar) {
+        if (appBusy.frac > 0) {
+            bar.classList.remove('is-indeterminate');
+            bar.style.width = Math.round(appBusy.frac * 100) + '%';
+        } else {
+            bar.classList.add('is-indeterminate');
+            bar.style.width = '';
+        }
+    }
+    if (track) {
+        track.setAttribute('aria-valuenow', String(Math.round((appBusy.frac || 0) * 100)));
+        track.setAttribute('aria-busy', on ? 'true' : 'false');
+    }
+}
+
+function updateAppBusyProgress(label, fraction) {
+    if (label) appBusy.label = String(label);
+    if (fraction != null && Number.isFinite(Number(fraction))) {
+        appBusy.frac = Math.max(0, Math.min(1, Number(fraction)));
+    }
+    if (!appBusy.paint) appBusy.paint = requestAnimationFrame(paintAppBusy);
+}
+
+function beginAppBusy(label, options) {
+    options = options || {};
+    if (appBusy.depth > 0) {
+        appBusy.depth += 1;
+        if (label) updateAppBusyProgress(label);
+        return false;
+    }
+    appBusy.depth = 1;
+    appBusy.label = label || 'Working…';
+    appBusy.frac = Number(options.fraction) || 0;
+    const btn = options.button || null;
+    appBusy.button = btn;
+    appBusy.buttonText = btn ? String(btn.textContent || '') : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+        if (options.buttonText) btn.textContent = options.buttonText;
+    }
+    paintAppBusy();
+    return true;
+}
+
+function endAppBusy() {
+    if (appBusy.depth <= 0) return;
+    appBusy.depth -= 1;
+    if (appBusy.depth > 0) return;
+    const btn = appBusy.button;
+    if (btn) {
+        btn.disabled = false;
+        btn.removeAttribute('aria-busy');
+        if (appBusy.buttonText) btn.textContent = appBusy.buttonText;
+    }
+    appBusy.button = null;
+    appBusy.buttonText = '';
+    appBusy.label = '';
+    appBusy.frac = 0;
+    paintAppBusy();
+}
+
+async function runBusyAction(label, work, options) {
+    options = options || {};
+    if (typeof vaultAuthBusy !== 'undefined' && vaultAuthBusy) {
+        if (typeof showToast === 'function') showToast('Wait until sign-in finishes.');
+        return;
+    }
+    if (appBusy.depth > 0 && !options.join) {
+        if (typeof showToast === 'function') {
+            showToast('Wait until ' + (appBusy.label || 'the current action') + ' finishes.');
+        }
+        return;
+    }
+    beginAppBusy(label, options);
+    try {
+        return await work({
+            progress: updateAppBusyProgress
+        });
+    } finally {
+        endAppBusy();
+    }
+}
+
 function copyTextToClipboard(text, successMsg, onSuccess) {
     if (!text) {
         showToast('No text available to copy.');
