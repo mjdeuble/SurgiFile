@@ -164,9 +164,9 @@ function copyViaTextarea(text) {
 let appBusy = {
     depth: 0,
     label: '',
+    actionLabel: '',
     button: null,
     buttonText: '',
-    paint: 0,
     frac: 0
 };
 
@@ -175,7 +175,6 @@ function isAppBusy() {
 }
 
 function paintAppBusy() {
-    appBusy.paint = 0;
     const overlay = document.getElementById('appBusyOverlay');
     const bar = document.getElementById('appBusyBar');
     const label = document.getElementById('appBusyLabel');
@@ -207,7 +206,7 @@ function updateAppBusyProgress(label, fraction) {
     if (fraction != null && Number.isFinite(Number(fraction))) {
         appBusy.frac = Math.max(0, Math.min(1, Number(fraction)));
     }
-    if (!appBusy.paint) appBusy.paint = requestAnimationFrame(paintAppBusy);
+    paintAppBusy();
 }
 
 function beginAppBusy(label, options) {
@@ -219,6 +218,7 @@ function beginAppBusy(label, options) {
     }
     appBusy.depth = 1;
     appBusy.label = label || 'Working…';
+    appBusy.actionLabel = appBusy.label;
     appBusy.frac = Number(options.fraction) || 0;
     const btn = options.button || null;
     appBusy.button = btn;
@@ -245,6 +245,7 @@ function endAppBusy() {
     appBusy.button = null;
     appBusy.buttonText = '';
     appBusy.label = '';
+    appBusy.actionLabel = '';
     appBusy.frac = 0;
     paintAppBusy();
 }
@@ -257,7 +258,7 @@ async function runBusyAction(label, work, options) {
     }
     if (appBusy.depth > 0 && !options.join) {
         if (typeof showToast === 'function') {
-            showToast('Wait until ' + (appBusy.label || 'the current action') + ' finishes.');
+            showToast('Wait until ' + (appBusy.actionLabel || appBusy.label || 'the current action') + ' finishes.');
         }
         return;
     }
