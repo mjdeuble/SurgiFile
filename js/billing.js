@@ -956,17 +956,40 @@ function lesionHasBillingHistology(lesion) {
         : !!String(lesion?.histologyResult || '').trim();
 }
 
+function lesionHasHistologyForBilling(lesion) {
+    if (typeof billingHistologyTextForType === 'function') {
+        return !!billingHistologyTextForType(lesion);
+    }
+    return typeof lesionHasBillingHistology === 'function'
+        ? lesionHasBillingHistology(lesion)
+        : !!String(lesion?.histologyResult || '').trim();
+}
+
+function lesionIsSuspectedMelanomaForBilling(lesion) {
+    if (!lesion || (typeof isDiagnosticBiopsyForBilling === 'function' && isDiagnosticBiopsyForBilling(lesion))) {
+        return false;
+    }
+    if (lesionHasHistologyForBilling(lesion)) return false;
+    const type = typeof inferBillingLesionType === 'function' ? inferBillingLesionType(lesion) : '';
+    if (type === 'confirmed_melanoma') return false;
+    if (type === 'suspected_melanoma') return true;
+    return typeof clinicalDiagnosisIsMelanoma === 'function' && clinicalDiagnosisIsMelanoma(lesion);
+}
+
 function lesionNeedsHistologyToBill(lesion) {
-    return typeof isDiagnosticBiopsyForBilling === 'function'
-        ? !isDiagnosticBiopsyForBilling(lesion)
-        : true;
+    if (typeof isDiagnosticBiopsyForBilling === 'function' && isDiagnosticBiopsyForBilling(lesion)) {
+        return false;
+    }
+    if (lesionIsSuspectedMelanomaForBilling(lesion)) return false;
+    if (lesionHasHistologyForBilling(lesion)) return false;
+    return true;
 }
 
 function procedureGroupBillingReady(lesion) {
     const group = procedureBillingGroup(lesion);
     if (!group.length) return { ok: false, hold: true, group, billable: [], pending: [], reason: 'No procedure to bill.' };
-    const pending = group.filter((item) => lesionNeedsHistologyToBill(item) && !lesionHasBillingHistology(item));
-    const billable = group.filter((item) => !lesionNeedsHistologyToBill(item) || lesionHasBillingHistology(item));
+    const pending = group.filter((item) => lesionNeedsHistologyToBill(item) && !lesionHasHistologyForBilling(item));
+    const billable = group.filter((item) => !lesionNeedsHistologyToBill(item) || lesionHasHistologyForBilling(item));
     if (!billable.length) {
         const sites = pending.map((item) => item.location || 'site').join(', ');
         return {
@@ -976,8 +999,8 @@ function procedureGroupBillingReady(lesion) {
             billable,
             pending,
             reason: pending.length === 1
-                ? 'Enter histology for ' + sites + ' before billing this excision.'
-                : 'Enter histology for excision lesions in this procedure before billing (' + sites + ' still pending).'
+                ? 'Enter histology for ' + sites + ' before billing this excision. 30071, suspected melanoma, and lesions with known histology can be billed now.'
+                : 'Enter histology for these excisions before billing (' + sites + '). 30071, suspected melanoma, and known-histology lesions can be billed now.'
         };
     }
     const pendingSites = pending.map((item) => item.location || 'site').join(', ');
@@ -989,7 +1012,7 @@ function procedureGroupBillingReady(lesion) {
         billable,
         pending,
         reason: pending.length
-            ? 'Bill 30071 now. Hold excision items until histology is in for ' + pendingSites + '.'
+            ? 'Bill ready items now (30071, suspected melanoma, or known histology). Hold until histology for ' + pendingSites + '.'
             : ''
     };
 }
@@ -1017,29 +1040,29 @@ function lesionCanBillAtProcedure(lesion) {
             kind: 'biopsy'
         };
     }
-    if (!lesionHasBillingHistology(lesion)) {
-        return {
-            ok: false,
-            hold: true,
-            reason: 'Hold this excision until histology is in. 30071 from the same visit can still be billed now.',
-            kind: 'hold'
-        };
-    }
-    const type = inferBillingLesionType(lesion);
-    if (type === 'confirmed_melanoma' || histologyIndicatesMelanoma(lesion)) {
+    if (lesionIsSuspectedMelanomaForBilling(lesion)) {
         return {
             ok: true,
             hold: false,
-            reason: 'Confirmed melanoma histology. Bill confirmed melanoma excision items (31371–31376) now.',
+            reason: 'Suspected melanoma — bill 31377–31383 at the procedure. Use definitive melanoma items if prior histology exists (parent lesion or copied result).',
+            kind: 'suspected_melanoma'
+        };
+    }
+    if (typeof inferBillingLesionType === 'function' && inferBillingLesionType(lesion) === 'confirmed_melanoma'
+        || (typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma(lesion))) {
+        return {
+            ok: true,
+            hold: false,
+            reason: 'Histology known — bill definitive melanoma excision (31371–31376).',
             kind: 'confirmed_melanoma'
         };
     }
-    if (type === 'suspected_melanoma' || (!billingOwnHistologyText(lesion) && !billingPriorHistologyText(lesion) && clinicalDiagnosisIsMelanoma(lesion))) {
+    if (!lesionHasHistologyForBilling(lesion)) {
         return {
-            ok: true,
-            hold: false,
-            reason: 'Suspected melanoma items can be billed now that histology is in for the procedure.',
-            kind: 'suspected_melanoma'
+            ok: false,
+            hold: true,
+            reason: 'Hold this excision until histology is in. 30071, suspected melanoma, and lesions with known histology can be billed now.',
+            kind: 'hold'
         };
     }
     if (billingHistologyTextForType(lesion)) {
@@ -1109,7 +1132,7 @@ function receptionBillingInstruction(summary) {
         return codes ? site + ' ' + codes : site;
     };
     if (summary.holdRows && summary.holdRows.length && summary.processRows && summary.processRows.length) {
-        return 'Billing: 30071 now; HOLD excision items until histology — ' + summary.rows.map(formatRow).join('; ') + '. Change item if result differs';
+        return 'Billing: bill ready items now (30071, suspected melanoma, known histology); HOLD the rest until histology — ' + summary.rows.map(formatRow).join('; ') + '. Change item if result differs';
     }
     if (summary.holdRows && summary.holdRows.length) {
         return 'Billing: HOLD until histology — ' + summary.rows.map(formatRow).join('; ') + '. Change item if result differs';

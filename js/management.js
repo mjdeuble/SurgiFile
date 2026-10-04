@@ -715,7 +715,7 @@ function renderLesionBillingBlock(lesion) {
         actions = `<button type="button" onclick="openProcessBillingModal('${lesionId}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button>`;
     } else if (lesionId) {
         const hold = typeof procedureGroupBillingReady === 'function' ? procedureGroupBillingReady(lesion) : null;
-        actions = `<p class="text-[11px] text-amber-800">${escapeHtml(hold?.reason || 'Enter histology before billing this excision. 30071 can be billed at the procedure.')}</p>`;
+        actions = `<p class="text-[11px] text-amber-800">${escapeHtml(hold?.reason || 'Enter histology before billing this excision. 30071, suspected melanoma, and known-histology lesions can be billed now.')}</p>`;
     }
     return `
         <div class="rounded-lg border border-slate-200 bg-white p-2.5 space-y-1.5">
@@ -1175,13 +1175,19 @@ function renderBillingQueueCard(view, options) {
             </div>
             ${(() => {
                 const status = typeof lesionCanBillAtProcedure === 'function' ? lesionCanBillAtProcedure(view) : { hold: view.billWhen === 'hold', kind: '' };
-                if (status.hold || view.billWhen === 'hold' && status.kind !== 'biopsy') {
-                    return '<p class="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">HOLD this excision until histology is in. 30071 from the same visit can be billed now.</p>';
+                if (status.hold) {
+                    return '<p class="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">HOLD this excision until histology is in. 30071, suspected melanoma, and lesions with known histology can be billed now.</p>';
                 }
                 if (status.kind === 'biopsy') {
                     return '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">30071 can be billed at the procedure. One consult for the visit.</p>';
                 }
-                return '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Histology is in. Process session billing — one consult plus each ready lesion.</p>';
+                if (status.kind === 'suspected_melanoma') {
+                    return '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Suspected melanoma — bill 31377–31383 at the procedure. Definitive items if prior histology exists.</p>';
+                }
+                if (status.kind === 'confirmed_melanoma') {
+                    return '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Histology known — bill definitive melanoma excision (31371–31376) now.</p>';
+                }
+                return '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Histology is known. Process session billing now — one consult plus each ready lesion.</p>';
             })()}
             ${!suggestion.ready ? `<p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">Need location and size (and type for excision) to suggest items. You can still process session billing and enter type there.</p>` : ''}
             <div id="billingSuggest-${view.id}" class="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/60">
@@ -1621,7 +1627,7 @@ async function openProcessBillingModal(lesionId) {
     }
     const ready = typeof procedureGroupBillingReady === 'function' ? procedureGroupBillingReady(lesion) : { ok: true, group: [lesion] };
     if (!ready.ok) {
-        showToast(ready.reason || 'Enter histology before billing this excision. 30071 can be billed at the procedure.');
+        showToast(ready.reason || 'Enter histology before billing this excision. 30071, suspected melanoma, and known-histology lesions can be billed now.');
         return;
     }
     const group = (ready.group || [lesion]).slice();
