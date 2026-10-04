@@ -1588,25 +1588,35 @@ function refreshProcedureBillingPanel() {
     const summary = typeof procedureSessionBillingSummary === 'function'
         ? procedureSessionBillingSummary(selected)
         : { rows: [], allProcess: false, allHold: false, mixed: false };
-    if (summary.allReady) {
+    const allBiopsy = summary.rows.length > 0 && summary.rows.every((row) => row.kind === 'biopsy');
+    if (summary.allReady && allBiopsy) {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-900 font-semibold';
-        banner.textContent = 'Histology is in for every lesion. Bill the session together — one consult item plus each lesion.';
+        banner.textContent = 'Diagnostic biopsy (30071) can be billed now. One consult (23) for the visit.';
+    } else if (summary.allReady) {
+        banner.className = 'text-xs rounded-lg px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-900 font-semibold';
+        banner.textContent = 'Histology is in for every excision. Bill the session together — one consult item plus each lesion.';
     } else if (summary.allProcess) {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-900 font-semibold';
-        banner.textContent = 'Histology is in, but some codes still need procedure area or size. Enter those, then process session billing.';
+        banner.textContent = allBiopsy
+            ? '30071 is ready. Add any missing site details, then process session billing.'
+            : 'Some codes still need procedure area or size. Enter those, then process session billing.';
+    } else if (summary.mixed) {
+        banner.className = 'text-xs rounded-lg px-3 py-2 border border-sky-300 bg-sky-50 text-sky-950 font-semibold';
+        banner.textContent = 'Bill 30071 now. Hold excision items until histology is in. One consult (23) for the visit.';
     } else if (summary.allHold) {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 font-semibold';
-        banner.textContent = 'Hold billing until histology is in for every lesion in this procedure. Same-day procedures are billed together, with one consult item.';
+        banner.textContent = 'Hold excision billing until histology is in. Diagnostic biopsies (30071) from the same visit can be billed at the procedure.';
     } else {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-sky-300 bg-sky-50 text-sky-950 font-semibold';
-        banner.textContent = 'Hold the whole session. Bill after histology is in for every lesion — one consult for the procedure, not per lesion.';
+        banner.textContent = 'Bill 30071 at the procedure. Hold excision items until histology is in.';
     }
     const firstUnsent = selected.find((lesion) => {
         const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
         return !(typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill));
     });
     const firstId = String(firstUnsent?.id || '').replace(/'/g, '');
-    const sessionAction = summary.allReady && firstId
+    const canProcessNow = firstId && summary.processRows && summary.processRows.some((row) => row.ready && row.codes);
+    const sessionAction = canProcessNow
         ? `<div class="flex justify-end"><button type="button" onclick="openProcessBillingModal('${firstId}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button></div>`
         : '';
     const listHtml = summary.rows.map((row) => {
@@ -1631,7 +1641,7 @@ function refreshProcedureBillingPanel() {
     }).join('');
     const copyBlock = summary.doctorText
         ? `<div class="flex flex-wrap items-center justify-between gap-2">
-                <p class="text-[11px] text-slate-500">${summary.holdRows && summary.holdRows.length ? 'HOLD expected items until histology is in for every lesion. One consult (23) for the procedure.' : 'One consult (23) for the procedure, then each lesion item.'}</p>
+                <p class="text-[11px] text-slate-500">${summary.holdRows && summary.holdRows.length && summary.processRows && summary.processRows.length ? '30071 now; HOLD excision items until histology. One consult (23) for the visit.' : (summary.holdRows && summary.holdRows.length ? 'HOLD excision items until histology. One consult (23) for the visit.' : 'One consult (23) for the visit, then each lesion item.')}</p>
                 <button type="button" onclick="copyProcedureBillingCodes()" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold rounded-lg cursor-pointer">Copy billing codes</button>
            </div>`
         : '';
@@ -1803,13 +1813,17 @@ async function endProcedureSession() {
         const billed = typeof procedureSessionBillingSummary === 'function'
             ? procedureSessionBillingSummary(finishedLesions)
             : null;
-        if (billed?.allReady) {
-            showToast('Procedure finished. Process session billing when histology is in for every lesion.');
-        } else if (billed?.allHold || billed?.mixed) {
-            showToast('Procedure finished. Billing waits until histology is in for every lesion.');
-        } else {
-            showToast('Procedure finished. Copy IEMR, reception, and billing when you finalise the visit.');
-        }
+    if (billed?.allReady) {
+        showToast(billed.rows && billed.rows.every((row) => row.kind === 'biopsy')
+            ? 'Procedure finished. Process session billing now — 30071 can be billed at the procedure.'
+            : 'Procedure finished. Process session billing now.');
+    } else if (billed?.mixed) {
+        showToast('Procedure finished. Bill 30071 now. Hold excision items until histology is in.');
+    } else if (billed?.allHold) {
+        showToast('Procedure finished. Hold excision billing until histology is in.');
+    } else {
+        showToast('Procedure finished. Copy IEMR, reception, and billing when you finalise the visit.');
+    }
         if (typeof renderLesionsTable === 'function') renderLesionsTable();
         if (typeof renderChartSidebar === 'function') renderChartSidebar();
         if (typeof renderManagedLesions === 'function') renderManagedLesions();

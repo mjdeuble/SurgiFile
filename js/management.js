@@ -715,7 +715,7 @@ function renderLesionBillingBlock(lesion) {
         actions = `<button type="button" onclick="openProcessBillingModal('${lesionId}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button>`;
     } else if (lesionId) {
         const hold = typeof procedureGroupBillingReady === 'function' ? procedureGroupBillingReady(lesion) : null;
-        actions = `<p class="text-[11px] text-amber-800">${escapeHtml(hold?.reason || 'Enter histology for all lesions in this procedure before billing.')}</p>`;
+        actions = `<p class="text-[11px] text-amber-800">${escapeHtml(hold?.reason || 'Enter histology before billing this excision. 30071 can be billed at the procedure.')}</p>`;
     }
     return `
         <div class="rounded-lg border border-slate-200 bg-white p-2.5 space-y-1.5">
@@ -1173,9 +1173,16 @@ function renderBillingQueueCard(view, options) {
                 ${grouped ? '' : renderLesionPatientContactHtml(view)}
                 <p class="text-[11px] text-slate-500">${escapeHtml(billingCardMeta(view))}</p>
             </div>
-            ${view.billWhen === 'hold' || (typeof lesionCanBillAtProcedure === 'function' && lesionCanBillAtProcedure(view).hold)
-                ? '<p class="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">HOLD until histology is in for every lesion in this procedure. Then bill the session together, with one consult item.</p>'
-                : '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Histology is in for the procedure. Process session billing — one consult plus each lesion.</p>'}
+            ${(() => {
+                const status = typeof lesionCanBillAtProcedure === 'function' ? lesionCanBillAtProcedure(view) : { hold: view.billWhen === 'hold', kind: '' };
+                if (status.hold || view.billWhen === 'hold' && status.kind !== 'biopsy') {
+                    return '<p class="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">HOLD this excision until histology is in. 30071 from the same visit can be billed now.</p>';
+                }
+                if (status.kind === 'biopsy') {
+                    return '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">30071 can be billed at the procedure. One consult for the visit.</p>';
+                }
+                return '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Histology is in. Process session billing — one consult plus each ready lesion.</p>';
+            })()}
             ${!suggestion.ready ? `<p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">Need location and size (and type for excision) to suggest items. You can still process session billing and enter type there.</p>` : ''}
             <div id="billingSuggest-${view.id}" class="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/60">
                 ${renderBillingSuggestionHtml(suggestionLesion)}
@@ -1614,7 +1621,7 @@ async function openProcessBillingModal(lesionId) {
     }
     const ready = typeof procedureGroupBillingReady === 'function' ? procedureGroupBillingReady(lesion) : { ok: true, group: [lesion] };
     if (!ready.ok) {
-        showToast(ready.reason || 'Enter histology for all lesions in this procedure before billing.');
+        showToast(ready.reason || 'Enter histology before billing this excision. 30071 can be billed at the procedure.');
         return;
     }
     const group = (ready.group || [lesion]).slice();

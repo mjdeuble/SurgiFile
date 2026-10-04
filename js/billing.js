@@ -956,23 +956,42 @@ function lesionHasBillingHistology(lesion) {
         : !!String(lesion?.histologyResult || '').trim();
 }
 
+function lesionNeedsHistologyToBill(lesion) {
+    return typeof isDiagnosticBiopsyForBilling === 'function'
+        ? !isDiagnosticBiopsyForBilling(lesion)
+        : true;
+}
+
 function procedureGroupBillingReady(lesion) {
     const group = procedureBillingGroup(lesion);
-    if (!group.length) return { ok: false, hold: true, group, pending: [], reason: 'No procedure to bill.' };
-    const pending = group.filter((item) => !lesionHasBillingHistology(item));
-    if (pending.length) {
+    if (!group.length) return { ok: false, hold: true, group, billable: [], pending: [], reason: 'No procedure to bill.' };
+    const pending = group.filter((item) => lesionNeedsHistologyToBill(item) && !lesionHasBillingHistology(item));
+    const billable = group.filter((item) => !lesionNeedsHistologyToBill(item) || lesionHasBillingHistology(item));
+    if (!billable.length) {
         const sites = pending.map((item) => item.location || 'site').join(', ');
         return {
             ok: false,
             hold: true,
             group,
+            billable,
             pending,
             reason: pending.length === 1
-                ? 'Enter histology for ' + sites + ' before billing this procedure.'
-                : 'Enter histology for all lesions in this procedure before billing (' + sites + ' still pending).'
+                ? 'Enter histology for ' + sites + ' before billing this excision.'
+                : 'Enter histology for excision lesions in this procedure before billing (' + sites + ' still pending).'
         };
     }
-    return { ok: true, hold: false, group, pending: [] };
+    const pendingSites = pending.map((item) => item.location || 'site').join(', ');
+    return {
+        ok: true,
+        hold: pending.length > 0,
+        group: billable,
+        fullGroup: group,
+        billable,
+        pending,
+        reason: pending.length
+            ? 'Bill 30071 now. Hold excision items until histology is in for ' + pendingSites + '.'
+            : ''
+    };
 }
 
 function canOpenProcessBilling(lesion) {
@@ -990,16 +1009,20 @@ function lesionCanBillAtProcedure(lesion) {
     if (!lesion) {
         return { ok: false, hold: true, reason: 'No lesion selected.', kind: 'hold' };
     }
-    const groupReady = procedureGroupBillingReady(lesion);
-    if (!groupReady.ok) {
-        return { ok: false, hold: true, reason: groupReady.reason, kind: 'hold' };
-    }
-    if (isDiagnosticBiopsyForBilling(lesion)) {
+    if (typeof isDiagnosticBiopsyForBilling === 'function' && isDiagnosticBiopsyForBilling(lesion)) {
         return {
             ok: true,
             hold: false,
-            reason: 'Diagnostic biopsy (30071) can be billed now that histology is in for the procedure.',
+            reason: 'Diagnostic biopsy (30071) can be billed at the procedure.',
             kind: 'biopsy'
+        };
+    }
+    if (!lesionHasBillingHistology(lesion)) {
+        return {
+            ok: false,
+            hold: true,
+            reason: 'Hold this excision until histology is in. 30071 from the same visit can still be billed now.',
+            kind: 'hold'
         };
     }
     const type = inferBillingLesionType(lesion);
@@ -1030,7 +1053,7 @@ function lesionCanBillAtProcedure(lesion) {
     return {
         ok: false,
         hold: true,
-        reason: 'Hold billing until histology is in for every lesion in this procedure.',
+        reason: 'Hold this excision until histology is in.',
         kind: 'hold'
     };
 }
@@ -1085,6 +1108,9 @@ function receptionBillingInstruction(summary) {
         if (row.hold) return codes ? site + ' ' + codes + ' (HOLD expected)' : site + ' (HOLD)';
         return codes ? site + ' ' + codes : site;
     };
+    if (summary.holdRows && summary.holdRows.length && summary.processRows && summary.processRows.length) {
+        return 'Billing: 30071 now; HOLD excision items until histology — ' + summary.rows.map(formatRow).join('; ') + '. Change item if result differs';
+    }
     if (summary.holdRows && summary.holdRows.length) {
         return 'Billing: HOLD until histology — ' + summary.rows.map(formatRow).join('; ') + '. Change item if result differs';
     }
@@ -1181,7 +1207,8 @@ function visitFinaliseBillingState(lesionList) {
         ? procedureSessionBillingSummary(list)
         : { rows: [], holdRows: [], allReady: false, allProcess: false };
     const copyText = generateVisitBillingCopy(list);
-    if (summary.allReady && !(summary.holdRows && summary.holdRows.length)) {
+    const readyNow = (summary.processRows || []).filter((row) => row.ready && row.codes);
+    if (readyNow.length) {
         return { mode: 'process', lesions: list, summary, copyText };
     }
     return { mode: 'hold', lesions: list, summary, copyText };
@@ -1206,9 +1233,10 @@ async function markVisitLesionsBillingProcessed(lesionList) {
 
 async function confirmSameDaySessionBilling(lesionList) {
     const summary = procedureSessionBillingSummary(lesionList);
-    if (!summary.allReady) return { confirmed: 0, codes: [], doctorText: summary.doctorText || '' };
+    const readyRows = (summary.processRows || []).filter((row) => row.ready && row.codes);
+    if (!readyRows.length) return { confirmed: 0, codes: [], doctorText: summary.doctorText || '' };
     const codes = [];
-    for (const row of summary.rows) {
+    for (const row of readyRows) {
         let bill = typeof billingForLesion === 'function' ? billingForLesion(row.lesion.id) : null;
         if (!bill && typeof createOrUpdateBillingFromLesion === 'function') {
             bill = await createOrUpdateBillingFromLesion(row.lesion);

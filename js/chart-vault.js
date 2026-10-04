@@ -1574,9 +1574,18 @@ function refreshFinaliseVisitModal() {
     }
     if (typeof bindFinaliseBillingCopyClicks === 'function') bindFinaliseBillingCopyClicks();
     if (billHint) {
-        billHint.textContent = state.mode === 'process'
-            ? 'Click a site or an item number to copy it into Best Practice. Same-day procedures bill together. Copy what you need, then mark processed and close so billing is not an extra step.'
-            : 'HOLD until histology. Click each expected item number as a placeholder for reception; change it if the result differs.';
+        const mixed = !!(state.summary && state.summary.mixed);
+        const allBiopsy = !!(state.summary && state.summary.rows && state.summary.rows.length
+            && state.summary.rows.every((row) => row.kind === 'biopsy'));
+        if (state.mode === 'process' && allBiopsy) {
+            billHint.textContent = '30071 can be billed at the procedure. Click a site or item number to copy it into Best Practice, then mark processed and close.';
+        } else if (state.mode === 'process' && mixed) {
+            billHint.textContent = 'Bill 30071 now. Hold excision items until histology is in. Click a site or item number to copy it into Best Practice.';
+        } else if (state.mode === 'process') {
+            billHint.textContent = 'Click a site or an item number to copy it into Best Practice. Same-day procedures bill together. Copy what you need, then mark processed and close so billing is not an extra step.';
+        } else {
+            billHint.textContent = 'HOLD excision items until histology. 30071 from the same visit can be billed at the procedure. Click each expected item as a placeholder; change it if the result differs.';
+        }
     }
 
     const iemrCopied = typeof outputCopyState !== 'undefined' && outputCopyState.emr
