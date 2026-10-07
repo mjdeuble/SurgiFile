@@ -392,6 +392,18 @@ function findLiveReexcisionChild(prior) {
     return findLinkedReexcisionChild(prior.id);
 }
 
+function lesionHasOwnCompletedEpisode(lesion) {
+    return !!(lesion
+        && typeof lesionProcedureDone === 'function'
+        && lesionProcedureDone(lesion)
+        && lesionHasSavedHistology(lesion));
+}
+
+function findExistingChildOfPrior(priorId) {
+    if (!priorId) return null;
+    return findLinkedReexcisionChild(priorId) || collectReexcisionChildren(priorId)[0] || null;
+}
+
 function latestReexcisionEpisode(lesion) {
     let current = lesion;
     const seen = new Set();
@@ -480,11 +492,8 @@ function lesionCanBookReexcision(lesion) {
 
 function lesionCanSpawnReexcision(lesion) {
     if (!lesion?.id) return false;
-    if (!lesionHasSavedHistology(lesion)) return false;
-    if (findLinkedReexcisionChild(lesion.id)) return false;
-    const child = findLiveReexcisionChild(lesion);
-    if (child && !lesionProcedureDone(child) && lesionLifecycleStatus(child) !== 'no_followup') return false;
-    return true;
+    if (!lesionHasOwnCompletedEpisode(lesion)) return false;
+    return collectReexcisionChildren(lesion.id).length === 0;
 }
 
 function lesionNeedsNewReexcisionRecord(lesion) {
@@ -946,6 +955,43 @@ async function persistManagementChild(child) {
     return child;
 }
 
+const spawnChildInFlight = new Map();
+
+async function reopenExistingChildOfPrior(prior, child, extras) {
+    extras = extras || {};
+    const now = new Date().toISOString();
+    const template = buildManagementChildFromPrior(prior, extras);
+    const keepExcision = !lesionProcedureDone(child)
+        && (child.type === 'excision'
+            || (typeof lesionIsOpenReexcisionPlan === 'function' && lesionIsOpenReexcisionPlan(child))
+            || String(child.plan || '').includes('Excision'));
+    child.updatedAt = now;
+    if (extras.location) child.location = extras.location;
+    if (extras.impression) child.impression = extras.impression;
+    if (typeof copyPriorHistologyFromLesion === 'function') {
+        Object.assign(child, copyPriorHistologyFromLesion(prior, extras));
+    }
+    if (!keepExcision) {
+        child.managementStatus = template.managementStatus;
+        child.proposedPlan = template.proposedPlan || child.proposedPlan || '';
+        child.proposedPlanNote = template.proposedPlanNote || child.proposedPlanNote || '';
+        child.currentPlan = extras.currentPlan || formatProposedManagementPlan(child);
+        child.contactState = template.contactState;
+        child.resultAdvisedAt = template.resultAdvisedAt || child.resultAdvisedAt || '';
+        child.contactUrgent = !!template.contactUrgent;
+        if (typeof appendLesionTimeline === 'function') {
+            appendLesionTimeline(child, {
+                type: 'plan',
+                note: 'Reopened the existing linked lesion instead of adding another child',
+                planAfter: child.currentPlan
+            });
+        }
+    }
+    await persistManagementChild(child);
+    await closePriorLesionAfterReexcision(prior, child);
+    return child;
+}
+
 async function spawnFurtherManagementChild(prior, extras) {
     extras = extras || {};
     if (!prior?.id) return null;
@@ -953,23 +999,43 @@ async function spawnFurtherManagementChild(prior, extras) {
         showToast('Save histology before opening further management.');
         return null;
     }
-    const existing = findLinkedReexcisionChild(prior.id);
-    if (existing && !lesionProcedureDone(existing)) {
-        const existingStatus = lesionLifecycleStatus(existing);
-        if (existingStatus !== 'no_followup') return existing;
+    const key = String(prior.id);
+    if (spawnChildInFlight.has(key)) return spawnChildInFlight.get(key);
+
+    const work = (async () => {
+        const existing = findExistingChildOfPrior(prior.id);
+        if (existing) {
+            if (lesionHasOwnCompletedEpisode(existing)) return existing;
+            const status = lesionLifecycleStatus(existing);
+            const open = !lesionProcedureDone(existing) && status !== 'no_followup';
+            if (open) {
+                if (String(prior.linkedReexcisionId || prior.linkedChildId) !== String(existing.id)) {
+                    await closePriorLesionAfterReexcision(prior, existing);
+                }
+                return existing;
+            }
+            return reopenExistingChildOfPrior(prior, existing, extras);
+        }
+        const child = buildManagementChildFromPrior(prior, extras);
+        await persistManagementChild(child);
+        await closePriorLesionAfterReexcision(prior, child);
+        const savedPrior = managedLesions.find((item) => String(item.id) === String(prior.id));
+        if (savedPrior) {
+            savedPrior.resultPlan = 'further_management';
+            savedPrior.linkedChildId = String(child.id);
+            savedPrior.linkedReexcisionId = String(child.id);
+            await writeManagedLesion(savedPrior);
+            upsertManagedLesionMemory(savedPrior);
+        }
+        return child;
+    })();
+
+    spawnChildInFlight.set(key, work);
+    try {
+        return await work;
+    } finally {
+        spawnChildInFlight.delete(key);
     }
-    const child = buildManagementChildFromPrior(prior, extras);
-    await persistManagementChild(child);
-    await closePriorLesionAfterReexcision(prior, child);
-    const savedPrior = managedLesions.find((item) => String(item.id) === String(prior.id));
-    if (savedPrior) {
-        savedPrior.resultPlan = 'further_management';
-        savedPrior.linkedChildId = String(child.id);
-        savedPrior.linkedReexcisionId = String(child.id);
-        await writeManagedLesion(savedPrior);
-        upsertManagedLesionMemory(savedPrior);
-    }
-    return child;
 }
 
 function consentRank(status) {
@@ -2565,18 +2631,39 @@ async function closePriorLesionAfterReexcision(prior, child) {
 
 async function persistReexcisionChild(child) {
     if (!child?.id) return null;
+    if (child.priorLesionId) {
+        const existing = findExistingChildOfPrior(child.priorLesionId);
+        if (existing && String(existing.id) !== String(child.id) && !lesionHasOwnCompletedEpisode(existing)) {
+            const keepConsent = existing.consentStatus || '';
+            const keepConsentedAt = existing.consentedAt || '';
+            child.id = existing.id;
+            child.createdAt = existing.createdAt || child.createdAt;
+            child.history = existing.history || child.history;
+            child.timeline = existing.timeline || child.timeline;
+            Object.assign(existing, child);
+            child = existing;
+            if (keepConsent) {
+                child.consentStatus = keepConsent;
+                child.consentedAt = keepConsentedAt;
+            }
+        }
+    }
     const now = new Date().toISOString();
     const patient = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : {};
     child.createdAt = child.createdAt || now;
     child.updatedAt = now;
     child.type = 'excision';
     child.managementStatus = 'planned_procedure';
-    child.consentStatus = '';
-    child.consentedAt = '';
-    child.procedureCompletedAt = '';
-    child.excisionFinalisedAt = '';
-    child.procedureDetail = null;
-    child.billingStatus = 'none';
+    if (!(typeof consentRank === 'function' ? consentRank(child.consentStatus) : child.consentStatus)) {
+        child.consentStatus = '';
+        child.consentedAt = '';
+    }
+    if (!lesionProcedureDone(child)) {
+        child.procedureCompletedAt = '';
+        child.excisionFinalisedAt = '';
+        child.procedureDetail = null;
+    }
+    child.billingStatus = child.billingStatus || 'none';
     child.schemaVersion = LESION_SCHEMA_VERSION;
     if (patient.chartId) child.chartId = patient.chartId;
     else if (!child.chartId && child.patientName && child.patientDob && typeof patientChartId === 'function') {

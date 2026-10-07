@@ -2530,14 +2530,13 @@ function resolveExcisionAssignTarget(source) {
         ? lesionIsOpenReexcisionPlan(target)
         : ((target.managementStatus === 'planned_procedure' || target.managementStatus === 'current_case')
             && !(typeof lesionProcedureDone === 'function' && lesionProcedureDone(target)));
-    // Management / re-excision child: always update in place (do not spawn a grandchild).
-    if (target.priorLesionId && !(typeof lesionProcedureDone === 'function' && lesionProcedureDone(target))) {
-        const childStatus = typeof lesionLifecycleStatus === 'function'
-            ? lesionLifecycleStatus(target)
-            : target.managementStatus;
-        if (childStatus !== 'no_followup' && childStatus !== 'awaiting_histology') {
-            return { mode: 'update', lesion: target, prior: priorOfTarget };
-        }
+    // Live or cancelled child: update / reopen in place. Never mint a sibling.
+    // An operated child still waiting for histology is blocked below, not updated.
+    const targetOperated = typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(target)
+        : !!(target.procedureCompletedAt || target.excisionFinalisedAt);
+    if (target.priorLesionId && !targetOperated) {
+        return { mode: 'update', lesion: target, prior: priorOfTarget };
     }
     if (targetOpen) {
         return { mode: 'update', lesion: target, prior: priorOfTarget };
@@ -2730,6 +2729,15 @@ async function submitAssignExcisionModal() {
         && !lesionHasSavedHistology(resolved.prior)) {
         showToast('Save histology before booking a re-excision.');
         return;
+    }
+    if (resolved.mode === 'spawn' && resolved.prior && typeof findExistingChildOfPrior === 'function') {
+        const existingChild = findExistingChildOfPrior(resolved.prior.id);
+        const childComplete = existingChild && (typeof lesionHasOwnCompletedEpisode === 'function'
+            ? lesionHasOwnCompletedEpisode(existingChild)
+            : false);
+        if (existingChild && !childComplete) {
+            resolved = { mode: 'update', lesion: existingChild, prior: resolved.prior };
+        }
     }
     const diagnosis = typeof readDiagnosisTypeahead === 'function'
         ? readDiagnosisTypeahead('assignExcisionDiagnosis')
