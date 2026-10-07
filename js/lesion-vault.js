@@ -2633,7 +2633,10 @@ async function persistReexcisionChild(child) {
     if (!child?.id) return null;
     if (child.priorLesionId) {
         const existing = findExistingChildOfPrior(child.priorLesionId);
-        if (existing && String(existing.id) !== String(child.id) && !lesionHasOwnCompletedEpisode(existing)) {
+        if (existing && String(existing.id) !== String(child.id)) {
+            if (lesionHasOwnCompletedEpisode(existing)) {
+                return existing;
+            }
             const keepConsent = existing.consentStatus || '';
             const keepConsentedAt = existing.consentedAt || '';
             child.id = existing.id;
