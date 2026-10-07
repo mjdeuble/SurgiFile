@@ -1470,10 +1470,8 @@ function blockAddPatientWhileVisitActive() {
 
 function syncOpenChartSearchGate() {
     const open = hasCurrentPatient();
-    ['headerOpenChartTools', 'boardOpenChartTools'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.classList.toggle('hidden', open);
-    });
+    const el = document.getElementById('headerOpenChartTools');
+    if (el) el.classList.toggle('hidden', open);
     if (open && typeof hideChartSearchResults === 'function') hideChartSearchResults();
 }
 
@@ -1640,7 +1638,7 @@ function updateHeaderPatient() {
     if (dobEl) {
         dobEl.textContent = hasCurrentPatient()
             ? [currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ')
-            : 'Search the practice board to open a chart';
+            : 'Search to open a chart';
     }
     if (typeof syncOpenChartSearchGate === 'function') syncOpenChartSearchGate();
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
@@ -1802,7 +1800,7 @@ function searchPatientCharts(query) {
 }
 
 function hideChartSearchResults() {
-    ['headerChartSearchResults', 'boardChartSearchResults'].forEach((id) => {
+    ['headerChartSearchResults'].forEach((id) => {
         const el = document.getElementById(id);
         if (!el) return;
         el.classList.add('hidden');
@@ -1849,12 +1847,6 @@ function onChartSearchInput(input, resultsId) {
     if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
         hideChartSearchResults();
         return;
-    }
-    const other = resultsId === 'boardChartSearchResults' ? 'headerChartSearchResults' : 'boardChartSearchResults';
-    const otherEl = document.getElementById(other);
-    if (otherEl) {
-        otherEl.classList.add('hidden');
-        otherEl.innerHTML = '';
     }
     renderChartSearchResults(resultsId, input?.value || '');
 }
@@ -1904,9 +1896,7 @@ async function openPatientFromSearchIndexWork(idx) {
     if (!patient) return;
     hideChartSearchResults();
     const headerSearch = document.getElementById('headerChartSearch');
-    const boardSearch = document.getElementById('boardChartSearch');
     if (headerSearch) headerSearch.value = '';
-    if (boardSearch) boardSearch.value = '';
     if (typeof openPatientChart === 'function') await openPatientChart(patient);
     else setCurrentPatient(patient);
     if (pendingSanitise) {
@@ -1928,7 +1918,7 @@ function focusPracticeBoardSearch() {
         return;
     }
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
-    const input = document.getElementById('boardChartSearch') || document.getElementById('headerChartSearch');
+    const input = document.getElementById('headerChartSearch');
     if (input) {
         input.focus();
         input.select();
@@ -2057,7 +2047,7 @@ async function submitPatientModal() {
 
 function requireCurrentPatient(message) {
     if (hasCurrentPatient()) return true;
-    showToast(message || 'Search for a patient on the practice board, or add a new patient.');
+    showToast(message || 'Search for a patient in the header, or add a new patient.');
     focusPracticeBoardSearch();
     return false;
 }

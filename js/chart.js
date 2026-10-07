@@ -191,7 +191,7 @@ function requireRoomReady(tabName) {
         if (!hasCurrentPatient()) {
             pendingWorkspaceTab = tabName;
             openPatientModal();
-            showToast('Search for a patient on the practice board, or add a new patient.');
+            showToast('Search for a patient in the header, or add a new patient.');
             return false;
         }
         if (!visitClinicalUnlocked()) {
