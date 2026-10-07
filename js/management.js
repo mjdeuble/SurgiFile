@@ -463,6 +463,17 @@ function formatLesionCardWhen(iso) {
     });
 }
 
+function formatLesionCardDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-AU', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+    });
+}
+
 function formatMmPair(length, width) {
     const a = String(length == null ? '' : length).trim();
     const b = String(width == null ? '' : width).trim();
@@ -630,15 +641,36 @@ function collectLesionAncestors(lesion) {
     return out;
 }
 
-function retitleLesionCardBlock(html, title) {
-    if (!html) return '';
-    return String(html).replace(/<span>[^<]*<\/span>/, '<span>' + title + '</span>');
+function previousProcedureSubtileTitle(lesion) {
+    const type = (typeof lesionProcedureTypeLabel === 'function'
+        ? lesionProcedureTypeLabel(lesion)
+        : '') || 'Procedure';
+    const when = lesionProcedureAt(lesion) || lesionExamAt(lesion);
+    const date = formatLesionCardDate(when);
+    return date ? type + ' (' + date + ')' : type;
 }
 
 function renderLesionPreviousProcedureSubtile(lesion) {
-    const html = renderLesionProcedureBlock(lesion);
-    if (!html) return '';
-    return retitleLesionCardBlock(html, 'Previous procedure');
+    const type = typeof lesionType === 'function' ? lesionType(lesion) : (lesion?.type || '');
+    if (type === 'topical') {
+        const discussed = Array.isArray(lesion?.topicalDiscussed) ? lesion.topicalDiscussed.join(', ') : '';
+        const rows = [
+            lesionCardRow('Decision', escapeHtml(lesion?.topicalDecision || '')),
+            lesionCardRow('Discussed', escapeHtml(discussed)),
+            lesionCardRow('Follow-up', lesion?.topicalFollowUp && lesion.topicalFollowUp !== 'none'
+                ? escapeHtml(lesion.topicalFollowUp) : '')
+        ].join('');
+        if (!rows) return '';
+        return renderLesionCardBlock(previousProcedureSubtileTitle(lesion), '', rows);
+    }
+    const done = typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!lesionProcedureAt(lesion);
+    const rows = [
+        lesionCardRow('Histology', done ? escapeHtml(lesionHistologyCardValue(lesion)) : ''),
+        lesionCardRow('Dimensions', escapeHtml(lesionProcedureDimensions(lesion))),
+        lesionCardRow('Margin', escapeHtml(lesionProcedureMargin(lesion)))
+    ].join('');
+    if (!rows) return '';
+    return renderLesionCardBlock(previousProcedureSubtileTitle(lesion), '', rows);
 }
 
 function renderChartLesionHistory(lesion) {
