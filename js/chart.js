@@ -212,7 +212,8 @@ function selectChartLesion(id, options) {
     if (!lesion) return;
 
     if (activeWorkspaceTab === 'management') {
-        if (!options?.skipComms && typeof openLesionCommsModal === 'function') openLesionCommsModal(lesion.id);
+        if (!options?.skipComms && typeof openManageLesionModal === 'function') openManageLesionModal(lesion.id);
+        else if (!options?.skipComms && typeof openLesionCommsModal === 'function') openLesionCommsModal(lesion.id);
         return;
     }
 
