@@ -810,9 +810,7 @@ function renderManagedLesionCard(lesion, options) {
 }
 
 function canUpdateResult(lesion) {
-    if (typeof isOpenManagementChild === 'function' && isOpenManagementChild(lesion) && !String(lesion?.histologyResult || '').trim()) {
-        return false;
-    }
+    if (lesion?.priorLesionId) return true;
     const status = lesionLifecycleStatus(lesion);
     return status === 'awaiting_histology' || status === 'needs_contact' || status === 'appointment_requested'
         || !!lesion.procedureCompletedAt || !!lesion.histologyResult;
@@ -2189,6 +2187,7 @@ function histologyDraftLesion() {
 
 function fillManageLesionResultSummary(lesion) {
     const el = document.getElementById('manageLesionResultSummary');
+    const btn = document.getElementById('btnManageLesionUpdateResult');
     if (!el) return;
     const dx = String(lesion?.histologyDiagnosis || '').trim();
     const result = String(lesion?.histologyResult || '').trim();
@@ -2196,10 +2195,17 @@ function fillManageLesionResultSummary(lesion) {
         ? formatHistologyAccession(lesion, 'own')
         : '';
     if (!dx && !result && !accession) {
-        el.textContent = 'No histology recorded yet. Use Update result to enter diagnosis, result, and lab details.';
-        return;
+        el.textContent = 'No histology recorded yet for this lesion. Use Update result to enter diagnosis, result, and lab details.';
+    } else {
+        el.textContent = [dx, result, accession && ('Lab case ' + accession)].filter(Boolean).join(' · ');
     }
-    el.textContent = [dx, result, accession && ('Lab case ' + accession)].filter(Boolean).join(' · ');
+    if (btn) btn.classList.toggle('hidden', !(typeof canUpdateResult === 'function' ? canUpdateResult(lesion) : true));
+}
+
+function openHistologyFromManageLesion() {
+    const id = document.getElementById('manageLesionLesionId')?.value;
+    if (!id) return;
+    openHistologyModal(id);
 }
 
 function syncHistologyFollowUpUi() {
