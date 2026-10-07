@@ -2177,8 +2177,11 @@ function syncHistologyBillingTypeFromResult() {
     const { lesion, diagnosis, result } = histologyModalDraftTypeInputs();
     const combined = [diagnosis, result].filter(Boolean).join('\n');
     const inferred = histologyModalInferredType();
-    if (typeEl && inferred) typeEl.value = inferred;
-    else if (typeEl && !combined) typeEl.value = lesion.billingLesionType || '';
+    if (typeEl) {
+        if (inferred) typeEl.value = inferred;
+        else if (!combined) typeEl.value = lesion.billingLesionType || '';
+        else typeEl.value = '';
+    }
     const label = typeof billingLesionTypeLabel === 'function'
         ? billingLesionTypeLabel(inferred)
         : (inferred || '');
