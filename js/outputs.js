@@ -653,12 +653,17 @@ function generateReceptionMessage() {
     const billingLesions = typeof visitProcedureLesionsForFinalise === 'function'
         ? visitProcedureLesionsForFinalise()
         : procedureLesions;
-    if (billingLesions.length) {
+    const unsentBilling = typeof visitUnsentBillingLesions === 'function'
+        ? visitUnsentBillingLesions(billingLesions)
+        : billingLesions;
+    if (unsentBilling.length) {
         const summary = typeof procedureSessionBillingSummary === 'function'
-            ? procedureSessionBillingSummary(billingLesions)
+            ? procedureSessionBillingSummary(unsentBilling)
             : null;
         const billingLine = typeof receptionBillingInstruction === 'function' ? receptionBillingInstruction(summary) : '';
         if (billingLine) parts.push(billingLine);
+    } else if (billingLesions.length) {
+        parts.push('Billing: billed today.');
     }
 
     let text = parts.filter(Boolean).join(' | ');

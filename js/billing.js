@@ -1150,6 +1150,20 @@ function visitProcedureLesionsForFinalise() {
     ));
 }
 
+function lesionBillingAlreadySent(lesion) {
+    if (!lesion) return false;
+    const id = lesion.id || lesion.lesionId;
+    if (typeof isLesionBillingProcessed === 'function' && isLesionBillingProcessed(id)) return true;
+    const bill = typeof billingForLesion === 'function' ? billingForLesion(id) : null;
+    if (typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill)) return true;
+    const status = String(lesion.billingStatus || bill?.status || '').toLowerCase();
+    return status === 'confirmed' || status === 'processed';
+}
+
+function visitUnsentBillingLesions(lesionList) {
+    return (lesionList || []).filter((lesion) => !lesionBillingAlreadySent(lesion));
+}
+
 function copySnippetButton(text, label, extraClass) {
     const value = String(text || '').trim();
     if (!value) return '';
@@ -1212,8 +1226,11 @@ function bindFinaliseBillingCopyClicks() {
 }
 
 function generateVisitBillingCopy(lesionList) {
+    const unsent = typeof visitUnsentBillingLesions === 'function'
+        ? visitUnsentBillingLesions(lesionList || [])
+        : (lesionList || []);
     const summary = typeof procedureSessionBillingSummary === 'function'
-        ? procedureSessionBillingSummary(lesionList || [])
+        ? procedureSessionBillingSummary(unsent)
         : { rows: [] };
     const lines = (summary.rows || []).map((row) => {
         const codes = row.codes || (row.hold ? 'need size and expected diagnosis' : 'Codes pending');
@@ -1224,17 +1241,23 @@ function generateVisitBillingCopy(lesionList) {
 }
 
 function visitFinaliseBillingState(lesionList) {
-    const list = lesionList || [];
-    if (!list.length) return { mode: 'close', lesions: [], summary: null, copyText: '' };
+    const all = lesionList || [];
+    const unsent = typeof visitUnsentBillingLesions === 'function'
+        ? visitUnsentBillingLesions(all)
+        : all;
+    const alreadyBilled = unsent.length < all.length;
+    if (!unsent.length) {
+        return { mode: 'close', lesions: [], summary: null, copyText: '', alreadyBilled };
+    }
     const summary = typeof procedureSessionBillingSummary === 'function'
-        ? procedureSessionBillingSummary(list)
+        ? procedureSessionBillingSummary(unsent)
         : { rows: [], holdRows: [], allReady: false, allProcess: false };
-    const copyText = generateVisitBillingCopy(list);
+    const copyText = generateVisitBillingCopy(unsent);
     const readyNow = (summary.processRows || []).filter((row) => row.ready && row.codes);
     if (readyNow.length) {
-        return { mode: 'process', lesions: list, summary, copyText };
+        return { mode: 'process', lesions: unsent, summary, copyText, alreadyBilled };
     }
-    return { mode: 'hold', lesions: list, summary, copyText };
+    return { mode: 'hold', lesions: unsent, summary, copyText, alreadyBilled };
 }
 
 async function markVisitLesionsBillingProcessed(lesionList) {
@@ -1265,7 +1288,6 @@ async function confirmSameDaySessionBilling(lesionList) {
             bill = await createOrUpdateBillingFromLesion(row.lesion);
         }
         if (!bill || (typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill))) {
-            if (row.codes) codes.push(row.codes);
             continue;
         }
         if (typeof persistProcessedBilling === 'function') {

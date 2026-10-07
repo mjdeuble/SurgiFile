@@ -1703,7 +1703,7 @@ async function submitFinaliseVisitWork() {
         ? visitFinaliseBillingState(lesions)
         : { mode: lesions.length ? 'hold' : 'close' };
     if (state.mode === 'process' && typeof markVisitLesionsBillingProcessed === 'function') {
-        const result = await markVisitLesionsBillingProcessed(lesions);
+        const result = await markVisitLesionsBillingProcessed(state.lesions || lesions);
         await closePatientChart({ force: true, silent: true });
         const codes = (result.codes || []).filter(Boolean).join(' · ');
         showToast(codes
