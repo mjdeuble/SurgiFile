@@ -892,7 +892,9 @@ function saveLesion() {
         ...(copiedPrior || {}),
         ...(patientSnap || {})
     };
-    if (copiedPrior && typeof inferBillingLesionType === 'function') {
+    if (typeof applyInferredBillingLesionType === 'function') {
+        applyInferredBillingLesionType(lesionRecord);
+    } else if (typeof inferBillingLesionType === 'function') {
         lesionRecord.billingLesionType = inferBillingLesionType(lesionRecord);
     }
 

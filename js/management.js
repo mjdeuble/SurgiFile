@@ -1184,7 +1184,7 @@ function renderBillingQueueCard(view, options) {
                 }
                 return '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">Histology is known. Process session billing now — one consult plus each ready lesion.</p>';
             })()}
-            ${!suggestion.ready ? `<p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">Need location and size (and type for excision) to suggest items. You can still process session billing and enter type there.</p>` : ''}
+            ${!suggestion.ready ? `<p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">Need location and size to suggest excision items. Billing type is assigned from histology (or suspected melanoma when there is no result yet).</p>` : ''}
             <div id="billingSuggest-${view.id}" class="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/60">
                 ${renderBillingSuggestionHtml(suggestionLesion)}
             </div>
@@ -1373,9 +1373,11 @@ function processBillingView() {
 function fillProcessBillingTypeSelect(selected) {
     const select = document.getElementById('processBillingType');
     if (!select) return;
-    select.innerHTML = '<option value="">Select type...</option>' + BILLING_LESION_TYPES.map((opt) =>
-        `<option value="${opt.id}" ${opt.id === selected ? 'selected' : ''}>${opt.label}</option>`
-    ).join('');
+    const type = selected || '';
+    const label = typeof billingLesionTypeLabel === 'function' ? billingLesionTypeLabel(type) : type;
+    select.innerHTML = type
+        ? `<option value="${type}" selected>${label || type}</option>`
+        : '<option value="">Assigned from histology</option>';
 }
 
 function claimCodesFromBox() {
@@ -1435,13 +1437,15 @@ function onProcessBillingCodesInput() {
 
 function processBillingTypeSelectHtml(lesionId, selected) {
     const id = String(lesionId || '').replace(/'/g, '');
-    const options = (typeof BILLING_LESION_TYPES !== 'undefined' ? BILLING_LESION_TYPES : []).map((opt) =>
-        `<option value="${opt.id}" ${opt.id === selected ? 'selected' : ''}>${opt.label}</option>`
-    ).join('');
-    return `<label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" for="processBillingType-${id}">Lesion type</label>
-        <select id="processBillingType-${id}" onchange="onProcessBillingLesionTypeChange('${id}')" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-sm">
-            <option value="">Select type...</option>${options}
-        </select>`;
+    const label = typeof billingLesionTypeLabel === 'function'
+        ? billingLesionTypeLabel(selected)
+        : (selected || '');
+    const line = label
+        ? (selected === 'suspected_melanoma'
+            ? 'Suspected melanoma (initial excision — no histology yet)'
+            : (selected === 'confirmed_melanoma' ? 'Confirmed melanoma (from histology)' : label + ' (from histology)'))
+        : 'Assigned automatically from histology or diagnosis';
+    return `<p id="processBillingType-${id}" data-billing-type="${escapeHtml(selected || '')}" class="text-[11px] text-slate-600">${escapeHtml(line)}</p>`;
 }
 
 function procedureGroupAlreadyHasConsult(group) {
@@ -1511,7 +1515,9 @@ function renderProcessBillingLesionDetails(view, options) {
         || /shave/i.test(String(view.biopsyType || view.procedure || detail.procedure || '')));
     const type = kind === 'biopsy'
         ? (isShave ? 'Shave biopsy (30071)' : 'Punch biopsy (30071)')
-        : (BILLING_LESION_TYPES.find((opt) => opt.id === inferBillingLesionType(view))?.label || '—');
+        : ((typeof formatBillingLesionTypeLine === 'function' ? formatBillingLesionTypeLine(view) : '')
+            || BILLING_LESION_TYPES.find((opt) => opt.id === inferBillingLesionType(view))?.label
+            || '—');
     const closure = firstFilled(view.excisionClosureType, detail.excisionClosureType) || '—';
     const histo = typeof billingHistologyDetail === 'function' ? billingHistologyDetail(view) : (view.histologyResult || '');
     const diagnosis = (typeof billingDisplayDiagnosis === 'function' ? billingDisplayDiagnosis(view) : '')
@@ -1531,9 +1537,6 @@ function renderProcessBillingLesionDetails(view, options) {
         : `<div><dt>Lesion size</dt><dd>${escapeHtml(lesionSize)}</dd></div>
            <div><dt>Margin</dt><dd>${margin ? escapeHtml(String(margin)) + ' mm' : '—'}</dd></div>
            <div><dt>Overall size</dt><dd>${escapeHtml(nedText)}<span class="billing-detail-sub">NED ${escapeHtml(nedCalc)}</span></dd></div>`;
-    const typeSelect = options.typeSelect && kind !== 'biopsy'
-        ? `<div class="pt-1">${processBillingTypeSelectHtml(view.lesionId || view.id, inferBillingLesionType(view))}</div>`
-        : '';
     return `
         <div class="billing-detail-card space-y-2">
             <h4>${escapeHtml(view.location || 'Lesion')}</h4>
@@ -1550,7 +1553,6 @@ function renderProcessBillingLesionDetails(view, options) {
             <dl class="billing-detail-grid">
                 ${sizeRows}
             </dl>
-            ${typeSelect}
         </div>`;
 }
 
@@ -1683,7 +1685,7 @@ function refreshProcessBillingPreview() {
         meta.innerHTML = '<div class="space-y-3">' + group.map((lesion) => {
             const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
             const view = bill && typeof billingViewModel === 'function' ? billingViewModel(bill) : lesion;
-            return renderProcessBillingLesionDetails(view, { typeSelect: true });
+            return renderProcessBillingLesionDetails(view, { typeSelect: false });
         }).join('') + '</div>';
     }
     renderProcessBillingSuggestedItems();
@@ -1743,10 +1745,9 @@ async function submitProcessBilling() {
                 bill = await createOrUpdateBillingFromLesion(lesion);
             }
             if (!bill || billingHasBeenSent(bill)) continue;
-            const typeEl = document.getElementById('processBillingType-' + String(lesion.id).replace(/'/g, ''));
-            if (typeEl?.value) {
-                bill.billingLesionType = typeEl.value;
-                lesion.billingLesionType = typeEl.value;
+            if (typeof applyInferredBillingLesionType === 'function') {
+                applyInferredBillingLesionType(lesion);
+                bill.billingLesionType = lesion.billingLesionType || bill.billingLesionType || '';
             }
             const procCodes = processBillingContext.items
                 .filter((item) => item.lesionId === String(lesion.id) && processBillingContext.accepted[item.key])
@@ -2136,33 +2137,69 @@ function fillAssignExcisionPriorHistoFields(lesion) {
     }
 }
 
-function syncHistologyBillingTypeFromResult() {
-    const resultEl = document.getElementById('histologyResultText');
-    const typeEl = document.getElementById('histologyBillingType');
-    if (!typeEl) return;
+function histologyModalDraftTypeInputs() {
     const id = document.getElementById('histologyLesionId')?.value;
     const lesion = managedLesions.find((item) => String(item.id) === String(id)) || {};
-    const structured = typeof readDiagnosisTypeahead === 'function'
+    const diagnosis = typeof readDiagnosisTypeahead === 'function'
         ? readDiagnosisTypeahead('histologyDiagnosis')
         : (document.getElementById('histologyDiagnosis')?.value || '');
-    const result = String(resultEl?.value || '').trim();
-    const combined = [structured, result].filter(Boolean).join('\n');
-    if (combined && typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma(combined)) {
-        typeEl.value = 'confirmed_melanoma';
-    } else if (combined && typeof inferBillingLesionType === 'function') {
-        const inferred = inferBillingLesionType({
-            ...lesion,
-            histologyDiagnosis: structured,
-            histologyResult: result,
-            billingLesionType: ''
-        });
-        if (inferred) typeEl.value = inferred;
-    } else if (!combined) {
-        const inferred = typeof inferBillingLesionType === 'function'
-            ? inferBillingLesionType({ ...lesion, histologyResult: '', histologyDiagnosis: '' })
-            : '';
-        typeEl.value = inferred || lesion.billingLesionType || '';
+    const result = String(document.getElementById('histologyResultText')?.value || '').trim();
+    return { lesion, diagnosis, result };
+}
+
+function histologyModalInferredType() {
+    const { lesion, diagnosis, result } = histologyModalDraftTypeInputs();
+    if (typeof resolveHistologyBillingLesionType === 'function') {
+        return resolveHistologyBillingLesionType(lesion, diagnosis, result);
     }
+    if (typeof inferBillingLesionType === 'function') {
+        return inferBillingLesionType({
+            ...lesion,
+            histologyDiagnosis: diagnosis,
+            histologyResult: result,
+            billingLesionType: (diagnosis || result) ? '' : (lesion.billingLesionType || '')
+        }) || '';
+    }
+    return '';
+}
+
+function onHistologyBillingTypeOverrideChange() {
+    const override = document.getElementById('histologyBillingTypeOverride')?.value || '';
+    const hidden = document.getElementById('histologyBillingType');
+    if (hidden && override) hidden.value = override;
+}
+
+function syncHistologyBillingTypeFromResult() {
+    const typeEl = document.getElementById('histologyBillingType');
+    const statusEl = document.getElementById('histologyBillingTypeStatus');
+    const fallback = document.getElementById('histologyBillingTypeFallback');
+    const overrideEl = document.getElementById('histologyBillingTypeOverride');
+    const { lesion, diagnosis, result } = histologyModalDraftTypeInputs();
+    const combined = [diagnosis, result].filter(Boolean).join('\n');
+    const inferred = histologyModalInferredType();
+    if (typeEl && inferred) typeEl.value = inferred;
+    else if (typeEl && !combined) typeEl.value = lesion.billingLesionType || '';
+    const label = typeof billingLesionTypeLabel === 'function'
+        ? billingLesionTypeLabel(inferred)
+        : (inferred || '');
+    if (statusEl) {
+        if (inferred === 'confirmed_melanoma') {
+            statusEl.textContent = 'Confirmed melanoma (from histology)';
+        } else if (inferred === 'suspected_melanoma') {
+            statusEl.textContent = 'Suspected melanoma (initial excision — no histology yet)';
+        } else if (inferred && combined) {
+            statusEl.textContent = (label || inferred) + ' (from histology)';
+        } else if (inferred) {
+            statusEl.textContent = (label || inferred) + ' (from diagnosis)';
+        } else if (combined) {
+            statusEl.textContent = 'Could not classify automatically — add a catalogue diagnosis, or choose a type.';
+        } else {
+            statusEl.textContent = 'Assigned automatically from the diagnosis and result.';
+        }
+    }
+    const needFallback = !!(combined && !inferred);
+    if (fallback) fallback.classList.toggle('hidden', !needFallback);
+    if (!needFallback && overrideEl) overrideEl.value = '';
     if (typeof syncHistologyFollowUpUi === 'function') syncHistologyFollowUpUi();
 }
 
@@ -2291,6 +2328,8 @@ function openHistologyModal(id) {
             : '';
     }
     fillLesionPatientContactEl(document.getElementById('histologyPatientContact'), lesion);
+    const overrideEl = document.getElementById('histologyBillingTypeOverride');
+    if (overrideEl) overrideEl.value = '';
     if (typeof syncHistologyBillingTypeFromResult === 'function') {
         syncHistologyBillingTypeFromResult();
     } else if (typeEl) {
@@ -2335,7 +2374,9 @@ async function submitHistologyModal() {
     const histologyDiagnosis = typeof readDiagnosisTypeahead === 'function'
         ? readDiagnosisTypeahead('histologyDiagnosis')
         : (document.getElementById('histologyDiagnosis')?.value.trim() || '');
-    let billingType = document.getElementById('histologyBillingType')?.value || '';
+    let billingType = typeof histologyModalInferredType === 'function'
+        ? histologyModalInferredType()
+        : (document.getElementById('histologyBillingType')?.value || '');
     const next = document.querySelector('input[name="histologyNext"]:checked')?.value || '';
     const proposedPlan = document.querySelector('input[name="histologyProposedPlan"]:checked')?.value || '';
     const proposedPlanNote = document.getElementById('histologyProposedPlanNote')?.value.trim() || '';
@@ -2364,9 +2405,16 @@ async function submitHistologyModal() {
         }
     }
     if (!billingType) {
-        showToast('Assign the lesion type from histology (or suspected melanoma).');
+        billingType = document.getElementById('histologyBillingTypeOverride')?.value || '';
+    }
+    if (!billingType) {
+        const fallback = document.getElementById('histologyBillingTypeFallback');
+        if (fallback) fallback.classList.remove('hidden');
+        showToast('Add a diagnosis from the list so billing type can be assigned, or classify the result.');
         return false;
     }
+    const typeEl = document.getElementById('histologyBillingType');
+    if (typeEl) typeEl.value = billingType;
     if (fileNoCall && next !== 'no_followup') {
         showToast('File, no call is only for no further action.');
         return false;

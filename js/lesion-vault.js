@@ -856,6 +856,9 @@ function buildReexcisionLesionFromPrior(prior, extras) {
         chartId: extras.chartId || prior.chartId || patient.chartId || '',
         phone: extras.phone || prior.phone || patient.patientPhone || ''
     };
+    if (typeof applyInferredBillingLesionType === 'function') {
+        applyInferredBillingLesionType(child);
+    }
     return child;
 }
 
@@ -915,6 +918,9 @@ function buildManagementChildFromPrior(prior, extras) {
         chartId: extras.chartId || prior.chartId || patient.chartId || '',
         phone: extras.phone || prior.phone || patient.patientPhone || ''
     };
+    if (typeof applyInferredBillingLesionType === 'function') {
+        applyInferredBillingLesionType(child);
+    }
     return child;
 }
 
@@ -2394,6 +2400,9 @@ async function persistSessionLesionToVault(sessionLesion) {
         priorBreslowMm: sessionLesion.priorBreslowMm || existing.priorBreslowMm || '',
         priorProcedureKind: sessionLesion.priorProcedureKind || existing.priorProcedureKind || ''
     };
+    if (typeof applyInferredBillingLesionType === 'function') {
+        applyInferredBillingLesionType(next);
+    }
     if (repairLesionAwaitingAfterResult(next)) {
         managementStatus = next.managementStatus;
     }

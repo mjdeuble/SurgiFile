@@ -465,6 +465,43 @@ function inferBillingLesionType(lesion) {
     );
 }
 
+function billingLesionTypeLabel(type) {
+    if (!type || typeof BILLING_LESION_TYPES === 'undefined') return '';
+    return BILLING_LESION_TYPES.find((opt) => opt.id === type)?.label || '';
+}
+
+function billingLesionTypeSource(lesion) {
+    if (!lesion) return '';
+    const type = inferBillingLesionType(lesion);
+    if (!type) return '';
+    if (billingOwnHistologyText(lesion)) return 'from histology';
+    if (billingPriorHistologyText(lesion)) return 'from prior histology';
+    if (type === 'suspected_melanoma') return 'initial excision — no histology yet';
+    if (type === 'confirmed_melanoma') return 'from histology';
+    return 'from diagnosis';
+}
+
+function formatBillingLesionTypeLine(lesion) {
+    const type = inferBillingLesionType(lesion);
+    const label = billingLesionTypeLabel(type);
+    if (!label) return '';
+    const source = billingLesionTypeSource(lesion);
+    return source ? label + ' (' + source + ')' : label;
+}
+
+function resolveHistologyBillingLesionType(lesion, diagnosis, result) {
+    const dx = String(diagnosis || '').trim();
+    const res = String(result || '').trim();
+    const combined = [dx, res].filter(Boolean).join('\n');
+    if (combined && textIndicatesMelanoma(combined)) return 'confirmed_melanoma';
+    return inferBillingLesionType({
+        ...(lesion || {}),
+        histologyDiagnosis: dx,
+        histologyResult: res,
+        billingLesionType: combined ? '' : (lesion?.billingLesionType || '')
+    }) || '';
+}
+
 function applyInferredBillingLesionType(lesion) {
     if (!lesion) return '';
     const inferred = inferBillingLesionType(lesion);
@@ -472,10 +509,12 @@ function applyInferredBillingLesionType(lesion) {
     const current = lesion.billingLesionType || '';
     const histoKnown = !!billingHistologyTextForType(lesion);
     if (
-        inferred === 'confirmed_melanoma'
+        histoKnown
+        || inferred === 'confirmed_melanoma'
+        || inferred === 'suspected_melanoma'
         || !current
         || !isKnownBillingLesionType(current)
-        || (histoKnown && current === 'suspected_melanoma')
+        || (current === 'suspected_melanoma' && inferred !== 'suspected_melanoma')
     ) {
         lesion.billingLesionType = inferred;
     }
@@ -768,9 +807,9 @@ function suggestMbsItems(lesion) {
     if (!type) {
         const band = sizeBandForRegion(region, nedMm);
         if (band) {
-            notes.push('Size band from location and NED is ' + sizeBandLabel(region, band) + '. Assign benign, malignant, confirmed melanoma, or suspected melanoma to pick the item.');
+            notes.push('Size band from location and NED is ' + sizeBandLabel(region, band) + '. Billing type is assigned from histology (or suspected melanoma when there is no result yet).');
         } else {
-            notes.push('Assign lesion type, and enter length, width, and margin so NED can be calculated (TN.8.125: (length + width) / 2 + 2 × margin).');
+            notes.push('Enter a diagnosis or histology so billing type can be assigned, and enter length, width, and margin so NED can be calculated (TN.8.125: (length + width) / 2 + 2 × margin).');
         }
         return {
             region,
@@ -903,7 +942,7 @@ function copySuggestedBillingItems(id) {
     if (!view) return;
     const codes = view.assignedMbsItems || suggestMbsItems(view).summary;
     if (!codes) {
-        showToast('Assign histology type or suspected melanoma, then apply the suggested items.');
+        showToast('Enter histology (or a melanoma diagnosis for a first excision) so item numbers can be suggested.');
         return;
     }
     copyTextToClipboard(codes, 'Billing codes copied.');
