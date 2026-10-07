@@ -444,8 +444,6 @@ function lesionIsPreviousProcedure(lesion) {
 }
 
 function lesionIsHiddenByReexcisionLink(lesion) {
-    // Hide duplicate re-excision children only. Parent / previous-procedure
-    // lesions stay on the practice board and patient chart.
     return lesionIsOrphanReexcisionDuplicate(lesion);
 }
 

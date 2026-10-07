@@ -437,6 +437,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             opacity: 0.45;
             cursor: not-allowed;
         }
+        .lesion-card-subtiles {
+            display: flex;
+            flex-direction: column;
+            gap: 0.45rem;
+            padding-left: 0.55rem;
+            border-left: 2px solid #cbd5e1;
+        }
+        .lesion-card-subtiles .lesion-card-block {
+            background: #f8fafc;
+        }
         .lesion-card-block {
             border: 1px solid #e2e8f0;
             background: #fff;

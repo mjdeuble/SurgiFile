@@ -78,7 +78,7 @@ function lesionMatchesFilter(lesion, filter) {
             ? isActiveManagementStatus(lesion.managementStatus)
             : ACTIVE_MANAGEMENT_STATUSES.includes(status);
         if (active) return true;
-        return typeof lesionIsPreviousProcedure === 'function' && lesionIsPreviousProcedure(lesion);
+        return false;
     }
     if (filter === 'billing' || filter === 'notes') return false;
     if (filter === 'planned_excision' || filter === 'planned_procedure') return status === 'planned_procedure';
@@ -234,19 +234,21 @@ const CHART_BOARD_STATUS_GROUPS = [
     ['needs_contact', 'Needs contact'],
     ['appointment_requested', 'Appointment requested'],
     ['topical_followup', 'Topical follow-up'],
-    ['previous_procedure', 'Previous procedures'],
     ['no_followup', 'No follow-up']
 ];
 
+function isClinicalLesionTile(lesion) {
+    if (typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(lesion)) return false;
+    if (typeof lesionIsPreviousProcedure === 'function' && lesionIsPreviousProcedure(lesion)) return false;
+    return true;
+}
+
 function chartBoardGroupKey(lesion) {
-    if (typeof lesionIsPreviousProcedure === 'function' && lesionIsPreviousProcedure(lesion)) {
-        return 'previous_procedure';
-    }
     return typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus;
 }
 
 function renderOpenChartBoard() {
-    const items = adminLesions().filter((item) => !(typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(item)));
+    const items = adminLesions().filter(isClinicalLesionTile);
     const known = new Set(CHART_BOARD_STATUS_GROUPS.map((pair) => pair[0]));
     const groups = CHART_BOARD_STATUS_GROUPS.map(([key, title]) => {
         const rows = items.filter((item) => chartBoardGroupKey(item) === key);
@@ -612,6 +614,52 @@ function renderLesionCardEventLine(event) {
     </li>`;
 }
 
+function collectLesionAncestors(lesion) {
+    const out = [];
+    const seen = new Set();
+    let current = lesion;
+    while (current?.priorLesionId) {
+        const id = String(current.priorLesionId);
+        if (seen.has(id)) break;
+        seen.add(id);
+        const prior = typeof findLesionRecordById === 'function' ? findLesionRecordById(id) : null;
+        if (!prior) break;
+        out.unshift(prior);
+        current = prior;
+    }
+    return out;
+}
+
+function retitleLesionCardBlock(html, title) {
+    if (!html) return '';
+    return String(html).replace(/<span>[^<]*<\/span>/, '<span>' + title + '</span>');
+}
+
+function renderLesionPreviousProcedureSubtile(lesion) {
+    const html = renderLesionProcedureBlock(lesion);
+    if (!html) return '';
+    return retitleLesionCardBlock(html, 'Previous procedure');
+}
+
+function renderChartLesionHistory(lesion) {
+    const ancestors = collectLesionAncestors(lesion);
+    const examSource = ancestors[0] || lesion;
+    const examHtml = renderLesionExamBlock(examSource)
+        || (examSource !== lesion ? renderLesionExamBlock(lesion) : '');
+    const previousHtml = ancestors.map(renderLesionPreviousProcedureSubtile).filter(Boolean).join('');
+    const currentProc = renderLesionProcedureBlock(lesion);
+    const historyHtml = [examHtml, previousHtml].filter(Boolean).join('');
+    return {
+        ancestors,
+        examHtml,
+        previousHtml,
+        currentProc,
+        historyHtml: historyHtml
+            ? `<div class="lesion-card-subtiles">${historyHtml}</div>`
+            : ''
+    };
+}
+
 function renderLesionExamBlock(lesion) {
     const macro = unspecifiedExamText(lesion?.macroscopic);
     const dermoscopy = unspecifiedExamText(lesion?.dermoscopy);
@@ -704,8 +752,8 @@ function renderManagedLesionCard(lesion, options) {
         : '';
 
     if (chartBoard) {
-        const examHtml = renderLesionExamBlock(lesion);
-        const procedureHtml = renderLesionProcedureBlock(lesion);
+        const history = renderChartLesionHistory(lesion);
+        const showCopiedPrior = prior && !history.ancestors.length;
         return `
         <article class="p-3 rounded-lg border border-slate-200 bg-slate-50/70 space-y-2">
             <div class="flex justify-between gap-2">
@@ -716,10 +764,10 @@ function renderManagedLesionCard(lesion, options) {
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0">${escapeHtml(status)}</span>
             </div>
             ${missed ? `<p class="lesion-call-badge">${escapeHtml(formatCallBadge(missed))}</p>` : ''}
-            ${prior ? `<p class="text-[11px] text-slate-600">${escapeHtml(prior)}</p>` : ''}
+            ${showCopiedPrior ? `<p class="text-[11px] text-slate-600">${escapeHtml(prior)}</p>` : ''}
             ${lesion.currentPlan ? `<p class="text-[11px] text-slate-700"><span class="font-semibold text-slate-600">Plan:</span> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
-            ${examHtml}
-            ${procedureHtml}
+            ${history.historyHtml}
+            ${history.currentProc}
             ${renderLesionContactBlock(lesion)}
             ${renderLesionActionLog(lesion)}
             <div class="flex flex-wrap gap-1.5">${renderManagedLesionActions(lesion, options)}</div>
