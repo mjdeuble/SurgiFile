@@ -1504,6 +1504,150 @@ function normalizePhoneDigits(phone) {
     return String(phone || '').replace(/\D/g, '');
 }
 
+function formatAuPhoneDisplay(raw) {
+    let digits = normalizePhoneDigits(raw);
+    if (!digits) return '';
+    if (digits.startsWith('61') && digits.length >= 9) digits = '0' + digits.slice(2);
+    if (digits.length <= 9 && digits.startsWith('4') && !digits.startsWith('04')) digits = '0' + digits;
+    digits = digits.slice(0, 10);
+    if (digits.startsWith('04')) {
+        if (digits.length <= 4) return digits;
+        if (digits.length <= 7) return digits.slice(0, 4) + ' ' + digits.slice(4);
+        return digits.slice(0, 4) + ' ' + digits.slice(4, 7) + ' ' + digits.slice(7);
+    }
+    if (digits.startsWith('0')) {
+        if (digits.length <= 2) return digits;
+        if (digits.length <= 6) return '(' + digits.slice(0, 2) + ') ' + digits.slice(2);
+        return '(' + digits.slice(0, 2) + ') ' + digits.slice(2, 6) + ' ' + digits.slice(6);
+    }
+    return digits;
+}
+
+function padDobPart(value, size) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length >= size ? digits.slice(0, size) : digits.padStart(size, '0');
+}
+
+function parseDobDigits(raw) {
+    const digits = String(raw || '').replace(/\D/g, '');
+    return {
+        day: digits.slice(0, 2),
+        month: digits.slice(2, 4),
+        year: digits.slice(4, 8)
+    };
+}
+
+function composeChartPatientDob(day, month, year) {
+    const dd = padDobPart(day, 2);
+    const mm = padDobPart(month, 2);
+    const yyyy = String(year || '').replace(/\D/g, '').slice(0, 4);
+    if (!dd && !mm && !yyyy) return '';
+    if (yyyy.length !== 4) return '';
+    const d = Number(dd);
+    const m = Number(mm);
+    const y = Number(yyyy);
+    if (!d || d < 1 || d > 31 || !m || m < 1 || m > 12 || y < 1900) return '';
+    const dt = new Date(y, m - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return '';
+    if (dt.getTime() > Date.now()) return '';
+    return dd + '/' + mm + '/' + yyyy;
+}
+
+function readChartPatientDobFields() {
+    return composeChartPatientDob(
+        document.getElementById('chartPatientDobDay')?.value,
+        document.getElementById('chartPatientDobMonth')?.value,
+        document.getElementById('chartPatientDobYear')?.value
+    );
+}
+
+function fillChartPatientDobFields(raw) {
+    const parts = parseDobDigits(raw);
+    const dayEl = document.getElementById('chartPatientDobDay');
+    const monthEl = document.getElementById('chartPatientDobMonth');
+    const yearEl = document.getElementById('chartPatientDobYear');
+    if (dayEl) dayEl.value = parts.day;
+    if (monthEl) monthEl.value = parts.month;
+    if (yearEl) yearEl.value = parts.year;
+    syncChartPatientDobHidden();
+}
+
+function syncChartPatientDobHidden() {
+    const hidden = document.getElementById('chartPatientDob');
+    if (hidden) hidden.value = readChartPatientDobFields();
+}
+
+function dobSegmentShouldAdvance(el, maxLen) {
+    const digits = String(el?.value || '').replace(/\D/g, '');
+    if (digits.length >= maxLen) return true;
+    if (maxLen !== 2 || digits.length !== 1) return false;
+    const n = Number(digits);
+    if (el.id === 'chartPatientDobDay') return n >= 4;
+    if (el.id === 'chartPatientDobMonth') return n >= 2;
+    return false;
+}
+
+function bindChartPatientDobSegment(el, nextId, prevId, maxLen) {
+    if (!el || el.dataset.dobBound === '1') return;
+    el.dataset.dobBound = '1';
+    el.addEventListener('input', () => {
+        el.value = String(el.value || '').replace(/\D/g, '').slice(0, maxLen);
+        syncChartPatientDobHidden();
+        if (dobSegmentShouldAdvance(el, maxLen) && nextId) {
+            document.getElementById(nextId)?.focus();
+            document.getElementById(nextId)?.select();
+        }
+    });
+    el.addEventListener('keydown', (event) => {
+        if (event.key === 'Backspace' && !el.value && prevId) {
+            event.preventDefault();
+            const prev = document.getElementById(prevId);
+            if (prev) {
+                prev.focus();
+                prev.select();
+            }
+        }
+    });
+    el.addEventListener('blur', () => {
+        if (maxLen === 2 && el.value) el.value = padDobPart(el.value, 2);
+        syncChartPatientDobHidden();
+    });
+    el.addEventListener('paste', (event) => {
+        const text = (event.clipboardData || window.clipboardData)?.getData('text') || '';
+        const digits = String(text).replace(/\D/g, '');
+        if (digits.length < 8) return;
+        event.preventDefault();
+        fillChartPatientDobFields(digits);
+        document.getElementById('chartPatientPhone')?.focus();
+    });
+}
+
+function bindChartPatientIdentityFields() {
+    const dayEl = document.getElementById('chartPatientDobDay');
+    const monthEl = document.getElementById('chartPatientDobMonth');
+    const yearEl = document.getElementById('chartPatientDobYear');
+    const phoneEl = document.getElementById('chartPatientPhone');
+    bindChartPatientDobSegment(dayEl, 'chartPatientDobMonth', '', 2);
+    bindChartPatientDobSegment(monthEl, 'chartPatientDobYear', 'chartPatientDobDay', 2);
+    bindChartPatientDobSegment(yearEl, 'chartPatientPhone', 'chartPatientDobMonth', 4);
+    if (phoneEl && phoneEl.dataset.phoneBound !== '1') {
+        phoneEl.dataset.phoneBound = '1';
+        phoneEl.addEventListener('input', () => {
+            phoneEl.value = formatAuPhoneDisplay(phoneEl.value);
+        });
+        phoneEl.addEventListener('blur', () => {
+            phoneEl.value = formatAuPhoneDisplay(phoneEl.value);
+        });
+        phoneEl.addEventListener('paste', (event) => {
+            const text = (event.clipboardData || window.clipboardData)?.getData('text') || '';
+            if (!text) return;
+            event.preventDefault();
+            phoneEl.value = formatAuPhoneDisplay(text);
+        });
+    }
+}
+
 function patientIdentityFromRecord(source) {
     const firstName = String(source?.firstName || '').trim();
     const lastName = String(source?.lastName || '').trim();
@@ -1959,7 +2103,9 @@ function openAddPatientModal() {
     const phoneEl = document.getElementById('chartPatientPhone');
     if (firstEl) firstEl.value = '';
     if (lastEl) lastEl.value = '';
-    if (dobEl) dobEl.value = '';
+    if (typeof bindChartPatientIdentityFields === 'function') bindChartPatientIdentityFields();
+    if (typeof fillChartPatientDobFields === 'function') fillChartPatientDobFields('');
+    else if (dobEl) dobEl.value = '';
     if (phoneEl) phoneEl.value = '';
     const addConsult = document.getElementById('chartPatientConsultBilling');
     const addBiopsy = document.getElementById('chartPatientBiopsyBilling');
@@ -1989,16 +2135,30 @@ async function submitAddPatientModal() {
     }
     const firstName = document.getElementById('chartPatientFirstName')?.value.trim() || '';
     const lastName = document.getElementById('chartPatientLastName')?.value.trim() || '';
-    const dob = document.getElementById('chartPatientDob')?.value.trim() || '';
-    const phone = document.getElementById('chartPatientPhone')?.value.trim() || '';
+    const dob = (typeof readChartPatientDobFields === 'function'
+        ? readChartPatientDobFields()
+        : (document.getElementById('chartPatientDob')?.value.trim() || ''));
+    const phone = typeof formatAuPhoneDisplay === 'function'
+        ? formatAuPhoneDisplay(document.getElementById('chartPatientPhone')?.value || '')
+        : (document.getElementById('chartPatientPhone')?.value.trim() || '');
+    const phoneEl = document.getElementById('chartPatientPhone');
+    if (phoneEl) phoneEl.value = phone;
     const clinician = (typeof loggedInDoctorName === 'function' && loggedInDoctorName()) || '';
     const name = composePatientName(firstName, lastName);
     if (!clinician) {
         showToast('Sign in with a user that has a full doctor name. Charts attach to that doctor automatically.');
         return;
     }
-    if (!firstName || !lastName || !dob) {
-        showToast('Enter first name, last name, and date of birth.');
+    if (!firstName || !lastName) {
+        showToast('Enter first name and last name.');
+        return;
+    }
+    if (!dob) {
+        showToast('Enter date of birth as day, month, and year (for example 12 / 03 / 1960).');
+        const missing = !document.getElementById('chartPatientDobDay')?.value
+            ? 'chartPatientDobDay'
+            : (!document.getElementById('chartPatientDobMonth')?.value ? 'chartPatientDobMonth' : 'chartPatientDobYear');
+        document.getElementById(missing)?.focus();
         return;
     }
     if (normalizePhoneDigits(phone).length < 8) {
