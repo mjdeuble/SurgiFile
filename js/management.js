@@ -760,7 +760,6 @@ function renderLesionActionLog(lesion) {
 
 function renderManagedLesionCard(lesion, options) {
     const grouped = !!(options && options.grouped);
-    const chartBoard = !!(options && options.chartBoard);
     const patient = lesion.patientName || 'Unnamed patient';
     const identity = typeof patientIdentityFromRecord === 'function' ? patientIdentityFromRecord(lesion) : null;
     const canFocus = !!(identity?.chartId || (lesion.patientName && lesion.patientDob));
@@ -782,16 +781,16 @@ function renderManagedLesionCard(lesion, options) {
         && (lesion.priorLesionId || (typeof lesionHasCopiedPriorHistology === 'function' && lesionHasCopiedPriorHistology(lesion)))
         ? formatPriorHistologyCitation(lesion)
         : '';
-
-    if (chartBoard) {
-        const history = renderChartLesionHistory(lesion);
-        const showCopiedPrior = prior && !history.ancestors.length;
-        return `
+    const history = renderChartLesionHistory(lesion);
+    const showCopiedPrior = prior && !history.ancestors.length;
+    return `
         <article class="p-3 rounded-lg border border-slate-200 bg-slate-50/70 space-y-2">
             <div class="flex justify-between gap-2">
                 <div class="min-w-0">
+                    ${nameHtml}
                     <p class="text-sm font-semibold text-slate-800">${escapeHtml(lesion.location || 'No site')}</p>
                     <p class="text-xs text-slate-600">${dx ? escapeHtml(dx) : escapeHtml(status)}</p>
+                    ${contactHtml}
                 </div>
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0">${escapeHtml(status)}</span>
             </div>
@@ -802,35 +801,6 @@ function renderManagedLesionCard(lesion, options) {
             ${history.currentProc}
             ${renderLesionContactBlock(lesion)}
             ${renderLesionActionLog(lesion)}
-            <div class="flex flex-wrap gap-1.5">${renderManagedLesionActions(lesion, options)}</div>
-        </article>`;
-    }
-
-    const fu = lesion.topicalFollowUp && lesion.topicalFollowUp !== 'none'
-        ? `Follow-up: ${escapeHtml(lesion.topicalFollowUp)}`
-        : '';
-    const region = lesion.billingRegion ? procedureAreaLabel(lesion.billingRegion) : '';
-    const dims = lesionExamDimensions(lesion) || lesionProcedureDimensions(lesion);
-    return `
-        <article class="p-3 rounded-lg border border-slate-200 bg-slate-50/70 space-y-2">
-            <div class="flex justify-between gap-2">
-                <div class="min-w-0">
-                    ${nameHtml}
-                    <p class="text-xs text-slate-600">${escapeHtml(lesion.location || 'No site')}${dx ? ' · ' + escapeHtml(dx) : ''}</p>
-                    ${contactHtml}
-                </div>
-                <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(formatLesionWhen(lesionProcedureAt(lesion) || lesionExamAt(lesion) || lesion.updatedAt))}</span>
-            </div>
-            <p class="text-[11px] text-slate-500">${escapeHtml(status)}${fu ? ' · ' + fu : ''}${region ? ' · ' + escapeHtml(region) : ''}${dims ? ' · ' + escapeHtml(dims) : ''}</p>
-            ${lesion.currentPlan ? `<p class="text-[11px] text-slate-700"><span class="font-semibold text-slate-600">Plan:</span> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
-            ${missed ? `<p class="lesion-call-badge">${escapeHtml(formatCallBadge(missed))}</p>` : ''}
-            ${lesion.histologyResult ? `<p class="text-[11px] text-slate-600">Result: ${escapeHtml(lesion.histologyResult)}</p>` : ''}
-            ${typeof formatHistologyAccession === 'function' && formatHistologyAccession(lesion, 'own')
-                ? `<p class="text-[11px] text-slate-600">Lab case: ${escapeHtml(formatHistologyAccession(lesion, 'own'))}</p>`
-                : (lesion.histologyPot
-                    ? `<p class="text-[11px] text-slate-600">Pot ${escapeHtml(String(lesion.histologyPot))}${lesion.histologyBatchId ? ' (this procedure)' : ''}</p>`
-                    : '')}
-            ${prior ? `<p class="text-[11px] text-slate-600">${escapeHtml(prior)}</p>` : ''}
             <div class="flex flex-wrap gap-1.5">${renderManagedLesionActions(lesion, options)}</div>
         </article>`;
 }
