@@ -2573,6 +2573,9 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
     const lesion = managedLesions.find((item) => item.id === id);
     if (!lesion) return;
     extras = extras || {};
+    const priorStatus = typeof lesionLifecycleStatus === 'function'
+        ? lesionLifecycleStatus(lesion)
+        : canonicalLesionStatus(lesion.managementStatus);
     let action = nextAction === 'plan_excision' ? 'further_management' : nextAction;
     const contact = extras.contact || 'mark_for_contact';
     const fileNoCall = !!extras.fileNoCall && action === 'no_followup';
@@ -2604,6 +2607,25 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
         const suggestion = suggestMbsItems(lesion);
         if (suggestion.ready && suggestion.summary) lesion.suggestedMbsItems = suggestion.summary;
     }
+    if (extras.resultOnly) {
+        const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
+        appendLesionTimeline(lesion, {
+            type: 'histology',
+            note: [resultText, accession && ('Lab case ' + accession)].filter(Boolean).join(' · '),
+            planAfter: lesion.currentPlan || ''
+        });
+        if (typeof syncBillingFromLesion === 'function') {
+            await syncBillingFromLesion(lesion);
+        }
+        if (lesionHasSavedHistology(lesion) && (priorStatus === 'awaiting_histology'
+            || canonicalLesionStatus(lesion.managementStatus) === 'awaiting_histology')) {
+            lesion.managementStatus = 'needs_contact';
+            if (!lesion.contactState) lesion.contactState = 'mark_for_contact';
+            lesion.currentPlan = 'Result recorded — set plan in Manage lesion.';
+        }
+        await saveManagedLesionRecord(lesion, 'histology', resultText || lesion.histologyResult || '');
+        return { lesion, resultOnly: true };
+    }
     lesion.resultPlan = action === 'further_management' || action === 'no_followup' ? action : (lesion.resultPlan || '');
     lesion.contactState = fileNoCall ? 'file_no_call' : contact;
     const advised = contact === 'advised_now' || fileNoCall;
@@ -2611,7 +2633,7 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
     const planAfter = resultContactPlanLine(lesion.resultPlan, fileNoCall ? 'advised_now' : contact, { fileNoCall });
     const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
     const timelineNote = [extras.callNote || resultText, accession && ('Lab case ' + accession)].filter(Boolean).join(' · ');
-    let timelineType = 'histology';
+    let timelineType = String(resultText || '').trim() ? 'histology' : 'plan';
     let timelineOutcome = '';
     if (advised) timelineType = 'result_advised';
     else if (contact === 'not_reached') {
@@ -2629,7 +2651,12 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
     if (typeof syncBillingFromLesion === 'function') {
         await syncBillingFromLesion(lesion);
     }
-    const note = [extras.callNote ? resultText + ' · ' + extras.callNote : resultText, accession && ('Lab case ' + accession)].filter(Boolean).join(' · ');
+    const note = [
+        extras.callNote
+            ? (String(resultText || '').trim() ? resultText + ' · ' + extras.callNote : extras.callNote)
+            : resultText,
+        accession && ('Lab case ' + accession)
+    ].filter(Boolean).join(' · ');
     if (action === 'further_management') {
         if (!lesionHasSavedHistology(lesion)) {
             showToast('Save the histology result before opening further management.');
