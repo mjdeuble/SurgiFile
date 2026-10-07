@@ -247,7 +247,6 @@ function chartBoardGroupKey(lesion) {
 
 function renderOpenChartBoard() {
     const items = adminLesions().filter((item) => !(typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(item)));
-    const seen = new Set(items.map((item) => String(item.id)));
     const known = new Set(CHART_BOARD_STATUS_GROUPS.map((pair) => pair[0]));
     const groups = CHART_BOARD_STATUS_GROUPS.map(([key, title]) => {
         const rows = items.filter((item) => chartBoardGroupKey(item) === key);
@@ -268,22 +267,10 @@ function renderOpenChartBoard() {
             <div class="p-3 space-y-2">${group.rows.map((lesion) => renderManagedLesionCard(lesion, { grouped: true, chartBoard: true })).join('')}</div>
         </section>`).join('');
 
-    const orphanBills = adminBillings().filter((bill) => !seen.has(String(bill.lesionId || '')));
-    const awaitingOrphans = orphanBills.filter((bill) => bill.status === 'awaiting' || !bill.status).map(billingViewModel);
-    const confirmedOrphans = orphanBills.filter((bill) => bill.status === 'confirmed').map(billingViewModel);
-    const processedOrphans = orphanBills.filter((bill) => bill.status === 'processed').map(billingViewModel);
-    const billingHtml = (awaitingOrphans.length || confirmedOrphans.length || processedOrphans.length)
-        ? `<div class="lg:col-span-2 space-y-3">${
-            (awaitingOrphans.length ? renderBillingQueue(awaitingOrphans) : '')
-            + (confirmedOrphans.length ? renderConfirmedBillingQueue(confirmedOrphans) : '')
-            + (processedOrphans.length ? renderProcessedBillingQueue(processedOrphans) : '')
-        }</div>`
-        : '';
-
-    if (!groups.length && !orphanBills.length) {
+    if (!groups.length) {
         return '<p class="text-sm text-slate-400 italic lg:col-span-2">No lesions on this chart yet.</p>';
     }
-    return lesionHtml + billingHtml;
+    return lesionHtml;
 }
 
 function renderManagedLesions() {
@@ -691,49 +678,12 @@ function renderLesionActionLog(lesion) {
     </section>`;
 }
 
-function renderLesionBillingBlock(lesion) {
-    const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
-    if (!bill) return '';
-    const vm = typeof billingViewModel === 'function' ? billingViewModel(bill) : bill;
-    const codes = vm.assignedMbsItems || vm.suggestedMbsItems || '';
-    const status = typeof billingStatusLabel === 'function' ? billingStatusLabel(bill) : (bill.status || '');
-    const billId = String(bill.id || '').replace(/'/g, '');
-    const lesionId = String(lesion.id || bill.lesionId || '').replace(/'/g, '');
-    const meta = typeof billingCardMeta === 'function' ? billingCardMeta(vm) : '';
-    let actions = '';
-    if (bill.status === 'confirmed') {
-        actions = `
-            <button type="button" onclick="copySuggestedBillingItems('${billId}')" class="mgmt-action-btn">Copy codes</button>
-            <button type="button" onclick="printConfirmedBillings('${billId}')" class="mgmt-action-btn">Print</button>
-            <button type="button" onclick="markBillingsAsProcessed(['${billId}'])" class="mgmt-action-btn mgmt-action-btn-primary">Mark processed</button>
-            <button type="button" onclick="returnBillingToAwaiting('${billId}')" class="mgmt-action-btn">Return to awaiting</button>`;
-    } else if (bill.status === 'processed') {
-        actions = `
-            <button type="button" onclick="copySuggestedBillingItems('${billId}')" class="mgmt-action-btn">Copy codes</button>
-            <button type="button" onclick="returnBillingToConfirmed('${billId}')" class="mgmt-action-btn">Return to confirmed</button>`;
-    } else if (lesionId && typeof canOpenProcessBilling === 'function' && canOpenProcessBilling(lesion)) {
-        actions = `<button type="button" onclick="openProcessBillingModal('${lesionId}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button>`;
-    } else if (lesionId) {
-        const hold = typeof procedureGroupBillingReady === 'function' ? procedureGroupBillingReady(lesion) : null;
-        actions = `<p class="text-[11px] text-amber-800">${escapeHtml(hold?.reason || 'Enter histology before billing this excision. 30071, suspected melanoma, and known-histology lesions can be billed now.')}</p>`;
-    }
-    return `
-        <div class="rounded-lg border border-slate-200 bg-white p-2.5 space-y-1.5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Billing · ${escapeHtml(status)}</p>
-            ${meta ? `<p class="text-[11px] text-slate-500">${escapeHtml(meta)}</p>` : ''}
-            ${codes && typeof renderBillingCodeChips === 'function' ? `<div class="flex flex-wrap items-center gap-1.5">${renderBillingCodeChips(codes)}</div>` : ''}
-            ${actions ? `<div class="flex flex-wrap gap-1.5">${actions}</div>` : ''}
-        </div>`;
-}
-
 function renderManagedLesionCard(lesion, options) {
     const grouped = !!(options && options.grouped);
     const chartBoard = !!(options && options.chartBoard);
     const patient = lesion.patientName || 'Unnamed patient';
     const identity = typeof patientIdentityFromRecord === 'function' ? patientIdentityFromRecord(lesion) : null;
     const canFocus = !!(identity?.chartId || (lesion.patientName && lesion.patientDob));
-    const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
-    const billLabel = bill && !chartBoard ? billingStatusLabel(bill) : '';
     const safeId = String(lesion.id || '').replace(/'/g, '');
     const contactHtml = grouped ? '' : renderLesionPatientContactHtml(lesion);
     const nameHtml = grouped
@@ -772,7 +722,6 @@ function renderManagedLesionCard(lesion, options) {
             ${procedureHtml}
             ${renderLesionContactBlock(lesion)}
             ${renderLesionActionLog(lesion)}
-            ${renderLesionBillingBlock(lesion)}
             <div class="flex flex-wrap gap-1.5">${renderManagedLesionActions(lesion, options)}</div>
         </article>`;
     }
@@ -792,7 +741,7 @@ function renderManagedLesionCard(lesion, options) {
                 </div>
                 <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(formatLesionWhen(lesionProcedureAt(lesion) || lesionExamAt(lesion) || lesion.updatedAt))}</span>
             </div>
-            <p class="text-[11px] text-slate-500">${escapeHtml(status)}${fu ? ' · ' + fu : ''}${region ? ' · ' + escapeHtml(region) : ''}${dims ? ' · ' + escapeHtml(dims) : ''}${billLabel ? ' · Billing: ' + escapeHtml(billLabel) : ''}</p>
+            <p class="text-[11px] text-slate-500">${escapeHtml(status)}${fu ? ' · ' + fu : ''}${region ? ' · ' + escapeHtml(region) : ''}${dims ? ' · ' + escapeHtml(dims) : ''}</p>
             ${lesion.currentPlan ? `<p class="text-[11px] text-slate-700"><span class="font-semibold text-slate-600">Plan:</span> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
             ${missed ? `<p class="lesion-call-badge">${escapeHtml(formatCallBadge(missed))}</p>` : ''}
             ${lesion.histologyResult ? `<p class="text-[11px] text-slate-600">Result: ${escapeHtml(lesion.histologyResult)}</p>` : ''}
@@ -815,16 +764,12 @@ function canUpdateResult(lesion) {
         || !!lesion.procedureCompletedAt || !!lesion.histologyResult;
 }
 
-function renderManagedLesionActions(lesion, options) {
+function renderManagedLesionActions(lesion) {
     const id = String(lesion.id || '').replace(/'/g, '');
-    const chartBoard = !!(options && options.chartBoard);
     const btns = [];
     btns.push(`<button type="button" onclick="openLesionCommsModal('${id}')" class="mgmt-action-btn">Log contact</button>`);
     if (canUpdateResult(lesion)) {
         btns.push(`<button type="button" onclick="openHistologyModal('${id}')" class="mgmt-action-btn">Update result</button>`);
-    }
-    if (!chartBoard && typeof canOpenProcessBilling === 'function' && canOpenProcessBilling(lesion)) {
-        btns.push(`<button type="button" onclick="openProcessBillingModal('${id}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button>`);
     }
     if (String(lesion.proposedPlan || '') === 'refer' || (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan))) {
         btns.push(`<button type="button" onclick="openLetterModalForRefer('${id}')" class="mgmt-action-btn">Generate letter</button>`);
