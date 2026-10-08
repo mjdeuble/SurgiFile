@@ -1210,6 +1210,78 @@ function inspectorCanSetResultPlan(lesion) {
         : String(lesion?.histologyResult || '').trim());
 }
 
+function inspectorShowsHistologyEntry(lesion) {
+    return typeof inspectorNeedsHistologyEntry === 'function'
+        ? inspectorNeedsHistologyEntry(lesion)
+        : !!(lesion && (lesion.procedureCompletedAt || lesion.excisionFinalisedAt) && !String(lesion.histologyResult || '').trim());
+}
+
+function renderInspectorHistologyEntryForm(lesion) {
+    if (!inspectorShowsHistologyEntry(lesion)) return '';
+    const id = String(lesion.id || '');
+    const caseNumber = lesion.histologyCaseNumber
+        || (typeof histologyBatchSharedCaseNumber === 'function' ? histologyBatchSharedCaseNumber(lesion) : '')
+        || '';
+    const pot = lesion.histologyPot || '';
+    return `<section class="insp-card" id="inspHistologyEntryCard">
+        <div class="insp-card-head">Enter histology</div>
+        <div class="insp-card-body">
+            <input type="hidden" id="inspHistologyLesionId" value="${escapeHtml(id)}">
+            <p class="insp-hint">Record diagnosis, result, and lab details. The plan appears after this result is saved.</p>
+            <div>
+                <label class="insp-label" for="inspHistologyDiagnosis">Diagnosis</label>
+                <div class="dx-typeahead">
+                    <input type="text" id="inspHistologyDiagnosis" class="insp-input" placeholder="Start typing, e.g. infiltrative or BCC" autocomplete="off" oninput="if (typeof syncHistologyBillingTypeFromResult === 'function') syncHistologyBillingTypeFromResult()">
+                    <div class="dx-suggest hidden" role="listbox"></div>
+                </div>
+            </div>
+            <div>
+                <label class="insp-label" for="inspHistologyResultText">Result</label>
+                <textarea id="inspHistologyResultText" rows="4" class="insp-textarea" placeholder="e.g. BCC, margins clear" oninput="if (typeof syncHistologyBillingTypeFromResult === 'function') syncHistologyBillingTypeFromResult()">${escapeHtml(lesion.histologyResult || '')}</textarea>
+            </div>
+            <div class="insp-grid">
+                <div>
+                    <label class="insp-label" for="inspHistologyCaseNumber">Lab case number</label>
+                    <input type="text" id="inspHistologyCaseNumber" class="insp-input" value="${escapeHtml(caseNumber)}" placeholder="e.g. S26-04512" autocomplete="off">
+                    <p class="insp-hint">Optional. Pots from the same Finish procedure share one lab number.</p>
+                </div>
+                <div>
+                    <label class="insp-label" for="inspHistologyPot">Pot / specimen</label>
+                    <input type="text" id="inspHistologyPot" class="insp-input" value="${escapeHtml(pot)}" placeholder="e.g. 2 or B" autocomplete="off">
+                </div>
+            </div>
+            <div id="inspHistologyCaseShareWrap" class="hidden">
+                <label class="insp-choice">
+                    <input type="checkbox" id="inspHistologyApplyCaseToSiblings">
+                    <span>Also set this case number on <span id="inspHistologyCaseShareCount">0</span> <span id="inspHistologyCaseShareKind">other pots from this procedure</span>. Each keeps its own pot and result.</span>
+                </label>
+                <p id="inspHistologyCaseShareList" class="insp-hint"></p>
+            </div>
+            <div class="insp-card" style="margin:0;border-color:#c0c0c0">
+                <p class="insp-label">Billing type</p>
+                <p id="inspHistologyBillingTypeStatus">Assigned automatically from the diagnosis and result.</p>
+                <p class="insp-hint">Melanoma on histology is confirmed. An initial excision of suspected melanoma without histology bills as suspected until a result is in.</p>
+                <input type="hidden" id="inspHistologyBillingType" value="">
+                <div id="inspHistologyBillingTypeFallback" class="hidden">
+                    <label class="insp-label" for="inspHistologyBillingTypeOverride">Could not classify this result</label>
+                    <select id="inspHistologyBillingTypeOverride" class="insp-select" onchange="if (typeof onHistologyBillingTypeOverrideChange === 'function') onHistologyBillingTypeOverrideChange()">
+                        <option value="">Choose benign, malignant, or confirmed melanoma…</option>
+                        <option value="benign">Benign</option>
+                        <option value="malignant">Malignant</option>
+                        <option value="confirmed_melanoma">Confirmed melanoma</option>
+                    </select>
+                </div>
+            </div>
+            <p id="inspHistologyUrgentNote" class="insp-warn hidden">Urgent — phone today if the patient is not in the room.</p>
+            <div class="insp-actions">
+                <button type="button" onclick="copyHistologyResultNote()">Copy note</button>
+                <button type="button" onclick="copyHistologyReceptionMessage()">Copy reception</button>
+                <button type="button" class="insp-save" id="btnSaveInspectorHistology" onclick="submitHistologyModal()">Save result</button>
+            </div>
+        </div>
+    </section>`;
+}
+
 function inspectorContactPlaceholder(lesion) {
     const done = !!(lesion && typeof lesionProcedureDone === 'function' && lesionProcedureDone(lesion));
     if (!done) return 'e.g. Advised to rebook for procedure';
@@ -1283,6 +1355,22 @@ function renderInspectorPlanContactForm(lesion) {
             </div>
         </div>
     </section>`;
+}
+
+function bindInspectorHistologyEntry(lesion) {
+    if (!document.getElementById('inspHistologyResultText')) return;
+    if (typeof bindDiagnosisTypeahead === 'function') {
+        bindDiagnosisTypeahead('inspHistologyDiagnosis', {
+            onChange: () => {
+                if (typeof syncHistologyBillingTypeFromResult === 'function') syncHistologyBillingTypeFromResult();
+            }
+        });
+        if (typeof setDiagnosisTypeahead === 'function') {
+            setDiagnosisTypeahead('inspHistologyDiagnosis', lesion?.histologyDiagnosis || '');
+        }
+    }
+    if (typeof fillHistologyCaseShareUI === 'function') fillHistologyCaseShareUI(lesion);
+    if (typeof syncHistologyBillingTypeFromResult === 'function') syncHistologyBillingTypeFromResult();
 }
 
 function bindInspectorTypeaheads() {
@@ -1632,7 +1720,9 @@ async function submitInspectorManageLesion() {
     }
     if (next === 'further_management' && !hasExistingResult && procedureDone) {
         showToast('Save a histology result before opening further management.');
-        if (typeof openHistologyModal === 'function') openHistologyModal(id);
+        const resultEl = document.getElementById('inspHistologyResultText');
+        if (resultEl) resultEl.focus();
+        else if (typeof openHistologyModal === 'function') openHistologyModal(id);
         return false;
     }
     const extras = {
@@ -1995,6 +2085,7 @@ function renderChartLesionInspector(options) {
         <div class="chart-inspector-body" data-inspector-view="1">
             ${pendingBill ? '<p class="insp-warn" style="margin-bottom:0.45rem">Clinically finalised · billing still pending</p>' : ''}
             ${lesion.currentPlan ? `<p class="insp-hint" style="margin-bottom:0.45rem"><strong>Plan:</strong> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
+            ${renderInspectorHistologyEntryForm(lesion)}
             ${dossier}
             ${renderInspectorPlanContactForm(lesion)}
             ${typeof renderLesionActionLog === 'function' ? renderLesionActionLog(lesion) : ''}
@@ -2004,6 +2095,7 @@ function renderChartLesionInspector(options) {
     manageLesionPrevPlan = document.querySelector('input[name="inspHistologyNext"]:checked')?.value || '';
     manageLesionNfaConfirmed = manageLesionPrevPlan === 'no_followup';
     syncInspectorFollowUpUi();
+    bindInspectorHistologyEntry(lesion);
 }
 
 function syncChartLesionWorkspace() {

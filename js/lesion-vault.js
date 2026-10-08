@@ -2621,9 +2621,9 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
             || canonicalLesionStatus(lesion.managementStatus) === 'awaiting_histology')) {
             lesion.managementStatus = 'needs_contact';
             if (!lesion.contactState) lesion.contactState = 'mark_for_contact';
-            lesion.currentPlan = 'Result recorded — set plan in Manage lesion.';
+            lesion.currentPlan = 'Result recorded — set the plan.';
         }
-        await saveManagedLesionRecord(lesion, 'histology', resultText || lesion.histologyResult || '');
+        await saveManagedLesionRecord(lesion, 'histology', resultText || lesion.histologyResult || '', { silent: true });
         return { lesion, resultOnly: true };
     }
     lesion.resultPlan = action === 'further_management' || action === 'no_followup' ? action : (lesion.resultPlan || '');

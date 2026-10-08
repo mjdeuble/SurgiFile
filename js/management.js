@@ -889,6 +889,17 @@ function canUpdateResult(lesion) {
         : !!lesion.procedureCompletedAt;
 }
 
+function inspectorNeedsHistologyEntry(lesion) {
+    if (!lesion) return false;
+    const done = typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(lesion)
+        : !!(lesion.procedureCompletedAt || lesion.excisionFinalisedAt);
+    if (!done) return false;
+    return !(typeof lesionHasSavedHistology === 'function'
+        ? lesionHasSavedHistology(lesion)
+        : String(lesion.histologyResult || '').trim());
+}
+
 function histoReportRow(label, value) {
     const text = String(value || '').trim();
     if (!text) return '';
@@ -982,7 +993,9 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex, options) {
     const pot = lesion.histologyPot ? 'Pot ' + lesion.histologyPot : '';
     const lab = [accession, !accession && pot ? pot : ''].filter(Boolean).join(' · ');
     const canEditResult = kind === 'current' && canUpdateResult(lesion);
-    const resultBtn = canEditResult
+    const inlineEntry = kind === 'current' && typeof inspectorNeedsHistologyEntry === 'function'
+        && inspectorNeedsHistologyEntry(lesion) && !microscopy;
+    const resultBtn = canEditResult && !inlineEntry
         ? histoInlineButton(microscopy ? 'Edit result' : 'Enter result', `openHistologyModal('${id}')`)
         : '';
     const rows = [
@@ -2318,12 +2331,64 @@ function printBillingSheet(views, options) {
     printWin.document.close();
 }
 
+function histologyFormIsInspector() {
+    const modal = document.getElementById('histologyModal');
+    const modalOpen = modal && !modal.classList.contains('hidden');
+    return !modalOpen && !!document.getElementById('inspHistologyResultText');
+}
+
+function histologyFormIds() {
+    if (histologyFormIsInspector()) {
+        return {
+            lesionId: 'inspHistologyLesionId',
+            diagnosis: 'inspHistologyDiagnosis',
+            result: 'inspHistologyResultText',
+            caseNumber: 'inspHistologyCaseNumber',
+            pot: 'inspHistologyPot',
+            applySiblings: 'inspHistologyApplyCaseToSiblings',
+            shareWrap: 'inspHistologyCaseShareWrap',
+            shareCount: 'inspHistologyCaseShareCount',
+            shareKind: 'inspHistologyCaseShareKind',
+            shareList: 'inspHistologyCaseShareList',
+            billingType: 'inspHistologyBillingType',
+            billingStatus: 'inspHistologyBillingTypeStatus',
+            billingFallback: 'inspHistologyBillingTypeFallback',
+            billingOverride: 'inspHistologyBillingTypeOverride',
+            urgent: 'inspHistologyUrgentNote',
+            saveBtn: 'btnSaveInspectorHistology'
+        };
+    }
+    return {
+        lesionId: 'histologyLesionId',
+        diagnosis: 'histologyDiagnosis',
+        result: 'histologyResultText',
+        caseNumber: 'histologyCaseNumber',
+        pot: 'histologyPot',
+        applySiblings: 'histologyApplyCaseToSiblings',
+        shareWrap: 'histologyCaseShareWrap',
+        shareCount: 'histologyCaseShareCount',
+        shareKind: 'histologyCaseShareKind',
+        shareList: 'histologyCaseShareList',
+        billingType: 'histologyBillingType',
+        billingStatus: 'histologyBillingTypeStatus',
+        billingFallback: 'histologyBillingTypeFallback',
+        billingOverride: 'histologyBillingTypeOverride',
+        urgent: 'histologyUrgentNote',
+        saveBtn: 'btnSaveHistology'
+    };
+}
+
+function histologyFormEl(key) {
+    const ids = histologyFormIds();
+    return document.getElementById(ids[key]);
+}
+
 function fillHistologyCaseShareUI(lesion) {
-    const wrap = document.getElementById('histologyCaseShareWrap');
-    const countEl = document.getElementById('histologyCaseShareCount');
-    const listEl = document.getElementById('histologyCaseShareList');
-    const kindEl = document.getElementById('histologyCaseShareKind');
-    const box = document.getElementById('histologyApplyCaseToSiblings');
+    const wrap = histologyFormEl('shareWrap') || document.getElementById('histologyCaseShareWrap');
+    const countEl = histologyFormEl('shareCount') || document.getElementById('histologyCaseShareCount');
+    const listEl = histologyFormEl('shareList') || document.getElementById('histologyCaseShareList');
+    const kindEl = histologyFormEl('shareKind') || document.getElementById('histologyCaseShareKind');
+    const box = histologyFormEl('applySiblings') || document.getElementById('histologyApplyCaseToSiblings');
     const fromBatch = !!(typeof histologyBatchIdOf === 'function' && histologyBatchIdOf(lesion));
     const siblings = typeof histologyCaseShareSiblings === 'function' && lesion
         ? histologyCaseShareSiblings(lesion)
@@ -2391,12 +2456,15 @@ function fillAssignExcisionPriorHistoFields(lesion) {
 }
 
 function histologyModalDraftTypeInputs() {
-    const id = document.getElementById('histologyLesionId')?.value;
-    const lesion = managedLesions.find((item) => String(item.id) === String(id)) || {};
+    const ids = histologyFormIds();
+    const id = histologyFormEl('lesionId')?.value;
+    const lesion = managedLesions.find((item) => String(item.id) === String(id))
+        || (typeof lesions !== 'undefined' ? lesions.find((item) => String(item.id) === String(id)) : null)
+        || {};
     const diagnosis = typeof readDiagnosisTypeahead === 'function'
-        ? readDiagnosisTypeahead('histologyDiagnosis')
-        : (document.getElementById('histologyDiagnosis')?.value || '');
-    const result = String(document.getElementById('histologyResultText')?.value || '').trim();
+        ? readDiagnosisTypeahead(ids.diagnosis)
+        : (document.getElementById(ids.diagnosis)?.value || '');
+    const result = String(histologyFormEl('result')?.value || '').trim();
     return { lesion, diagnosis, result };
 }
 
@@ -2417,16 +2485,16 @@ function histologyModalInferredType() {
 }
 
 function onHistologyBillingTypeOverrideChange() {
-    const override = document.getElementById('histologyBillingTypeOverride')?.value || '';
-    const hidden = document.getElementById('histologyBillingType');
+    const override = histologyFormEl('billingOverride')?.value || '';
+    const hidden = histologyFormEl('billingType');
     if (hidden && override) hidden.value = override;
 }
 
 function syncHistologyBillingTypeFromResult() {
-    const typeEl = document.getElementById('histologyBillingType');
-    const statusEl = document.getElementById('histologyBillingTypeStatus');
-    const fallback = document.getElementById('histologyBillingTypeFallback');
-    const overrideEl = document.getElementById('histologyBillingTypeOverride');
+    const typeEl = histologyFormEl('billingType');
+    const statusEl = histologyFormEl('billingStatus');
+    const fallback = histologyFormEl('billingFallback');
+    const overrideEl = histologyFormEl('billingOverride');
     const { lesion, diagnosis, result } = histologyModalDraftTypeInputs();
     const combined = [diagnosis, result].filter(Boolean).join('\n');
     const inferred = histologyModalInferredType();
@@ -2462,10 +2530,12 @@ function syncHistologyBillingTypeFromResult() {
 function histologyDraftLesion() {
     const manageOpen = !document.getElementById('manageLesionModal')?.classList.contains('hidden');
     const histoOpen = !document.getElementById('histologyModal')?.classList.contains('hidden');
-    const inspId = document.getElementById('inspManageLesionId')?.value
+    const inspId = document.getElementById('inspHistologyLesionId')?.value
+        || document.getElementById('inspManageLesionId')?.value
         || document.getElementById('inspEditLesionId')?.value;
     const id = (manageOpen && document.getElementById('manageLesionLesionId')?.value)
         || (histoOpen && document.getElementById('histologyLesionId')?.value)
+        || (histologyFormIsInspector() && document.getElementById('inspHistologyLesionId')?.value)
         || (typeof manageLesionUiSource !== 'undefined' && manageLesionUiSource === 'inspector' && inspId)
         || document.getElementById('manageLesionLesionId')?.value
         || document.getElementById('histologyLesionId')?.value
@@ -2502,19 +2572,21 @@ function syncHistologyFollowUpUi() {
     const lesion = histologyDraftLesion();
     const plan = document.querySelector('input[name="histologyNext"]:checked')?.value || '';
     const further = plan === 'further_management' || plan === 'plan_excision';
-    const histoOpen = !document.getElementById('histologyModal')?.classList.contains('hidden');
-    const draftDx = histoOpen
+    const ids = histologyFormIds();
+    const formOpen = histologyFormIsInspector()
+        || !document.getElementById('histologyModal')?.classList.contains('hidden');
+    const draftDx = formOpen
         ? (typeof readDiagnosisTypeahead === 'function'
-            ? readDiagnosisTypeahead('histologyDiagnosis')
-            : (document.getElementById('histologyDiagnosis')?.value || ''))
+            ? readDiagnosisTypeahead(ids.diagnosis)
+            : (document.getElementById(ids.diagnosis)?.value || ''))
         : '';
-    const draftResult = histoOpen ? (document.getElementById('histologyResultText')?.value || '') : '';
+    const draftResult = formOpen ? (histologyFormEl('result')?.value || '') : '';
     const melanoma = !!(lesion && typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma({
         ...lesion,
         histologyDiagnosis: draftDx || lesion.histologyDiagnosis,
         histologyResult: draftResult || lesion.histologyResult
     }));
-    const urgent = document.getElementById('histologyUrgentNote');
+    const urgent = histologyFormEl('urgent') || document.getElementById('histologyUrgentNote');
     if (urgent) urgent.classList.toggle('hidden', !melanoma);
     const proposedWrap = document.getElementById('histologyProposedPlanWrap');
     if (proposedWrap) proposedWrap.classList.toggle('hidden', !further);
@@ -2805,16 +2877,17 @@ async function ensureHistologyDraftSaved() {
 
 function histologyModalDraft() {
     const lesion = histologyDraftLesion();
+    const ids = histologyFormIds();
     return {
         plan: lesion?.resultPlan || '',
         proposedPlan: lesion?.proposedPlan || '',
         proposedPlanNote: lesion?.proposedPlanNote || '',
         contact: lesion?.contactState || 'mark_for_contact',
         fileNoCall: lesion?.contactState === 'file_no_call',
-        result: document.getElementById('histologyResultText')?.value.trim() || '',
+        result: histologyFormEl('result')?.value.trim() || '',
         diagnosis: typeof readDiagnosisTypeahead === 'function'
-            ? readDiagnosisTypeahead('histologyDiagnosis')
-            : (document.getElementById('histologyDiagnosis')?.value.trim() || ''),
+            ? readDiagnosisTypeahead(ids.diagnosis)
+            : (document.getElementById(ids.diagnosis)?.value.trim() || ''),
         callNote: lesion?.adminCallNote || ''
     };
 }
@@ -2843,7 +2916,6 @@ function openHistologyModal(id) {
             || '';
     }
     if (potEl) potEl.value = lesion?.histologyPot || '';
-    fillHistologyCaseShareUI(lesion);
     if (summaryEl) {
         summaryEl.textContent = lesion
             ? `${lesion.patientName || currentPatient?.name || ''} — ${lesion.location || 'site'} · ${lesion.impression || ''}`
@@ -2852,13 +2924,14 @@ function openHistologyModal(id) {
     fillLesionPatientContactEl(document.getElementById('histologyPatientContact'), lesion);
     const overrideEl = document.getElementById('histologyBillingTypeOverride');
     if (overrideEl) overrideEl.value = '';
+    if (modal) modal.classList.remove('hidden');
+    fillHistologyCaseShareUI(lesion);
     if (typeof syncHistologyBillingTypeFromResult === 'function') {
         syncHistologyBillingTypeFromResult();
     } else if (typeEl) {
         typeEl.value = lesion?.billingLesionType || inferBillingLesionType(lesion || {}) || '';
     }
     syncHistologyFollowUpUi();
-    if (modal) modal.classList.remove('hidden');
 }
 
 function closeHistologyModal() {
@@ -2867,17 +2940,19 @@ function closeHistologyModal() {
 }
 
 async function submitHistologyModal() {
-    const id = document.getElementById('histologyLesionId')?.value;
-    const result = document.getElementById('histologyResultText')?.value.trim();
+    const fromInspector = histologyFormIsInspector();
+    const ids = histologyFormIds();
+    const id = histologyFormEl('lesionId')?.value;
+    const result = histologyFormEl('result')?.value.trim();
     const histologyDiagnosis = typeof readDiagnosisTypeahead === 'function'
-        ? readDiagnosisTypeahead('histologyDiagnosis')
-        : (document.getElementById('histologyDiagnosis')?.value.trim() || '');
+        ? readDiagnosisTypeahead(ids.diagnosis)
+        : (document.getElementById(ids.diagnosis)?.value.trim() || '');
     let billingType = typeof histologyModalInferredType === 'function'
         ? histologyModalInferredType()
-        : (document.getElementById('histologyBillingType')?.value || '');
-    const caseNumber = document.getElementById('histologyCaseNumber')?.value.trim() || '';
-    const pot = document.getElementById('histologyPot')?.value.trim() || '';
-    const applySiblings = !!document.getElementById('histologyApplyCaseToSiblings')?.checked;
+        : (histologyFormEl('billingType')?.value || '');
+    const caseNumber = histologyFormEl('caseNumber')?.value.trim() || '';
+    const pot = histologyFormEl('pot')?.value.trim() || '';
+    const applySiblings = !!histologyFormEl('applySiblings')?.checked;
     if (!id) return false;
     const lesion = managedLesions.find((item) => String(item.id) === String(id));
     if (!result) {
@@ -2886,19 +2961,19 @@ async function submitHistologyModal() {
     }
     if (typeof histologyIndicatesMelanoma === 'function' && histologyIndicatesMelanoma({ histologyDiagnosis, histologyResult: result })) {
         billingType = 'confirmed_melanoma';
-        const typeEl = document.getElementById('histologyBillingType');
+        const typeEl = histologyFormEl('billingType');
         if (typeEl) typeEl.value = 'confirmed_melanoma';
     }
     if (!billingType) {
-        billingType = document.getElementById('histologyBillingTypeOverride')?.value || '';
+        billingType = histologyFormEl('billingOverride')?.value || '';
     }
     if (!billingType && (result || histologyDiagnosis)) {
-        const fallback = document.getElementById('histologyBillingTypeFallback');
+        const fallback = histologyFormEl('billingFallback');
         if (fallback) fallback.classList.remove('hidden');
         showToast('Add a diagnosis from the list so billing type can be assigned, or classify the result.');
         return false;
     }
-    const typeEl = document.getElementById('histologyBillingType');
+    const typeEl = histologyFormEl('billingType');
     if (typeEl) typeEl.value = billingType;
     if (lesion) lesion.billingLesionType = billingType;
     const save = async ({ progress }) => {
@@ -2925,13 +3000,28 @@ async function submitHistologyModal() {
             }
         }
         closeHistologyModal();
-        let message = 'Result saved. Set the plan in Manage lesion.';
+        if (typeof selectedChartLesionId !== 'undefined') selectedChartLesionId = id;
+        const awaitingQueue = typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive()
+            && typeof mgmtActiveFilter !== 'undefined' && mgmtActiveFilter === 'awaiting_histology';
+        if (fromInspector && awaitingQueue && typeof setMgmtFilter === 'function') {
+            setMgmtFilter('needs_contact');
+        } else if (typeof renderManagedLesions === 'function') {
+            renderManagedLesions();
+        } else if (typeof renderChartLesionInspector === 'function') {
+            renderChartLesionInspector({ force: true });
+            if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+        }
+        let message = fromInspector
+            ? 'Result recorded. Set the plan below.'
+            : 'Result saved. Set the plan in Manage lesion.';
         if (saved?.lesion && (typeof lesionLifecycleStatus === 'function'
             ? lesionLifecycleStatus(saved.lesion)
             : saved.lesion.managementStatus) === 'needs_contact'
-            && saved.lesion.currentPlan === 'Result recorded — set plan in Manage lesion.') {
-            message = 'Result recorded. Set the plan in Manage lesion.';
-        } else if (saved?.lesion?.histologyResult) {
+            && /set the plan/i.test(String(saved.lesion.currentPlan || ''))) {
+            message = fromInspector
+                ? 'Result recorded. Set the plan below.'
+                : 'Result recorded. Set the plan in Manage lesion.';
+        } else if (saved?.lesion?.histologyResult && !fromInspector) {
             message = 'Result updated.';
         }
         showToast(message + siblingNote);
@@ -2939,7 +3029,7 @@ async function submitHistologyModal() {
     };
     if (typeof runBusyAction === 'function') {
         return runBusyAction('Saving result…', save, {
-            button: document.getElementById('btnSaveHistology'),
+            button: histologyFormEl('saveBtn') || document.getElementById('btnSaveHistology'),
             buttonText: 'Saving…'
         });
     }
