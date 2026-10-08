@@ -426,7 +426,7 @@ function ensureSelectedPracticeLesion() {
 }
 
 function ensureSelectedPracticeDocument() {
-    const items = practiceSavedDocItems();
+    const items = groupPracticeDocuments(practiceSavedDocItems()).flatMap((group) => group.items);
     if (!items.length) {
         selectedPracticeDoc = null;
         return null;
