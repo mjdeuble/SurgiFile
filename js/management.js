@@ -607,6 +607,59 @@ function isLesionContactEvent(event) {
         || (typeof CALL_OUTCOMES !== 'undefined' && CALL_OUTCOMES.includes(event.outcome));
 }
 
+function isLesionProcedureCardEvent(event) {
+    if (!event) return false;
+    return event.type === 'consent' || event.type === 'procedure' || event.type === 'plan';
+}
+
+function latestLesionTimelineNote(lesion, type) {
+    const events = Array.isArray(lesion?.timeline) ? lesion.timeline : [];
+    const match = events
+        .filter((event) => event && event.type === type && String(event.note || '').trim())
+        .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0];
+    return match ? String(match.note).trim() : '';
+}
+
+function lesionConsentCardValue(lesion) {
+    const fromTimeline = latestLesionTimelineNote(lesion, 'consent');
+    if (fromTimeline) return fromTimeline;
+    const status = typeof lesionConsentStatus === 'function' ? lesionConsentStatus(lesion) : String(lesion?.consentStatus || '').toLowerCase();
+    if (status === 'verbal') return 'Verbal consent (shave / saucerisation)';
+    if (status === 'written') return 'Written surgical consent';
+    return typeof lesionConsentLabel === 'function' ? lesionConsentLabel(lesion) : '';
+}
+
+function lesionComplicationCardValue(lesion) {
+    const done = typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(lesion)
+        : !!(lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt);
+    if (!done) {
+        if (typeof procedureSession !== 'undefined' && procedureSession.started
+            && typeof formatLesionComplicationStamp === 'function' && lesion?.id) {
+            const live = String(formatLesionComplicationStamp(lesion.id) || '').trim();
+            if (live && !/^uneventful/i.test(live)) return live;
+        }
+        return '';
+    }
+    const stored = String(lesion?.procedureComplications || '').trim()
+        || String(lesion?.procedureSiteComplications || '').trim();
+    if (stored) return stored;
+    return latestLesionTimelineNote(lesion, 'procedure');
+}
+
+function histoProcedureMetaRows(lesion, options) {
+    options = options || {};
+    const done = options.done != null
+        ? options.done
+        : (typeof lesionProcedureDone === 'function'
+            ? lesionProcedureDone(lesion)
+            : !!(lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt));
+    return [
+        histoReportRow('Consent', lesionConsentCardValue(lesion)),
+        histoReportRow('Complications', lesionComplicationCardValue(lesion))
+    ].join('');
+}
+
 function lesionCardEvents(lesion) {
     const events = typeof ensureLesionTimeline === 'function'
         ? ensureLesionTimeline(lesion).slice()
@@ -673,7 +726,9 @@ function renderLesionPreviousProcedureSubtile(lesion) {
     const rows = [
         lesionCardRow('Histology', done ? escapeHtml(lesionHistologyCardValue(lesion)) : ''),
         lesionCardRow('Dimensions', escapeHtml(lesionProcedureDimensions(lesion))),
-        lesionCardRow('Margin', escapeHtml(lesionProcedureMargin(lesion)))
+        lesionCardRow('Margin', escapeHtml(lesionProcedureMargin(lesion))),
+        lesionCardRow('Consent', escapeHtml(lesionConsentCardValue(lesion))),
+        lesionCardRow('Complications', escapeHtml(lesionComplicationCardValue(lesion)))
     ].join('');
     if (!rows) return '';
     return renderLesionCardBlock(previousProcedureSubtileTitle(lesion), '', rows);
@@ -740,7 +795,9 @@ function renderLesionProcedureBlock(lesion) {
         lesionCardRow('Type', escapeHtml(lesionProcedureTypeLabel(lesion))),
         lesionCardRow('Histology', done ? escapeHtml(lesionHistologyCardValue(lesion)) : ''),
         lesionCardRow('Dimensions', escapeHtml(lesionProcedureDimensions(lesion))),
-        lesionCardRow('Margin', escapeHtml(lesionProcedureMargin(lesion)))
+        lesionCardRow('Margin', escapeHtml(lesionProcedureMargin(lesion))),
+        lesionCardRow('Consent', escapeHtml(lesionConsentCardValue(lesion))),
+        lesionCardRow('Complications', escapeHtml(lesionComplicationCardValue(lesion)))
     ].join('');
     if (!rows) return '';
     return renderLesionCardBlock(done ? 'Procedure' : 'Planned procedure', done ? lesionProcedureAt(lesion) : '', rows);
@@ -756,7 +813,7 @@ function renderLesionContactBlock(lesion) {
 }
 
 function renderLesionActionLog(lesion) {
-    const events = lesionCardEvents(lesion).filter((event) => !isLesionContactEvent(event));
+    const events = lesionCardEvents(lesion).filter((event) => !isLesionContactEvent(event) && !isLesionProcedureCardEvent(event));
     if (!events.length) return '';
     return `<section class="lesion-card-block">
         <h4><span>Actions</span></h4>
@@ -887,7 +944,10 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex, options) {
         if (!typeLabel && !['planned_procedure', 'current_case'].includes(
             typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus
         )) return '';
-        const plannedRows = [histoReportRow('Specimen size', sizeLine)].join('');
+        const plannedRows = [
+            histoReportRow('Specimen size', sizeLine),
+            histoProcedureMetaRows(lesion, { done: false })
+        ].join('');
         return `<article class="histo-report is-planned">
             ${histoReportHead(heading, date, changePlanBtn)}
             ${plannedRows ? `<dl class="histo-report-dl">${plannedRows}</dl>` : ''}
@@ -895,7 +955,10 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex, options) {
         </article>`;
     }
     if (!showHisto && kind === 'previous') {
-        const rows = [histoReportRow('Specimen size', sizeLine)].join('');
+        const rows = [
+            histoReportRow('Specimen size', sizeLine),
+            histoProcedureMetaRows(lesion, { done })
+        ].join('');
         if (!rows) return '';
         return `<article class="histo-report is-previous">
             ${histoReportHead(heading, date)}
@@ -917,7 +980,8 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex, options) {
         histoReportRow('Laboratory', lab),
         histoReportRow('Diagnosis', dx || (done && !microscopy ? 'Pending' : '')),
         histoReportRow('Microscopy', microscopy || (done ? 'Not yet reported' : '')),
-        histoReportRow('Specimen size', sizeLine)
+        histoReportRow('Specimen size', sizeLine),
+        histoProcedureMetaRows(lesion, { done })
     ].join('');
     return `<article class="histo-report ${kind === 'previous' ? 'is-previous' : 'is-current'}">
         ${histoReportHead(heading, date, resultBtn)}
@@ -2540,7 +2604,9 @@ function openManageLesionModal(id) {
     fillManageLesionResultSummary(lesion);
     const timelineWrap = document.getElementById('manageLesionTimelineWrap');
     const timelineEl = document.getElementById('manageLesionTimeline');
-    const events = lesion && typeof lesionTimelineNewestFirst === 'function' ? lesionTimelineNewestFirst(lesion) : [];
+    const events = lesion && typeof lesionTimelineNewestFirst === 'function'
+        ? lesionTimelineNewestFirst(lesion).filter((event) => typeof isLesionContactEvent !== 'function' || isLesionContactEvent(event))
+        : [];
     if (timelineWrap) timelineWrap.classList.toggle('hidden', !events.length);
     if (timelineEl) {
         timelineEl.innerHTML = events.length

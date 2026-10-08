@@ -745,7 +745,9 @@ function renderInspectorPlanContactForm(lesion) {
         ? 'advised_now'
         : (lesion?.contactState === 'appointment_requested' ? 'appointment_requested'
             : (lesion?.contactState === 'not_reached' ? 'not_reached' : 'mark_for_contact'));
-    const events = lesion && typeof lesionTimelineNewestFirst === 'function' ? lesionTimelineNewestFirst(lesion) : [];
+    const events = lesion && typeof lesionTimelineNewestFirst === 'function'
+        ? lesionTimelineNewestFirst(lesion).filter((event) => typeof isLesionContactEvent !== 'function' || isLesionContactEvent(event))
+        : [];
     const timeline = events.length
         ? `<div><p class="insp-label">Previous contact</p><ul class="lesion-timeline">${events.map(typeof formatTimelineEvent === 'function' ? formatTimelineEvent : (e) => `<li>${escapeHtml(e.note || '')}</li>`).join('')}</ul></div>`
         : '';
