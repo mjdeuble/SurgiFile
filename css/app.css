@@ -1051,6 +1051,149 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             color: #666;
             font-size: 12px;
         }
+        .insp-card {
+            border: 1px solid #a0a0a0;
+            background: #fff;
+            margin-bottom: 0.55rem;
+        }
+        .insp-card-head {
+            background: #e8e8e8;
+            border-bottom: 1px solid #c0c0c0;
+            padding: 0.32rem 0.55rem;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #333;
+        }
+        .insp-card-body {
+            padding: 0.5rem 0.55rem 0.55rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.45rem;
+        }
+        .insp-label {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #555;
+            margin-bottom: 0.15rem;
+        }
+        .insp-input,
+        .insp-select,
+        .insp-textarea {
+            width: 100%;
+            border: 1px solid #8a8a8a;
+            border-radius: 2px;
+            padding: 0.32rem 0.4rem;
+            font-size: 12px;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            background: #fff;
+        }
+        .insp-input:focus,
+        .insp-select:focus,
+        .insp-textarea:focus {
+            outline: 1px solid #0078d4;
+            border-color: #0078d4;
+        }
+        .insp-input:disabled,
+        .insp-select:disabled,
+        .insp-textarea:disabled {
+            background: #f3f3f3;
+            color: #555;
+        }
+        .insp-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.45rem;
+        }
+        .insp-choice {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.4rem;
+            font-size: 12px;
+            color: #222;
+            cursor: pointer;
+        }
+        .insp-choice-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.28rem;
+        }
+        .insp-choice-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem 0.85rem;
+        }
+        .insp-hint {
+            font-size: 11px;
+            color: #555;
+        }
+        .insp-warn {
+            font-size: 11px;
+            color: #7a4b00;
+            background: #fff8e8;
+            border: 1px solid #e0c48a;
+            padding: 0.35rem 0.45rem;
+        }
+        .insp-sub {
+            border: 1px solid #c5d4ea;
+            background: #f4f8fd;
+            padding: 0.45rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .insp-sub.is-excision {
+            border-color: #c9b7de;
+            background: #f7f3fb;
+        }
+        .insp-sub.is-histo {
+            border-color: #e0c48a;
+            background: #fff8e8;
+        }
+        .insp-sub.is-topical {
+            border-color: #9fc9be;
+            background: #f1faf7;
+        }
+        .insp-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.35rem;
+            padding-top: 0.15rem;
+        }
+        .insp-actions button {
+            padding: 0.22rem 0.65rem;
+            font-size: 11px;
+            font-weight: 600;
+            background: #fff;
+            border: 1px solid #8a8a8a;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+        .insp-actions button.insp-save {
+            background: #0078d4;
+            border-color: #006cbd;
+            color: #fff;
+        }
+        .insp-actions button.insp-save:hover {
+            background: #006cbd;
+        }
+        .insp-actions button:hover {
+            background: #e5f1fb;
+            border-color: #0078d4;
+        }
+        .insp-actions button.insp-save:hover {
+            background: #006cbd;
+            border-color: #006cbd;
+        }
+        @media (max-width: 720px) {
+            .insp-grid {
+                grid-template-columns: 1fr;
+            }
+        }
         .histo-dossier {
             display: flex;
             flex-direction: column;

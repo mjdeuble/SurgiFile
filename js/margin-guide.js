@@ -495,6 +495,20 @@ function marginSuggestFieldSpec(fieldId) {
             lengthId: 'examLesionLength',
             widthId: 'examLesionWidth'
         },
+        inspExamLesionMargin: {
+            locationId: 'inspLesionLocation',
+            diagnosisFn: () => (typeof readInspectorImpression === 'function' ? readInspectorImpression() : ''),
+            lesionId: () => document.getElementById('inspEditLesionId')?.value,
+            kind: 'shave',
+            lengthId: 'inspExamLesionLength',
+            widthId: 'inspExamLesionWidth'
+        },
+        inspExcisionMargin: {
+            locationId: 'inspLesionLocation',
+            diagnosisFn: () => (typeof readInspectorImpression === 'function' ? readInspectorImpression() : ''),
+            lesionId: () => document.getElementById('inspEditLesionId')?.value,
+            kind: 'excision'
+        },
         addConsentMargin: {
             locationId: 'addConsentLoc',
             diagnosisId: 'addConsentDx',

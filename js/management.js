@@ -2296,11 +2296,17 @@ function syncHistologyBillingTypeFromResult() {
 function histologyDraftLesion() {
     const manageOpen = !document.getElementById('manageLesionModal')?.classList.contains('hidden');
     const histoOpen = !document.getElementById('histologyModal')?.classList.contains('hidden');
+    const inspId = document.getElementById('inspManageLesionId')?.value
+        || document.getElementById('inspEditLesionId')?.value;
     const id = (manageOpen && document.getElementById('manageLesionLesionId')?.value)
         || (histoOpen && document.getElementById('histologyLesionId')?.value)
+        || (typeof manageLesionUiSource !== 'undefined' && manageLesionUiSource === 'inspector' && inspId)
         || document.getElementById('manageLesionLesionId')?.value
-        || document.getElementById('histologyLesionId')?.value;
-    return managedLesions.find((item) => String(item.id) === String(id)) || null;
+        || document.getElementById('histologyLesionId')?.value
+        || inspId;
+    return managedLesions.find((item) => String(item.id) === String(id))
+        || (typeof lesions !== 'undefined' ? lesions.find((item) => String(item.id) === String(id)) : null)
+        || null;
 }
 
 function fillManageLesionResultSummary(lesion) {
@@ -2372,6 +2378,12 @@ function closeManageLesionNfaConfirm() {
     if (modal) modal.classList.add('hidden');
 }
 
+function manageLesionPlanRadioName() {
+    return (typeof manageLesionUiSource !== 'undefined' && manageLesionUiSource === 'inspector')
+        ? 'inspHistologyNext'
+        : 'histologyNext';
+}
+
 function cancelManageLesionNfa() {
     closeManageLesionNfaConfirm();
     manageLesionNfaConfirmed = false;
@@ -2379,22 +2391,27 @@ function cancelManageLesionNfa() {
     const prev = manageLesionPrevPlan && manageLesionPrevPlan !== 'no_followup'
         ? manageLesionPrevPlan
         : '';
-    document.querySelectorAll('input[name="histologyNext"]').forEach((el) => {
+    const name = manageLesionPlanRadioName();
+    document.querySelectorAll('input[name="' + name + '"]').forEach((el) => {
         el.checked = el.value === prev;
     });
-    syncHistologyFollowUpUi();
+    if (name === 'inspHistologyNext' && typeof syncInspectorFollowUpUi === 'function') syncInspectorFollowUpUi();
+    else syncHistologyFollowUpUi();
 }
 
 function confirmManageLesionNfa() {
     manageLesionNfaConfirmed = true;
-    const el = document.querySelector('input[name="histologyNext"][value="no_followup"]');
+    const name = manageLesionPlanRadioName();
+    const el = document.querySelector('input[name="' + name + '"][value="no_followup"]');
     if (el) el.checked = true;
     manageLesionPrevPlan = 'no_followup';
     closeManageLesionNfaConfirm();
-    syncHistologyFollowUpUi();
+    if (name === 'inspHistologyNext' && typeof syncInspectorFollowUpUi === 'function') syncInspectorFollowUpUi();
+    else syncHistologyFollowUpUi();
     if (manageLesionPendingSave) {
         manageLesionPendingSave = false;
-        submitManageLesionModal();
+        if (name === 'inspHistologyNext' && typeof submitInspectorManageLesion === 'function') submitInspectorManageLesion();
+        else submitManageLesionModal();
     }
 }
 
@@ -2416,6 +2433,7 @@ function onManageLesionPlanChange() {
 }
 
 function openManageLesionModal(id) {
+    manageLesionUiSource = 'modal';
     closeHistologyModal();
     const lesion = managedLesions.find((item) => item.id === id);
     const modal = document.getElementById('manageLesionModal');

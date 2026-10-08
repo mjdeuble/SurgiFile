@@ -2627,6 +2627,9 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
         return { lesion, resultOnly: true };
     }
     lesion.resultPlan = action === 'further_management' || action === 'no_followup' ? action : (lesion.resultPlan || '');
+    if (Object.prototype.hasOwnProperty.call(extras, 'callNote')) {
+        lesion.adminCallNote = extras.callNote || '';
+    }
     lesion.contactState = fileNoCall ? 'file_no_call' : contact;
     const advised = contact === 'advised_now' || fileNoCall;
     if (advised) lesion.resultAdvisedAt = new Date().toISOString();

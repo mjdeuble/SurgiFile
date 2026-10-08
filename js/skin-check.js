@@ -930,6 +930,14 @@ function saveLesion() {
         lesionRecord.type = 'none';
     }
 
+    return commitLesionRecordToSession(editId, lesionRecord, {
+        button: document.getElementById('btnSaveLesion'),
+        closeModal: true
+    });
+}
+
+function commitLesionRecordToSession(editId, lesionRecord, options) {
+    options = options || {};
     if (editId) {
         const idx = lesions.findIndex(l => String(l.id) === String(editId));
         if (idx !== -1) {
@@ -959,15 +967,20 @@ function saveLesion() {
         }
         if (saved?.id) selectedChartLesionId = String(saved.id);
         if (typeof renderManagedLesions === 'function') renderManagedLesions();
-        closeLesionModal();
+        if (options.closeModal !== false) closeLesionModal();
         renderLesionsTable();
         if (typeof renderChartSidebar === 'function') renderChartSidebar();
-        if (typeof syncChartLesionWorkspace === 'function') syncChartLesionWorkspace();
+        if (options.forceInspector && typeof renderChartLesionInspector === 'function') {
+            renderChartLesionInspector({ force: true });
+        } else if (typeof syncChartLesionWorkspace === 'function') {
+            syncChartLesionWorkspace();
+        }
         updateOutput();
+        if (options.forceInspector) showToast('Examination saved.');
     };
     if (typeof runBusyAction === 'function') {
         return runBusyAction('Saving lesion…', finish, {
-            button: document.getElementById('btnSaveLesion'),
+            button: options.button || document.getElementById('btnSaveLesion'),
             buttonText: 'Saving…'
         });
     }
@@ -1042,21 +1055,29 @@ function closeShaveConsentModal() {
     if (modal) modal.classList.add('hidden');
 }
 
+function resumePendingLesionSave() {
+    if (pendingLesionSaveSource === 'inspector' && typeof saveInspectorLesionDocumentation === 'function') {
+        return saveInspectorLesionDocumentation();
+    }
+    return saveLesion();
+}
+
 function confirmShaveConsent() {
     pendingShaveConsentAction = 'verbal';
     shaveConsentVerified = true;
     closeShaveConsentModal();
-    saveLesion();
+    resumePendingLesionSave();
 }
 
 function skipShaveVerbalConsent() {
     pendingShaveConsentAction = 'skip';
     closeShaveConsentModal();
-    saveLesion();
+    resumePendingLesionSave();
 }
 
 function cancelShaveConsent() {
     pendingShaveConsentAction = '';
+    pendingLesionSaveSource = '';
     closeShaveConsentModal();
 }
 
