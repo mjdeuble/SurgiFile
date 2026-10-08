@@ -380,12 +380,31 @@ function chartTreeSavedDocItems() {
         const when = typeof formatLesionWhen === 'function'
             ? formatLesionWhen(note.updatedAt || note.createdAt)
             : (note.updatedAt || note.createdAt || '');
-        items.push({
-            kind: 'note',
-            id: String(note.id || ''),
-            site: kinds.join(' / ') || 'Visit note',
-            meta: when
-        });
+        const id = String(note.id || '');
+        if (kinds.length) {
+            items.push({
+                kind: 'note',
+                id,
+                site: kinds.join(' / ') || 'Visit note',
+                meta: when
+            });
+        }
+        if (typeof visitNoteHasHistology === 'function' ? visitNoteHasHistology(note) : (note.histologySlipText || note.histologyPrintHtml)) {
+            items.push({
+                kind: 'histology',
+                id,
+                site: 'Histology request',
+                meta: when
+            });
+        }
+        if (typeof visitNoteHasAdvice === 'function' ? visitNoteHasAdvice(note) : note.aftercareHtml) {
+            items.push({
+                kind: 'advice',
+                id,
+                site: 'Patient advice',
+                meta: when
+            });
+        }
     });
     consents.forEach((doc) => {
         const when = typeof formatLesionWhen === 'function'
@@ -414,7 +433,11 @@ function renderChartTreeSavedDocs() {
         const id = String(item.id || '').replace(/'/g, '');
         const onclick = item.kind === 'consent'
             ? `openSavedConsentDoc('${id}')`
-            : `openSavedVisitNote('${id}')`;
+            : (item.kind === 'histology'
+                ? `openSavedVisitArtefact('${id}', 'histology')`
+                : (item.kind === 'advice'
+                    ? `openSavedVisitArtefact('${id}', 'advice')`
+                    : `openSavedVisitNote('${id}')`));
         return `<button type="button" role="treeitem" class="chart-tree-node" style="--depth:1" onclick="${onclick}">
             <span class="chart-tree-node-site">${escapeHtml(item.site)}</span>
             <span class="chart-tree-node-meta">${escapeHtml(item.meta)}</span>

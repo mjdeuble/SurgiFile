@@ -1544,11 +1544,11 @@ async function closePatientChart(options) {
         return;
     }
     closeFinaliseVisitModal();
+    await saveCurrentChartFromDom({ endVisit: true });
+    if (typeof saveCurrentVisitNotes === 'function') await saveCurrentVisitNotes();
     if (typeof clearStoredProcedureSession === 'function') {
         await clearStoredProcedureSession();
     }
-    await saveCurrentChartFromDom({ endVisit: true });
-    if (typeof saveCurrentVisitNotes === 'function') await saveCurrentVisitNotes();
     resetScreeningAndExamForm();
     clearCurrentPatient();
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');

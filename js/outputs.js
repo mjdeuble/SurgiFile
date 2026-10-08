@@ -485,10 +485,26 @@ function generatePathologyOutputs(lesionList) {
     return { slipText, reportText, requiresAttachment };
 }
 
-function printSupplementaryReportSheet(lesionList) {
-    const biopsyLesions = Array.isArray(lesionList) ? lesionList : getBiopsyLesions();
-    if (biopsyLesions.length === 0) return;
+function currentHistologySpecimens() {
+    if (typeof procedurePathologyLesions === 'function') {
+        const proc = procedurePathologyLesions();
+        if (Array.isArray(proc) && proc.length) return proc;
+    }
+    return typeof getBiopsyLesions === 'function' ? getBiopsyLesions() : [];
+}
 
+function histologySlipIsSavable(slipText) {
+    const slip = String(slipText || '').trim();
+    if (!slip) return false;
+    if (/^No biopsies documented/i.test(slip)) return false;
+    if (/^Your (generated|clinical)/i.test(slip)) return false;
+    return true;
+}
+
+function buildSupplementaryPathologyHtml(lesionList, options) {
+    const biopsyLesions = Array.isArray(lesionList) ? lesionList : currentHistologySpecimens();
+    if (!biopsyLesions.length) return '';
+    options = options || {};
     const name = currentPatient?.name
         || document.getElementById('mainPatientName')?.value.trim()
         || document.getElementById('consentPatientName')?.value.trim()
@@ -501,11 +517,12 @@ function printSupplementaryReportSheet(lesionList) {
         || (typeof loggedInDoctorName === 'function' && loggedInDoctorName())
         || currentPatient?.clinician
         || "________________________";
-
     const esc = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value ?? '');
     const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-    const printHtml = `
+    const autoPrint = options.autoPrint
+        ? `\n            \x3Cscript>\n                window.onload = function() { window.print(); }\n            \x3C/script>`
+        : '';
+    return `
         <!DOCTYPE html>
         <html>
         <head>
@@ -558,7 +575,7 @@ function printSupplementaryReportSheet(lesionList) {
                 <tbody>
                     ${biopsyLesions.map((l, idx) => `
                         <tr>
-                            <td style="font-weight: bold; text-align: center;">${idx + 1}</td>
+                            <td style="font-weight: bold; text-align: center;">${esc(typeof histoSpecimenNo === 'function' ? histoSpecimenNo(l, idx) : String(idx + 1))}</td>
                             <td style="font-weight: bold; text-transform: uppercase;">${esc(l.location || 'Unspecified site')}</td>
                             <td>${esc(l.impression)}</td>
                             <td>${esc(l.biopsyType || l.procedure || 'Biopsy')}</td>
@@ -581,14 +598,38 @@ function printSupplementaryReportSheet(lesionList) {
                 <div><strong>Requesting Medical Practitioner Signature:</strong> ___________________________________</div>
                 <div><strong>Provider / Dr Name:</strong> ${esc(doctor)}</div>
             </div>
-
-            \x3Cscript>
-                window.onload = function() { window.print(); }
-            \x3C/script>
+            ${autoPrint}
         </body>
         </html>
     `;
+}
 
+function currentHistologyRequestBundle() {
+    const specimens = currentHistologySpecimens();
+    if (!specimens.length) return null;
+    const data = generatePathologyOutputs(specimens);
+    if (!histologySlipIsSavable(data.slipText)) return null;
+    return {
+        specimens,
+        slipText: String(data.slipText || '').trim(),
+        reportText: String(data.reportText || '').trim(),
+        printHtml: buildSupplementaryPathologyHtml(specimens, { autoPrint: false }),
+        requiresAttachment: !!data.requiresAttachment
+    };
+}
+
+function persistVisitGeneratedDocuments() {
+    if (typeof saveCurrentVisitNotes !== 'function') return;
+    saveCurrentVisitNotes().catch((err) => {
+        console.warn('Could not save generated visit documents', err);
+    });
+}
+
+function printSupplementaryReportSheet(lesionList) {
+    const biopsyLesions = Array.isArray(lesionList) ? lesionList : currentHistologySpecimens();
+    if (biopsyLesions.length === 0) return;
+
+    const printHtml = buildSupplementaryPathologyHtml(biopsyLesions, { autoPrint: true });
     const printWin = window.open('', '_blank', 'width=800,height=900');
     if (printWin) {
         printWin.document.open();
@@ -596,7 +637,8 @@ function printSupplementaryReportSheet(lesionList) {
         printWin.document.close();
         const suppText = document.getElementById('supplementaryReportText')?.value || '';
         markOutputCopied('supp', suppText);
-        showToast('Supplementary pathology report sent to printer.');
+        persistVisitGeneratedDocuments();
+        showToast('Supplementary pathology report sent to printer. Saved in generated documents.');
     } else {
         showToast('Unable to open print window. Please check popup permissions.');
     }
@@ -910,7 +952,10 @@ function copyPathologyRequestAction() {
         showToast('No biopsy pathology request to copy yet.');
         return;
     }
-    copyTextToClipboard(text, 'Pathology request copied for BP Premier!', () => markOutputCopied('path', text));
+    copyTextToClipboard(text, 'Pathology request copied for BP Premier!', () => {
+        markOutputCopied('path', text);
+        persistVisitGeneratedDocuments();
+    });
 }
 
 function copySupplementaryAction() {
@@ -919,7 +964,10 @@ function copySupplementaryAction() {
         showToast('No attached pathology report to copy yet.');
         return;
     }
-    copyTextToClipboard(text, 'Attached Pathology Report copied!', () => markOutputCopied('supp', text));
+    copyTextToClipboard(text, 'Attached Pathology Report copied!', () => {
+        markOutputCopied('supp', text);
+        persistVisitGeneratedDocuments();
+    });
 }
 
 function copyReceptionAction() {

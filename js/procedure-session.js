@@ -1687,6 +1687,7 @@ function copyProcedureHistology() {
     copyTextToClipboard(data.slipText, 'Histology request copied.', () => {
         if (typeof markOutputCopied === 'function') markOutputCopied('path', data.slipText);
         if (data.reportText && typeof markOutputCopied === 'function') markOutputCopied('supp', data.reportText);
+        if (typeof persistVisitGeneratedDocuments === 'function') persistVisitGeneratedDocuments();
         refreshProcedureCompleteOutputs();
     });
 }

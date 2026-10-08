@@ -33,6 +33,8 @@ function bindSavedVaultQueueClicks() {
         const noteId = btn.getAttribute('data-note-id') || '';
         const consentId = btn.getAttribute('data-consent-id') || '';
         if (noteAction === 'open' && typeof openSavedVisitNote === 'function') openSavedVisitNote(noteId);
+        else if (noteAction === 'open-histology' && typeof openSavedVisitArtefact === 'function') openSavedVisitArtefact(noteId, 'histology');
+        else if (noteAction === 'open-advice' && typeof openSavedVisitArtefact === 'function') openSavedVisitArtefact(noteId, 'advice');
         else if (noteAction === 'copy-consult' && typeof copySavedVisitNote === 'function') copySavedVisitNote(noteId, 'consult');
         else if (noteAction === 'copy-procedure' && typeof copySavedVisitNote === 'function') copySavedVisitNote(noteId, 'procedure');
         else if (consentAction === 'open' && typeof openSavedConsentDoc === 'function') openSavedConsentDoc(consentId);
