@@ -30,6 +30,14 @@ const ACTIVE_MANAGEMENT_STATUSES = [
 
 const POST_RESULT_FOLLOWUP_STATUSES = ['awaiting_histology', 'needs_contact', 'appointment_requested'];
 
+const REQUIRES_MANAGEMENT_STATUSES = [
+    'awaiting_assessment',
+    'needs_contact',
+    'appointment_requested'
+];
+
+const REQUIRES_MANAGEMENT_FILTERS = ['requires_management', 'needs_contact', 'appointment_requested'];
+
 const LEGACY_STATUS_ALIASES = {
     planned_excision: 'planned_procedure',
     awaiting_biopsy: 'planned_procedure'
@@ -128,6 +136,14 @@ function lesionLifecycleStatus(lesion) {
 
 function isActiveManagementStatus(status) {
     return ACTIVE_MANAGEMENT_STATUSES.includes(canonicalLesionStatus(status));
+}
+
+function isRequiresManagementStatus(status) {
+    return REQUIRES_MANAGEMENT_STATUSES.includes(canonicalLesionStatus(status));
+}
+
+function isRequiresManagementFilter(filter) {
+    return REQUIRES_MANAGEMENT_FILTERS.includes(String(filter || ''));
 }
 
 function isPostResultFollowupStatus(status) {

@@ -84,6 +84,13 @@ function lesionMatchesFilter(lesion, filter) {
     }
     if (filter === 'billing' || filter === 'notes') return false;
     if (filter === 'planned_excision' || filter === 'planned_procedure') return status === 'planned_procedure';
+    if (typeof isRequiresManagementFilter === 'function'
+        ? isRequiresManagementFilter(filter)
+        : (filter === 'requires_management' || filter === 'needs_contact' || filter === 'appointment_requested')) {
+        return typeof isRequiresManagementStatus === 'function'
+            ? isRequiresManagementStatus(status)
+            : ['awaiting_assessment', 'needs_contact', 'appointment_requested'].includes(status);
+    }
     return status === filter || lesion.managementStatus === filter;
 }
 
@@ -307,7 +314,9 @@ function renderManagedLesions() {
     if (!root) return;
 
     document.querySelectorAll('[data-mgmt-filter]').forEach((btn) => {
-        const on = btn.getAttribute('data-mgmt-filter') === mgmtActiveFilter;
+        const key = btn.getAttribute('data-mgmt-filter');
+        const active = typeof normalizeMgmtFilter === 'function' ? normalizeMgmtFilter(mgmtActiveFilter) : mgmtActiveFilter;
+        const on = key === active;
         btn.classList.toggle('is-active', on);
         btn.setAttribute('aria-selected', on ? 'true' : 'false');
     });
@@ -414,8 +423,8 @@ function renderStatusColumn(status, items) {
     const title = (status === 'planned_excision' || status === 'planned_procedure')
         ? 'Planned procedure'
         : status === 'awaiting_histology' ? 'Awaiting results'
-        : status === 'needs_contact' ? 'Needs contact'
-        : status === 'appointment_requested' ? 'Appointment requested'
+        : (status === 'requires_management' || status === 'needs_contact' || status === 'appointment_requested')
+            ? 'Requires management'
         : (LESION_STATUSES[status] || status);
     return renderNamedStatusColumn(title, items);
 }
@@ -2095,8 +2104,15 @@ async function returnBillingToConfirmed(id) {
     renderManagedLesions();
 }
 
+function normalizeMgmtFilter(filter) {
+    const raw = String(filter || 'open');
+    if (raw === 'active') return 'open';
+    if (raw === 'needs_contact' || raw === 'appointment_requested') return 'requires_management';
+    return raw;
+}
+
 function setMgmtFilter(filter) {
-    const next = filter === 'active' ? 'open' : filter;
+    const next = normalizeMgmtFilter(filter);
     if (next !== mgmtActiveFilter && typeof selectedPracticeDoc !== 'undefined') selectedPracticeDoc = null;
     mgmtActiveFilter = next;
     renderManagedLesions();
@@ -3023,7 +3039,7 @@ async function submitHistologyModal() {
         const awaitingQueue = typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive()
             && typeof mgmtActiveFilter !== 'undefined' && mgmtActiveFilter === 'awaiting_histology';
         if (fromInspector && awaitingQueue && typeof setMgmtFilter === 'function') {
-            setMgmtFilter('needs_contact');
+            setMgmtFilter('requires_management');
         } else if (typeof renderManagedLesions === 'function') {
             renderManagedLesions();
         } else if (typeof renderChartLesionInspector === 'function') {

@@ -257,8 +257,7 @@ function practiceFilterLabel(filter) {
     const key = filter || (typeof mgmtActiveFilter !== 'undefined' ? mgmtActiveFilter : 'open');
     if (key === 'open' || key === 'active') return 'Open lesions';
     if (key === 'awaiting_histology') return 'Awaiting results';
-    if (key === 'needs_contact') return 'Needs contact';
-    if (key === 'appointment_requested') return 'Appointment requested';
+    if (key === 'requires_management' || key === 'needs_contact' || key === 'appointment_requested') return 'Requires management';
     if (key === 'planned_procedure' || key === 'planned_excision') return 'Planned procedure';
     if (key === 'billing') return 'Billing';
     if (key === 'notes') return 'Saved notes';
@@ -2116,7 +2115,10 @@ function syncChartLesionWorkspace() {
     const tabs = document.getElementById('practiceFilterBar');
     if (tabs) tabs.classList.toggle('hidden', !!open);
     document.querySelectorAll('[data-mgmt-filter]').forEach((btn) => {
-        const on = btn.getAttribute('data-mgmt-filter') === (typeof mgmtActiveFilter !== 'undefined' ? mgmtActiveFilter : 'open');
+        const key = btn.getAttribute('data-mgmt-filter');
+        const raw = typeof mgmtActiveFilter !== 'undefined' ? mgmtActiveFilter : 'open';
+        const active = typeof normalizeMgmtFilter === 'function' ? normalizeMgmtFilter(raw) : raw;
+        const on = key === active;
         btn.classList.toggle('is-active', on);
         btn.setAttribute('aria-selected', on ? 'true' : 'false');
     });
