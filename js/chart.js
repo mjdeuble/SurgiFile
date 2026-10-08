@@ -434,21 +434,9 @@ function practiceBillingGroups() {
     ];
 }
 
-function selectPracticeBilling(id) {
-    selectedPracticeDoc = { kind: 'billing', id: String(id || '') };
-    selectedChartLesionId = '';
-    inspectorPaneMode = 'view';
-    if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
-    if (typeof renderChartLesionInspector === 'function') renderChartLesionInspector({ force: true });
-}
-
 function selectPracticeBillingGroup(key) {
-    const group = practiceBillingGroups().find((item) => item.key === key);
-    if (group && group.items[0]) {
-        selectPracticeBilling(group.items[0].id);
-        return;
-    }
-    selectedPracticeDoc = { kind: 'billing-group', id: String(key || 'awaiting') };
+    const next = key === 'confirmed' || key === 'processed' ? key : 'awaiting';
+    selectedPracticeDoc = { kind: 'billing-group', id: next };
     selectedChartLesionId = '';
     inspectorPaneMode = 'view';
     if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
@@ -456,49 +444,24 @@ function selectPracticeBillingGroup(key) {
 }
 
 function ensureSelectedPracticeBilling() {
-    const items = practiceBillingGroups().flatMap((group) => group.items);
-    if (!items.length) {
-        if (!selectedPracticeDoc || selectedPracticeDoc.kind !== 'billing-group') {
-            selectedPracticeDoc = { kind: 'billing-group', id: 'awaiting' };
-        }
-        return null;
-    }
-    if (selectedPracticeDoc && selectedPracticeDoc.kind === 'billing') {
-        const current = items.find((item) => String(item.id) === String(selectedPracticeDoc.id));
-        if (current) return current;
-    }
-    const pick = items[0];
-    selectedPracticeDoc = { kind: 'billing', id: String(pick.id || '') };
-    return pick;
+    const key = selectedPracticeDoc && selectedPracticeDoc.kind === 'billing-group' ? selectedPracticeDoc.id : '';
+    if (key === 'awaiting' || key === 'confirmed' || key === 'processed') return key;
+    selectedPracticeDoc = { kind: 'billing-group', id: 'awaiting' };
+    return 'awaiting';
 }
 
 function renderPracticeBillingTree() {
     const list = document.getElementById('practiceTreeList');
     const status = document.getElementById('chartLesionTreeStatus');
     const groups = practiceBillingGroups();
-    const selectedId = selectedPracticeDoc && selectedPracticeDoc.kind === 'billing' ? String(selectedPracticeDoc.id) : '';
-    const selectedGroup = selectedPracticeDoc && selectedPracticeDoc.kind === 'billing-group' ? selectedPracticeDoc.id : '';
+    const selected = ensureSelectedPracticeBilling();
     list.innerHTML = groups.map((group) => {
-        const folderOn = selectedGroup === group.key && !group.items.length;
-        const kids = group.items.length
-            ? group.items.map((item) => {
-                const id = String(item.id || '').replace(/'/g, '');
-                const selected = id && id === selectedId;
-                const name = practicePatientSortName(item);
-                const site = [name, item.location].filter(Boolean).join(' · ') || 'Billing item';
-                const dx = typeof billingDisplayDiagnosis === 'function'
-                    ? billingDisplayDiagnosis(item)
-                    : (item.impression || item.histologyDiagnosis || '');
-                const codes = String(item.assignedMbsItems || item.suggestedMbsItems || '').trim();
-                const meta = codes || dx || '';
-                return `<button type="button" role="treeitem" aria-selected="${selected ? 'true' : 'false'}" class="chart-tree-node${selected ? ' is-selected' : ''}" style="--depth:1" onclick="selectPracticeBilling('${id}')">
-                    <span class="chart-tree-node-site">${escapeHtml(site)}</span>
-                    <span class="chart-tree-node-meta">${escapeHtml(meta)}</span>
-                </button>`;
-            }).join('')
-            : '<p class="chart-tree-empty">None</p>';
-        return `<button type="button" role="treeitem" class="chart-tree-folder${folderOn ? ' is-active' : ''}" onclick="selectPracticeBillingGroup('${group.key}')">${escapeHtml(group.title)}</button>
-            <div class="chart-tree-children">${kids}</div>`;
+        const on = selected === group.key;
+        const count = group.items.length;
+        return `<button type="button" role="treeitem" aria-selected="${on ? 'true' : 'false'}" class="chart-tree-folder${on ? ' is-active' : ''}" onclick="selectPracticeBillingGroup('${group.key}')">
+            <span class="chart-tree-node-site">${escapeHtml(group.title)}</span>
+            <span class="chart-tree-node-meta">${count}</span>
+        </button>`;
     }).join('');
     if (status) {
         status.textContent = groups.map((group) => group.items.length + ' ' + group.key).join(' · ');
@@ -506,48 +469,40 @@ function renderPracticeBillingTree() {
     return groups.reduce((sum, group) => sum + group.items.length, 0);
 }
 
-function renderPracticeBillingInspector(view) {
+function renderPracticeBillingInspector(key) {
     const slot = inspectorLesionSlot();
     if (!slot) return;
-    if (!view) {
-        const key = selectedPracticeDoc && selectedPracticeDoc.kind === 'billing-group' ? selectedPracticeDoc.id : 'awaiting';
-        const title = key === 'confirmed' ? 'Confirmed billings' : (key === 'processed' ? 'Processed billings' : 'Awaiting billings');
-        const empty = key === 'confirmed' ? 'No confirmed billings yet.'
-            : (key === 'processed' ? 'No processed billings yet.' : 'No lesions awaiting billing.');
-        slot.innerHTML = `
-            <div class="chart-inspector-caption">
-                <h2>${escapeHtml(title)}</h2>
-                <p>${escapeHtml(empty)}</p>
-            </div>
-            <div class="chart-inspector-body" data-inspector-view="1" data-practice-billing="1">
-                <p class="chart-inspector-empty">${escapeHtml(empty)}</p>
-            </div>`;
-        return;
-    }
-    const status = practiceBillingStatus(view);
-    const heading = status === 'confirmed' ? 'Confirmed billings' : (status === 'processed' ? 'Processed billings' : 'Awaiting billings');
-    const name = view.patientName || practicePatientSortName(view);
-    const dx = typeof billingDisplayDiagnosis === 'function' ? billingDisplayDiagnosis(view) : (view.impression || '');
-    const lesionId = String(view.lesionId || '').replace(/'/g, '');
-    const billId = String(view.id || '').replace(/'/g, '');
-    const card = status === 'confirmed' && typeof renderConfirmedBillingCard === 'function'
-        ? renderConfirmedBillingCard(view)
-        : (status === 'processed' && typeof renderProcessedBillingCard === 'function'
-            ? renderProcessedBillingCard(view)
-            : (typeof renderBillingQueueCard === 'function' ? renderBillingQueueCard(view) : ''));
-    const actions = [
-        lesionId && typeof openChartFromLesion === 'function' ? `<button type="button" onclick="openChartFromLesion('${lesionId}')">Open chart</button>` : '',
-        status === 'confirmed' ? `<button type="button" onclick="printConfirmedBillings()">Print for practice manager</button>` : '',
-        status === 'confirmed' ? `<button type="button" onclick="markBillingsAsProcessed(['${billId}'])">Mark processed</button>` : '',
-        status === 'processed' ? `<button type="button" onclick="printProcessedBillings()">Print processed</button>` : ''
-    ].filter(Boolean).join('');
+    const group = practiceBillingGroups().find((item) => item.key === key)
+        || { key: 'awaiting', title: 'Awaiting billings', items: [] };
+    const empty = key === 'confirmed' ? 'No confirmed billings yet.'
+        : (key === 'processed' ? 'No processed billings yet.' : 'No lesions awaiting billing.');
+    const hint = key === 'confirmed'
+        ? 'Ready for the practice manager. Print this list, then mark items processed once they have been entered.'
+        : (key === 'processed'
+            ? 'Entered by the practice manager. Kept 14 days, then deleted.'
+            : 'Confirm item numbers here; they move to Confirmed billings for the practice manager.');
+    const renderCard = key === 'confirmed' && typeof renderConfirmedBillingCard === 'function'
+        ? renderConfirmedBillingCard
+        : (key === 'processed' && typeof renderProcessedBillingCard === 'function'
+            ? renderProcessedBillingCard
+            : (typeof renderBillingQueueCard === 'function' ? renderBillingQueueCard : null));
+    const body = group.items.length && renderCard && typeof renderPatientEpisodeGroups === 'function'
+        ? renderPatientEpisodeGroups(group.items, (view, opts) => renderCard(view, opts), { sourceOf: typeof billingRecordSource === 'function' ? billingRecordSource : undefined })
+        : `<p class="chart-inspector-empty">${escapeHtml(empty)}</p>`;
+    const actions = key === 'confirmed' && group.items.length
+        ? `<button type="button" onclick="toggleAllConfirmedBillingChecks(true)">Select all</button>
+            <button type="button" onclick="printConfirmedBillings()">Print for practice manager</button>
+            <button type="button" onclick="processSelectedBilling()">Mark processed</button>`
+        : (key === 'processed' && group.items.length
+            ? `<button type="button" onclick="printProcessedBillings()">Print processed</button>`
+            : '');
     slot.innerHTML = `
         <div class="chart-inspector-caption">
-            <h2>${escapeHtml(heading)}</h2>
-            <p>${escapeHtml([name, view.location, dx].filter(Boolean).join(' · '))}</p>
+            <h2>${escapeHtml(group.title)}</h2>
+            <p>${escapeHtml(group.items.length ? (group.items.length + ' item' + (group.items.length === 1 ? '' : 's') + ' · ' + hint) : empty)}</p>
         </div>
         ${actions ? `<div class="chart-inspector-toolbar">${actions}</div>` : ''}
-        <div class="chart-inspector-body" data-inspector-view="1" data-practice-billing="1">${card || '<p class="chart-inspector-empty">No billing details.</p>'}</div>`;
+        <div class="chart-inspector-body" data-inspector-view="1" data-practice-billing="1">${body}</div>`;
 }
 
 function selectPracticeDocument(kind, id) {
@@ -1983,10 +1938,10 @@ function renderChartLesionInspector(options) {
         return;
     }
     if (practiceBillingActive()) {
-        const view = ensureSelectedPracticeBilling();
-        inspectorRenderedLesionId = view ? ('billing:' + view.id) : ('billing-group:' + (selectedPracticeDoc?.id || ''));
+        const key = ensureSelectedPracticeBilling();
+        inspectorRenderedLesionId = 'billing-group:' + key;
         inspectorRenderedMode = 'practice-billing';
-        renderPracticeBillingInspector(view);
+        renderPracticeBillingInspector(key);
         return;
     }
     if (practiceNotesActive()) {
