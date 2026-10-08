@@ -383,7 +383,7 @@ function firstSingleMm(value) {
 
 function inferDermoscopyUsed(lesion) {
     const d = String(lesion?.dermoscopy || '').trim();
-    if (!d || /^unspecified$/i.test(d) || /^to be examined$/i.test(d)) return '';
+    if (!d || /^unspecified$/i.test(d) || /^to be examined$/i.test(d)) return 'N';
     return 'Y';
 }
 
@@ -419,7 +419,7 @@ function procedureDetailForLesion(lesion) {
         justification: saved.justification || fromEx?.justification || '',
         location: saved.location || fromEx?.location || lesion?.location || '',
         pathology,
-        dermoscopyUsed: saved.dermoscopyUsed || fromEx?.dermoscopyUsed || inferDermoscopyUsed(lesion),
+        dermoscopyUsed: inferDermoscopyUsed(lesion),
         length: saved.length || fromEx?.length || lesion?.length || (procedure === 'Excision' ? lesion?.excisionLengthMm : '') || '',
         width: saved.width || fromEx?.width || lesion?.width || (procedure === 'Excision' ? lesion?.excisionWidthMm : '') || '',
         margin: (typeof parseMarginMm === 'function'
@@ -788,6 +788,11 @@ function loadProcedureLesionIntoForm(lesion) {
         if (mel) mel.checked = !!detail.excludeMelanoma;
         if (typeof updateExFormUI === 'function') updateExFormUI();
     }
+
+    const dermo = inferDermoscopyUsed(lesion);
+    const dermoEl = document.getElementById('exDermoscopyUsed');
+    if (dermoEl) dermoEl.value = dermo;
+    if (typeof syncExDermoscopyButtons === 'function') syncExDermoscopyButtons();
 
     const title = document.getElementById('ex-form-title');
     if (title) {

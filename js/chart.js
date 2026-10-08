@@ -3,6 +3,8 @@
 let selectedChartLesionId = '';
 let inspectorRenderedLesionId = '';
 let inspectorRenderedMode = '';
+let inspectorPaneMode = 'view';
+let inspectorFormLesionId = '';
 let manageLesionUiSource = 'modal';
 
 function chartLesions() {
@@ -338,7 +340,9 @@ function chartTreeNodeLabel(lesion) {
 
 function renderChartTreeNode(lesion, depth, childrenMap) {
     const id = String(lesion.id || '');
-    const selected = id && id === String(selectedChartLesionId) && !selectedVisitSection;
+    const selected = inspectorPaneMode === 'form'
+        ? !!(inspectorFormLesionId && id === String(inspectorFormLesionId))
+        : (id && id === String(selectedChartLesionId) && !selectedVisitSection);
     const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
     const label = chartTreeNodeLabel(lesion);
     const kids = childrenMap.get(id) || [];
@@ -448,6 +452,8 @@ function renderChartLesionTree() {
         }
     }
     if (empty) empty.classList.add('hidden');
+    const addBtn = document.getElementById('btnTreeAddLesion');
+    if (addBtn) addBtn.classList.toggle('is-selected', inspectorPaneMode === 'form' && !inspectorFormLesionId);
     renderChartTreeSavedDocs();
     syncChartVisitTreeStatus();
     if (status) {
@@ -518,8 +524,9 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
         <input type="number" id="${id}" value="${escapeHtml(value || '')}" placeholder="${placeholder}" min="0" step="0.1" inputmode="decimal" class="insp-input"${disabled}>
         <span class="mm-unit">mm</span>
     </div>`;
+    const isAdd = !String(lesion.id || '').trim();
     return `<section class="insp-card" id="inspDocCard">
-        <div class="insp-card-head">Examination</div>
+        <div class="insp-card-head">${isAdd ? 'Add lesion' : 'Edit lesion'}</div>
         <div class="insp-card-body">
             ${lockHint}
             <input type="hidden" id="inspEditLesionId" value="${escapeHtml(String(lesion.id || ''))}">
@@ -529,11 +536,14 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                     <input type="text" id="inspLesionLocation" class="insp-input" value="${escapeHtml(lesion.location || '')}" placeholder="e.g. Right cheek"${disabled}>
                 </div>
                 <div>
-                    <label class="insp-label" for="inspLesionImpression">Clinical impression</label>
-                    <div class="dx-typeahead">
-                        <input type="text" id="inspLesionImpression" class="insp-input" value="${escapeHtml(lesion.impression || '')}" placeholder="Start typing, e.g. BCC" autocomplete="off"${disabled}>
+                    <label class="insp-label" for="inspLesionImpression">Provisional diagnosis</label>
+                    <div class="dx-typeahead dx-typeahead-multi">
+                        <div class="dx-chips"></div>
+                        <input type="text" id="inspLesionImpression" class="insp-input" placeholder="Start typing to add one or more diagnoses"${disabled} autocomplete="off">
                         <div class="dx-suggest hidden" role="listbox"></div>
+                        <input type="hidden" id="inspLesionImpressionCodes" value="${escapeHtml(lesion.impression || '')}">
                     </div>
+                    <p class="insp-hint">Type to add each diagnosis. You can record more than one.</p>
                 </div>
             </div>
             <div>
@@ -687,7 +697,8 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                 </div>
             </div>
             <div class="insp-actions">
-                <button type="button" class="insp-save" id="btnSaveInspectorDoc" onclick="saveInspectorLesionDocumentation()"${disabled}>Save examination</button>
+                <button type="button" onclick="cancelInspectorLesionForm()">Cancel</button>
+                <button type="button" class="insp-save" id="btnSaveInspectorDoc" onclick="saveInspectorLesionDocumentation()"${disabled}>Save lesion</button>
             </div>
         </div>
     </section>`;
@@ -758,19 +769,24 @@ function renderInspectorPlanContactForm(lesion) {
 
 function bindInspectorTypeaheads() {
     if (typeof bindDiagnosisTypeahead !== 'function') return;
-    bindDiagnosisTypeahead('inspLesionImpression', {});
+    bindDiagnosisTypeahead('inspLesionImpression', {
+        multi: true,
+        hiddenId: 'inspLesionImpressionCodes',
+        onChange: () => {
+            if (typeof handleExamDiagnosisChange === 'function') handleExamDiagnosisChange();
+        }
+    });
     bindDiagnosisTypeahead('inspPriorHistologyDiagnosis', {
         onChange: (value) => {
-            const impression = document.getElementById('inspLesionImpression');
-            if (impression && !String(impression.value || '').trim() && value) {
-                if (typeof setDiagnosisTypeahead === 'function') setDiagnosisTypeahead('inspLesionImpression', value);
-                else impression.value = value;
+            const existing = typeof readInspectorImpression === 'function' ? readInspectorImpression() : '';
+            if (!existing && value && typeof setDiagnosisTypeahead === 'function') {
+                setDiagnosisTypeahead('inspLesionImpression', value);
             }
         }
     });
     if (typeof setDiagnosisTypeahead === 'function') {
-        const impression = document.getElementById('inspLesionImpression');
-        if (impression) setDiagnosisTypeahead('inspLesionImpression', impression.value);
+        const hidden = document.getElementById('inspLesionImpressionCodes');
+        setDiagnosisTypeahead('inspLesionImpression', hidden?.value || '');
         const prior = document.getElementById('inspPriorHistologyDiagnosis');
         if (prior) setDiagnosisTypeahead('inspPriorHistologyDiagnosis', prior.value);
     }
@@ -1001,6 +1017,8 @@ function saveInspectorLesionDocumentation() {
         }
     }
     pendingLesionSaveSource = '';
+    inspectorPaneMode = 'view';
+    inspectorFormLesionId = editId || '';
     const patientSnap = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : null;
     const lesionRecord = {
         location: loc,
@@ -1195,12 +1213,75 @@ async function submitInspectorManageLesion() {
     return save({});
 }
 
+function openLesionInInspector(lesionId) {
+    if (typeof visitClinicalUnlocked === 'function' && !visitClinicalUnlocked()) {
+        pendingWorkspaceTab = 'skin-check';
+        if (typeof pulseSanitiseControl === 'function') pulseSanitiseControl();
+        if (typeof openConsultTypeModal === 'function') openConsultTypeModal();
+        showToast('Choose consult type to document a lesion.');
+        return;
+    }
+    inspectorPaneMode = 'form';
+    inspectorFormLesionId = lesionId ? String(lesionId) : '';
+    if (lesionId) selectedChartLesionId = String(lesionId);
+    selectedVisitSection = '';
+    if (typeof switchWorkspaceTab === 'function'
+        && activeWorkspaceTab !== 'management'
+        && activeWorkspaceTab !== 'skin-check') {
+        switchWorkspaceTab('management', { skipPersist: true });
+    }
+    renderChartLesionInspector({ force: true });
+    if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+}
+
+function cancelInspectorLesionForm() {
+    inspectorPaneMode = 'view';
+    inspectorFormLesionId = '';
+    renderChartLesionInspector({ force: true });
+    if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+}
+
+function editChartLesion(id) {
+    openLesionInInspector(id);
+}
+
+function inspectorFormLesion() {
+    const id = String(inspectorFormLesionId || '');
+    if (!id) return {};
+    const items = typeof chartLesions === 'function' ? chartLesions() : [];
+    return items.find((item) => String(item.id) === id) || {};
+}
+
 function renderChartLesionInspector(options) {
     const pane = document.getElementById('chartLesionInspector');
     if (!pane) return;
     const show = chartLesionInspectorVisible();
     pane.classList.toggle('hidden', !show);
     if (!show) return;
+    const force = !!(options && options.force);
+    const unlocked = typeof visitClinicalUnlocked === 'function' ? visitClinicalUnlocked() : true;
+    if (inspectorPaneMode === 'form') {
+        const lesion = inspectorFormLesion();
+        const formKey = 'form:' + (inspectorFormLesionId || 'new') + ':' + (unlocked ? 'open' : 'lock');
+        if (!force && inspectorRenderedMode === formKey && pane.querySelector('[data-inspector-form]')) return;
+        const title = inspectorFormLesionId ? (lesion.location || 'Edit lesion') : 'Add lesion';
+        const sub = inspectorFormLesionId ? 'Update the examination details, then save.' : 'Document a new spot on this chart.';
+        pane.innerHTML = `
+            <div class="chart-inspector-caption">
+                <h2>${escapeHtml(title)}</h2>
+                <p>${escapeHtml(sub)}</p>
+            </div>
+            <div class="chart-inspector-body" data-inspector-form="1">
+                ${renderInspectorDocumentationForm(lesion, unlocked)}
+            </div>`;
+        inspectorRenderedLesionId = inspectorFormLesionId || 'new';
+        inspectorRenderedMode = formKey;
+        bindInspectorTypeaheads();
+        handleInspectorPlanChange();
+        handleInspectorClosureChange();
+        syncInspectorPriorHistoSource();
+        return;
+    }
     const lesion = ensureSelectedChartLesion();
     if (!lesion) {
         inspectorRenderedLesionId = '';
@@ -1209,9 +1290,8 @@ function renderChartLesionInspector(options) {
         return;
     }
     const id = String(lesion.id || '');
-    const mode = inspectorLesionMode(lesion);
-    const force = !!(options && options.force);
-    if (!force && inspectorRenderedLesionId === id && inspectorRenderedMode === mode && pane.querySelector('[data-inspector-form]')) {
+    const mode = 'view:' + inspectorLesionMode(lesion);
+    if (!force && inspectorRenderedLesionId === id && inspectorRenderedMode === mode && pane.querySelector('[data-inspector-view]')) {
         paintInspectorCaption(lesion);
         return;
     }
@@ -1220,9 +1300,7 @@ function renderChartLesionInspector(options) {
     const dx = typeof formatDiagnosisDisplay === 'function'
         ? formatDiagnosisDisplay(lesion.impression || '')
         : (lesion.impression || '');
-    const procedureDone = typeof lesionProcedureDone === 'function' && lesionProcedureDone(lesion);
-    const unlocked = typeof visitClinicalUnlocked === 'function' ? visitClinicalUnlocked() : true;
-    const dossier = procedureDone && typeof renderInspectorLesionDossier === 'function'
+    const dossier = typeof renderInspectorLesionDossier === 'function'
         ? renderInspectorLesionDossier(lesion)
         : '';
     const canResult = typeof canUpdateResult === 'function' && canUpdateResult(lesion);
@@ -1231,6 +1309,7 @@ function renderChartLesionInspector(options) {
     const pendingBill = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion)
         && typeof lesionCanCloseNoFollowup === 'function' && !lesionCanCloseNoFollowup(lesion);
     const toolbar = [
+        `<button type="button" onclick="editChartLesion('${safeId}')">Edit lesion</button>`,
         canResult ? `<button type="button" onclick="openHistologyModal('${safeId}')">${lesion.histologyResult ? 'Edit result' : 'Enter result'}</button>` : '',
         refer ? `<button type="button" onclick="openLetterModalForRefer('${safeId}')">Generate letter</button>` : ''
     ].filter(Boolean).join('');
@@ -1240,10 +1319,10 @@ function renderChartLesionInspector(options) {
             <p>${escapeHtml([dx, status].filter(Boolean).join(' · '))}</p>
         </div>
         ${toolbar ? `<div class="chart-inspector-toolbar">${toolbar}</div>` : ''}
-        <div class="chart-inspector-body" data-inspector-form="1">
+        <div class="chart-inspector-body" data-inspector-view="1">
             ${pendingBill ? '<p class="insp-warn" style="margin-bottom:0.45rem">Clinically finalised · billing still pending</p>' : ''}
             ${lesion.currentPlan ? `<p class="insp-hint" style="margin-bottom:0.45rem"><strong>Plan:</strong> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
-            ${procedureDone ? dossier : renderInspectorDocumentationForm(lesion, unlocked)}
+            ${dossier}
             ${renderInspectorPlanContactForm(lesion)}
             ${typeof renderLesionActionLog === 'function' ? renderLesionActionLog(lesion) : ''}
         </div>`;
@@ -1251,12 +1330,6 @@ function renderChartLesionInspector(options) {
     inspectorRenderedMode = mode;
     manageLesionPrevPlan = document.querySelector('input[name="inspHistologyNext"]:checked')?.value || '';
     manageLesionNfaConfirmed = manageLesionPrevPlan === 'no_followup';
-    if (!procedureDone) {
-        bindInspectorTypeaheads();
-        handleInspectorPlanChange();
-        handleInspectorClosureChange();
-        syncInspectorPriorHistoSource();
-    }
     syncInspectorFollowUpUi();
 }
 
@@ -1293,17 +1366,12 @@ function syncChartLesionWorkspace() {
 }
 
 function documentChartLesion(id) {
-    if (typeof visitClinicalUnlocked === 'function' && !visitClinicalUnlocked()) {
-        pendingWorkspaceTab = 'skin-check';
-        if (typeof pulseSanitiseControl === 'function') pulseSanitiseControl();
-        if (typeof openConsultTypeModal === 'function') openConsultTypeModal();
-        showToast('Choose consult type to document a lesion.');
-        return;
-    }
-    if (typeof openLesionModal === 'function') openLesionModal(id);
+    openLesionInInspector(id);
 }
 
 function selectChartLesion(id, options) {
+    inspectorPaneMode = 'view';
+    inspectorFormLesionId = '';
     selectedChartLesionId = String(id || '');
     selectedVisitSection = '';
     const fromTree = !!(options && options.fromTree);

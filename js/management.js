@@ -917,12 +917,39 @@ function renderCopiedPriorHistologyReport(lesion) {
     </article>`;
 }
 
+function renderInspectorExaminationReport(lesion) {
+    if (!lesion) return '';
+    const macro = unspecifiedExamText(lesion.macroscopic);
+    const dermoscopy = unspecifiedExamText(lesion.dermoscopy);
+    const impression = unspecifiedExamText(
+        (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(lesion.impression) : '')
+        || lesion.impression
+    );
+    const at = typeof lesionExamAt === 'function' ? lesionExamAt(lesion) : '';
+    const date = typeof formatLesionCardDate === 'function' ? formatLesionCardDate(at) : '';
+    const rows = [
+        histoReportRow('Site', lesion.location || 'Not stated'),
+        histoReportRow('Provisional diagnosis', impression),
+        histoReportRow('Macroscopic', macro || 'Not recorded'),
+        histoReportRow('Dermoscopic', dermoscopy || 'Not recorded'),
+        histoReportRow('Plan', lesion.plan || ''),
+        histoReportRow('Dimensions', typeof lesionExamDimensions === 'function' ? lesionExamDimensions(lesion) : ''),
+        histoReportRow('Margin', typeof lesionExamMargin === 'function' ? lesionExamMargin(lesion) : '')
+    ].join('');
+    if (!rows) return '';
+    return `<article class="histo-report is-exam">
+        <p class="histo-report-kicker">Examination</p>
+        <h3>Clinical record</h3>
+        <p class="histo-report-meta">${escapeHtml(date || 'Today')}</p>
+        <dl class="histo-report-dl">${rows}</dl>
+    </article>`;
+}
+
 function renderInspectorLesionDossier(lesion) {
     const ancestors = typeof collectLesionAncestors === 'function' ? collectLesionAncestors(lesion) : [];
     const examSource = ancestors[0] || lesion;
-    const examHtml = typeof renderLesionExamBlock === 'function'
-        ? (renderLesionExamBlock(examSource) || (examSource !== lesion ? renderLesionExamBlock(lesion) : ''))
-        : '';
+    const examHtml = renderInspectorExaminationReport(examSource)
+        || (examSource !== lesion ? renderInspectorExaminationReport(lesion) : '');
     const previousHtml = ancestors.map((item) => renderInspectorHistologyReport(item, 'previous')).filter(Boolean).join('');
     const copiedHtml = ancestors.length ? '' : renderCopiedPriorHistologyReport(lesion);
     const currentHtml = renderInspectorHistologyReport(lesion, 'current');
@@ -3264,6 +3291,9 @@ function applyManagedLesionToExcisionForm(lesion) {
     setVal('exProcedureType', 'Excision');
     setVal('exExcisionClosureType', normalizeExcisionClosure(lesion));
     if (lesion.billingGraftType || lesion.graftType) setVal('exGraftType', lesion.billingGraftType || lesion.graftType);
+    const dermo = typeof inferDermoscopyUsed === 'function' ? inferDermoscopyUsed(lesion) : 'N';
+    setVal('exDermoscopyUsed', dermo);
+    if (typeof syncExDermoscopyButtons === 'function') syncExDermoscopyButtons();
     if (typeof updateExFormUI === 'function') updateExFormUI();
     if (typeof validateExForm === 'function') validateExForm();
 }

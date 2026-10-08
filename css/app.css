@@ -1220,6 +1220,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             border-color: #9aa7b5;
             font-family: "Segoe UI", Tahoma, sans-serif;
         }
+        .histo-report.is-exam {
+            background: #fbfbf8;
+            border-color: #8a8a8a;
+        }
+        .histo-report.is-exam .histo-report-kicker {
+            color: #3d4a3a;
+        }
         .histo-report-kicker {
             font-family: "Segoe UI", Tahoma, sans-serif;
             font-size: 10px;

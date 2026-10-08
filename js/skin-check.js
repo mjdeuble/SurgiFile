@@ -595,10 +595,26 @@ function triggerAddLesion() {
         showToast('Choose consult type to unlock Lesions.');
         return;
     }
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()
+        && typeof openLesionInInspector === 'function') {
+        openLesionInInspector('');
+        return;
+    }
     openLesionModal();
 }
 
 function openLesionModal(lesionId = null) {
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()
+        && typeof chartLesionInspectorVisible === 'function'
+        && typeof openLesionInInspector === 'function') {
+        const inspectorReady = chartLesionInspectorVisible()
+            || (typeof activeWorkspaceTab !== 'undefined'
+                && (activeWorkspaceTab === 'management' || activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator' || activeWorkspaceTab === 'consent' || activeWorkspaceTab === 'history'));
+        if (inspectorReady) {
+            openLesionInInspector(lesionId || '');
+            return;
+        }
+    }
     const modal = document.getElementById('lesionModal');
     if (!modal) return;
 

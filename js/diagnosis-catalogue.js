@@ -577,6 +577,8 @@ function setDiagnosisTypeahead(inputId, value) {
 function initDiagnosisTypeaheads() {
     indexDiagnosisCatalogue();
     bindDiagnosisTypeahead('lesionImpression', {
+        multi: true,
+        hiddenId: 'lesionImpressionCodes',
         onChange: () => {
             if (typeof handleExamDiagnosisChange === 'function') handleExamDiagnosisChange();
         }
@@ -594,10 +596,9 @@ function initDiagnosisTypeaheads() {
     });
     bindDiagnosisTypeahead('priorHistologyDiagnosis', {
         onChange: (value) => {
-            const impression = document.getElementById('lesionImpression');
-            if (impression && !String(impression.value || '').trim() && value) {
-                if (typeof setDiagnosisTypeahead === 'function') setDiagnosisTypeahead('lesionImpression', value);
-                else impression.value = value;
+            const current = typeof readExamImpression === 'function' ? readExamImpression() : '';
+            if (!current && value && typeof setDiagnosisTypeahead === 'function') {
+                setDiagnosisTypeahead('lesionImpression', value);
             }
         }
     });
