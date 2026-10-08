@@ -1,4 +1,4 @@
-/* Patient chart rail: workspace icons, sanitise unlock, context actions, one lesion list. */
+/* Patient chart: BP-style text tree, consult-type gate, session toolbar, lesion inspector. */
 
 let selectedChartLesionId = '';
 
@@ -285,44 +285,53 @@ function toggleChartTreeCompleted() {
     renderChartLesionTree();
 }
 
+function selectChartFolder(tabName) {
+    if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab(tabName);
+}
+
 function renderChartLesionTree() {
     const tree = document.getElementById('chartLesionTree');
-    const list = document.getElementById('chartLesionTreeList');
+    const list = document.getElementById('chartLesionTreeLesions');
     const empty = document.getElementById('chartLesionTreeEmpty');
     const status = document.getElementById('chartLesionTreeStatus');
+    const toolbar = document.getElementById('chartActionToolbar');
     const open = typeof hasCurrentPatient === 'function' && hasCurrentPatient();
     if (tree) tree.classList.toggle('hidden', !open);
+    if (toolbar) toolbar.classList.toggle('hidden', !open);
     const shell = document.getElementById('appShell');
     if (shell) shell.classList.toggle('is-chart-open', !!open);
-    if (!open || !list) return;
+    if (!open) return;
     ensureSelectedChartLesion();
     const model = chartLesionTreeModel();
-    if (!model.total) {
-        list.innerHTML = '';
-        if (empty) empty.classList.remove('hidden');
-        if (status) status.textContent = '0 lesions';
-        return;
-    }
-    if (empty) empty.classList.add('hidden');
-    let html = '';
-    if (model.live.length) {
-        html += '<p class="chart-tree-group" aria-hidden="true">Current</p>';
-        html += model.live.map((item) => renderChartTreeNode(item, 0, model.children)).join('');
-    }
-    if (model.done.length) {
-        const label = chartTreeCompletedCollapsed
-            ? 'Completed (' + model.done.length + ')'
-            : 'Completed';
-        html += `<button type="button" class="chart-tree-group" onclick="toggleChartTreeCompleted()">${escapeHtml(label)}</button>`;
-        if (!chartTreeCompletedCollapsed) {
-            html += model.done.map((item) => renderChartTreeNode(item, 0, model.children)).join('');
+    if (list) {
+        if (!model.total) {
+            list.innerHTML = '';
+        } else {
+            let html = '';
+            if (model.live.length) {
+                html += model.live.map((item) => renderChartTreeNode(item, 1, model.children)).join('');
+            }
+            if (model.done.length) {
+                const label = chartTreeCompletedCollapsed
+                    ? 'Completed (' + model.done.length + ')'
+                    : 'Completed';
+                html += `<button type="button" class="chart-tree-group" onclick="toggleChartTreeCompleted()">${escapeHtml(label)}</button>`;
+                if (!chartTreeCompletedCollapsed) {
+                    html += model.done.map((item) => renderChartTreeNode(item, 1, model.children)).join('');
+                }
+            }
+            list.innerHTML = html;
         }
     }
-    list.innerHTML = html;
+    if (empty) empty.classList.toggle('hidden', !!model.total);
     if (status) {
-        const liveCount = model.live.length;
-        status.textContent = model.total + ' lesion' + (model.total === 1 ? '' : 's')
-            + (liveCount ? ' · ' + liveCount + ' current' : '');
+        if (!model.total) {
+            status.textContent = 'No lesions';
+        } else {
+            const liveCount = model.live.length;
+            status.textContent = model.total + ' lesion' + (model.total === 1 ? '' : 's')
+                + (liveCount ? ' · ' + liveCount + ' current' : '');
+        }
     }
 }
 
@@ -334,7 +343,7 @@ function renderChartLesionInspector() {
     if (!show) return;
     const lesion = ensureSelectedChartLesion();
     if (!lesion) {
-        pane.innerHTML = '<div class="chart-inspector-empty">No lesions on this chart. Click Add in the lesion list to document a spot.</div>';
+        pane.innerHTML = '<div class="chart-inspector-empty">No lesions on this chart. Click Add lesion to document a spot.</div>';
         return;
     }
     const id = String(lesion.id || '').replace(/'/g, '');
@@ -426,6 +435,10 @@ function selectChartLesion(id, options) {
         if (activeWorkspaceTab === 'excision-generator' && typeof visitClinicalUnlocked === 'function' && visitClinicalUnlocked()) {
             if (typeof openProcedureLesionDetail === 'function') openProcedureLesionDetail(lesion.id);
             else if (typeof applyManagedLesionToExcisionForm === 'function') applyManagedLesionToExcisionForm(lesion);
+            return;
+        }
+        if (activeWorkspaceTab !== 'management' && activeWorkspaceTab !== 'skin-check') {
+            if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management', { skipPersist: true });
         }
         return;
     }
@@ -475,17 +488,19 @@ function railModeVisible(mode, tab) {
 function renderChartSidebar() {
     const patientOn = hasCurrentPatient();
     const tab = activeWorkspaceTab;
-    const patientTools = document.getElementById('railPatientTools');
-    if (patientTools) patientTools.classList.toggle('hidden', !patientOn);
+    const toolbar = document.getElementById('chartActionToolbar');
+    if (toolbar) toolbar.classList.toggle('hidden', !patientOn);
 
     const sanitiseBtn = document.getElementById('sidebarSanitiseBtn');
+    const sanitiseLabel = document.getElementById('sidebarSanitiseLabel');
     const sanitiseHint = document.getElementById('sidebarSanitiseHint');
     const unlocked = visitClinicalUnlocked();
+    const typeLabel = visitConsultTypeLabel();
     if (sanitiseBtn) {
         sanitiseBtn.classList.toggle('is-on', !!isBedSanitised || visitConsultType === 'face_to_face');
-        const typeLabel = visitConsultTypeLabel();
         sanitiseBtn.setAttribute('aria-label', typeLabel || 'Consult type');
     }
+    if (sanitiseLabel) sanitiseLabel.textContent = typeLabel || 'Consult type';
     if (sanitiseHint) {
         if (visitConsultType === 'face_to_face' || isBedSanitised) {
             sanitiseHint.textContent = 'Face to face — room sanitised for this visit. Close the chart to end the visit.';
@@ -515,8 +530,9 @@ function renderChartSidebar() {
     setNav(procBtn, 'excision-generator');
     setNav(consentBtn, 'consent');
     setNav(adminBtn, 'management');
+    if (examBtn) examBtn.setAttribute('aria-expanded', 'true');
 
-    document.querySelectorAll('#chartSidebar [data-rail]').forEach((el) => {
+    document.querySelectorAll('#chartActionToolbar [data-rail]').forEach((el) => {
         el.classList.toggle('hidden', !patientOn || !railModeVisible(el.getAttribute('data-rail'), tab));
     });
 
