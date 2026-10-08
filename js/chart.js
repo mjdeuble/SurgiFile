@@ -488,7 +488,7 @@ function renderPracticeBillingInspector(key) {
             : (typeof renderBillingQueueCard === 'function' ? renderBillingQueueCard : null));
     const body = group.items.length && renderCard && typeof renderPatientEpisodeGroups === 'function'
         ? renderPatientEpisodeGroups(group.items, (view, opts) => renderCard(view, opts), { sourceOf: typeof billingRecordSource === 'function' ? billingRecordSource : undefined })
-        : `<p class="chart-inspector-empty">${escapeHtml(empty)}</p>`;
+        : '';
     const actions = key === 'confirmed' && group.items.length
         ? `<button type="button" onclick="toggleAllConfirmedBillingChecks(true)">Select all</button>
             <button type="button" onclick="printConfirmedBillings()">Print for practice manager</button>
