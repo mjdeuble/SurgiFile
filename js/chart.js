@@ -250,7 +250,7 @@ function practiceNotesActive() {
 }
 
 function practiceInspectorVisible() {
-    return practiceWorkspaceActive() && !practiceBillingActive();
+    return practiceWorkspaceActive();
 }
 
 function practiceFilterLabel(filter) {
@@ -404,6 +404,152 @@ function selectPracticeLesion(id) {
     if (typeof renderChartLesionInspector === 'function') renderChartLesionInspector({ force: true });
 }
 
+function practiceBillingStatus(bill) {
+    const raw = String(bill?.status || bill?.billingStatus || '').toLowerCase();
+    if (raw === 'confirmed') return 'confirmed';
+    if (raw === 'processed') return 'processed';
+    return 'awaiting';
+}
+
+function practiceBillingGroups() {
+    const bills = (typeof adminBillings === 'function' ? adminBillings() : (typeof managedBillings !== 'undefined' ? managedBillings : []))
+        .map((bill) => (typeof billingViewModel === 'function' ? billingViewModel(bill) : bill));
+    const buckets = {
+        awaiting: [],
+        confirmed: [],
+        processed: []
+    };
+    bills.forEach((view) => {
+        buckets[practiceBillingStatus(view)].push(view);
+    });
+    const sortItems = (items) => items.sort((a, b) => {
+        const name = practicePatientSortName(a).localeCompare(practicePatientSortName(b), 'en', { sensitivity: 'base' });
+        if (name) return name;
+        return String(a.location || '').localeCompare(String(b.location || ''), 'en', { sensitivity: 'base' });
+    });
+    return [
+        { key: 'awaiting', title: 'Awaiting billings', items: sortItems(buckets.awaiting) },
+        { key: 'confirmed', title: 'Confirmed billings', items: sortItems(buckets.confirmed) },
+        { key: 'processed', title: 'Processed billings', items: sortItems(buckets.processed) }
+    ];
+}
+
+function selectPracticeBilling(id) {
+    selectedPracticeDoc = { kind: 'billing', id: String(id || '') };
+    selectedChartLesionId = '';
+    inspectorPaneMode = 'view';
+    if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+    if (typeof renderChartLesionInspector === 'function') renderChartLesionInspector({ force: true });
+}
+
+function selectPracticeBillingGroup(key) {
+    const group = practiceBillingGroups().find((item) => item.key === key);
+    if (group && group.items[0]) {
+        selectPracticeBilling(group.items[0].id);
+        return;
+    }
+    selectedPracticeDoc = { kind: 'billing-group', id: String(key || 'awaiting') };
+    selectedChartLesionId = '';
+    inspectorPaneMode = 'view';
+    if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+    if (typeof renderChartLesionInspector === 'function') renderChartLesionInspector({ force: true });
+}
+
+function ensureSelectedPracticeBilling() {
+    const items = practiceBillingGroups().flatMap((group) => group.items);
+    if (!items.length) {
+        if (!selectedPracticeDoc || selectedPracticeDoc.kind !== 'billing-group') {
+            selectedPracticeDoc = { kind: 'billing-group', id: 'awaiting' };
+        }
+        return null;
+    }
+    if (selectedPracticeDoc && selectedPracticeDoc.kind === 'billing') {
+        const current = items.find((item) => String(item.id) === String(selectedPracticeDoc.id));
+        if (current) return current;
+    }
+    const pick = items[0];
+    selectedPracticeDoc = { kind: 'billing', id: String(pick.id || '') };
+    return pick;
+}
+
+function renderPracticeBillingTree() {
+    const list = document.getElementById('practiceTreeList');
+    const status = document.getElementById('chartLesionTreeStatus');
+    const groups = practiceBillingGroups();
+    const selectedId = selectedPracticeDoc && selectedPracticeDoc.kind === 'billing' ? String(selectedPracticeDoc.id) : '';
+    const selectedGroup = selectedPracticeDoc && selectedPracticeDoc.kind === 'billing-group' ? selectedPracticeDoc.id : '';
+    list.innerHTML = groups.map((group) => {
+        const folderOn = selectedGroup === group.key && !group.items.length;
+        const kids = group.items.length
+            ? group.items.map((item) => {
+                const id = String(item.id || '').replace(/'/g, '');
+                const selected = id && id === selectedId;
+                const name = practicePatientSortName(item);
+                const site = [name, item.location].filter(Boolean).join(' · ') || 'Billing item';
+                const dx = typeof billingDisplayDiagnosis === 'function'
+                    ? billingDisplayDiagnosis(item)
+                    : (item.impression || item.histologyDiagnosis || '');
+                const codes = String(item.assignedMbsItems || item.suggestedMbsItems || '').trim();
+                const meta = codes || dx || '';
+                return `<button type="button" role="treeitem" aria-selected="${selected ? 'true' : 'false'}" class="chart-tree-node${selected ? ' is-selected' : ''}" style="--depth:1" onclick="selectPracticeBilling('${id}')">
+                    <span class="chart-tree-node-site">${escapeHtml(site)}</span>
+                    <span class="chart-tree-node-meta">${escapeHtml(meta)}</span>
+                </button>`;
+            }).join('')
+            : '<p class="chart-tree-empty">None</p>';
+        return `<button type="button" role="treeitem" class="chart-tree-folder${folderOn ? ' is-active' : ''}" onclick="selectPracticeBillingGroup('${group.key}')">${escapeHtml(group.title)}</button>
+            <div class="chart-tree-children">${kids}</div>`;
+    }).join('');
+    if (status) {
+        status.textContent = groups.map((group) => group.items.length + ' ' + group.key).join(' · ');
+    }
+    return groups.reduce((sum, group) => sum + group.items.length, 0);
+}
+
+function renderPracticeBillingInspector(view) {
+    const slot = inspectorLesionSlot();
+    if (!slot) return;
+    if (!view) {
+        const key = selectedPracticeDoc && selectedPracticeDoc.kind === 'billing-group' ? selectedPracticeDoc.id : 'awaiting';
+        const title = key === 'confirmed' ? 'Confirmed billings' : (key === 'processed' ? 'Processed billings' : 'Awaiting billings');
+        const empty = key === 'confirmed' ? 'No confirmed billings yet.'
+            : (key === 'processed' ? 'No processed billings yet.' : 'No lesions awaiting billing.');
+        slot.innerHTML = `
+            <div class="chart-inspector-caption">
+                <h2>${escapeHtml(title)}</h2>
+                <p>${escapeHtml(empty)}</p>
+            </div>
+            <div class="chart-inspector-body" data-inspector-view="1" data-practice-billing="1">
+                <p class="chart-inspector-empty">${escapeHtml(empty)}</p>
+            </div>`;
+        return;
+    }
+    const status = practiceBillingStatus(view);
+    const heading = status === 'confirmed' ? 'Confirmed billings' : (status === 'processed' ? 'Processed billings' : 'Awaiting billings');
+    const name = view.patientName || practicePatientSortName(view);
+    const dx = typeof billingDisplayDiagnosis === 'function' ? billingDisplayDiagnosis(view) : (view.impression || '');
+    const lesionId = String(view.lesionId || '').replace(/'/g, '');
+    const billId = String(view.id || '').replace(/'/g, '');
+    const card = status === 'confirmed' && typeof renderConfirmedBillingCard === 'function'
+        ? renderConfirmedBillingCard(view)
+        : (status === 'processed' && typeof renderProcessedBillingCard === 'function'
+            ? renderProcessedBillingCard(view)
+            : (typeof renderBillingQueueCard === 'function' ? renderBillingQueueCard(view) : ''));
+    const actions = [
+        lesionId && typeof openChartFromLesion === 'function' ? `<button type="button" onclick="openChartFromLesion('${lesionId}')">Open chart</button>` : '',
+        status === 'confirmed' ? `<button type="button" onclick="printConfirmedBillings()">Print for practice manager</button>` : '',
+        status === 'confirmed' ? `<button type="button" onclick="markBillingsAsProcessed(['${billId}'])">Mark processed</button>` : '',
+        status === 'processed' ? `<button type="button" onclick="printProcessedBillings()">Print processed</button>` : ''
+    ].filter(Boolean).join('');
+    slot.innerHTML = `
+        <div class="chart-inspector-caption">
+            <h2>${escapeHtml(heading)}</h2>
+            <p>${escapeHtml([name, view.location, dx].filter(Boolean).join(' · '))}</p>
+        </div>
+        ${actions ? `<div class="chart-inspector-toolbar">${actions}</div>` : ''}
+        <div class="chart-inspector-body" data-inspector-view="1" data-practice-billing="1">${card || '<p class="chart-inspector-empty">No billing details.</p>'}</div>`;
+}
+
 function selectPracticeDocument(kind, id) {
     selectedPracticeDoc = { kind: String(kind || ''), id: String(id || '') };
     selectedChartLesionId = '';
@@ -446,6 +592,7 @@ function renderPracticeTree() {
     const title = document.getElementById('chartTreeTitle');
     if (title) title.textContent = practiceFilterLabel();
     if (!list) return 0;
+    if (practiceBillingActive()) return renderPracticeBillingTree();
     if (practiceNotesActive()) {
         const docs = practiceSavedDocItems();
         const groups = groupPracticeDocuments(docs);
@@ -801,20 +948,21 @@ function renderChartLesionTree() {
     const practiceList = document.getElementById('practiceTreeList');
     const title = document.getElementById('chartTreeTitle');
     const open = typeof hasCurrentPatient === 'function' && hasCurrentPatient();
-    const practice = practiceWorkspaceActive() && !practiceBillingActive();
+    const practice = practiceWorkspaceActive();
     if (tree) tree.classList.toggle('hidden', !open && !practice);
     if (toolbar) toolbar.classList.toggle('hidden', !open);
     const shell = document.getElementById('appShell');
     if (shell) {
         shell.classList.toggle('is-chart-open', !!open);
         shell.classList.toggle('is-practice', !open);
-        shell.classList.toggle('is-billing', !open && practiceBillingActive());
+        shell.classList.remove('is-billing');
     }
     if (chartNodes) chartNodes.classList.toggle('hidden', !open);
     if (practiceList) practiceList.classList.toggle('hidden', !practice);
     if (!open) {
         if (practice) {
             if (practiceNotesActive()) ensureSelectedPracticeDocument();
+            else if (practiceBillingActive()) ensureSelectedPracticeBilling();
             else ensureSelectedPracticeLesion();
             renderPracticeTree();
         } else if (title) {
@@ -1834,6 +1982,13 @@ function renderChartLesionInspector(options) {
         }
         return;
     }
+    if (practiceBillingActive()) {
+        const view = ensureSelectedPracticeBilling();
+        inspectorRenderedLesionId = view ? ('billing:' + view.id) : ('billing-group:' + (selectedPracticeDoc?.id || ''));
+        inspectorRenderedMode = 'practice-billing';
+        renderPracticeBillingInspector(view);
+        return;
+    }
     if (practiceNotesActive()) {
         const doc = ensureSelectedPracticeDocument();
         inspectorRenderedLesionId = doc ? practiceDocKey(doc) : '';
@@ -1904,12 +2059,11 @@ function syncChartLesionWorkspace() {
         inspectorFormFocus = '';
     }
     const inspectorOn = chartLesionInspectorVisible();
-    const billing = practiceBillingActive();
     const shell = document.getElementById('appShell');
     if (shell) {
         shell.classList.toggle('is-chart-open', !!open);
         shell.classList.toggle('is-practice', !open);
-        shell.classList.toggle('is-billing', !open && billing);
+        shell.classList.remove('is-billing');
     }
     document.body.classList.toggle('chart-open', !!open);
     const tabs = document.getElementById('practiceFilterBar');
@@ -1941,8 +2095,6 @@ function syncChartLesionWorkspace() {
     if (viewMgmt && inspectorOn && activeWorkspaceTab === 'management') {
         viewMgmt.classList.add('hidden');
     } else if (viewMgmt && activeWorkspaceTab === 'management' && !inspectorOn) {
-        viewMgmt.classList.remove('hidden');
-    } else if (viewMgmt && !open && billing) {
         viewMgmt.classList.remove('hidden');
     }
 }

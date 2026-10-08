@@ -350,7 +350,7 @@ function renderManagedLesions() {
         return;
     }
 
-    if (mgmtActiveFilter !== 'billing' && typeof syncChartLesionWorkspace === 'function') {
+    if (typeof syncChartLesionWorkspace === 'function') {
         if (empty) empty.classList.add('hidden');
         syncChartLesionWorkspace();
         return;
@@ -2083,8 +2083,9 @@ async function returnBillingToConfirmed(id) {
 }
 
 function setMgmtFilter(filter) {
-    mgmtActiveFilter = filter === 'active' ? 'open' : filter;
-    if (mgmtActiveFilter !== 'notes' && typeof selectedPracticeDoc !== 'undefined') selectedPracticeDoc = null;
+    const next = filter === 'active' ? 'open' : filter;
+    if (next !== mgmtActiveFilter && typeof selectedPracticeDoc !== 'undefined') selectedPracticeDoc = null;
+    mgmtActiveFilter = next;
     renderManagedLesions();
 }
 
