@@ -22,6 +22,10 @@ function chartLesions() {
     });
     lesions.forEach((item) => {
         const id = String(item.id);
+        const onChart = typeof lesionBelongsToOpenChart === 'function'
+            ? lesionBelongsToOpenChart(item)
+            : (typeof lesionChartId === 'function' ? lesionChartId(item) === chartId : false);
+        if (!onChart) return;
         const existing = map.get(id);
         map.set(id, existing ? { ...existing, ...item } : item);
     });
