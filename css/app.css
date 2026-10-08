@@ -1665,11 +1665,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             padding: 8px;
             border-radius: 0;
         }
-        .chart-shell.is-chart-open #view-consent {
+        .chart-shell.is-chart-open #view-consent:not(.hidden) {
             padding: 6px;
             display: flex;
             flex-direction: column;
             min-height: 0;
+        }
+        .chart-shell.is-chart-open #view-consent.hidden {
+            display: none !important;
         }
         .chart-shell.is-chart-open #view-skin-check .rounded-xl,
         .chart-shell.is-chart-open #view-excision-generator .rounded-xl,

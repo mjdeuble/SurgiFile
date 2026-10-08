@@ -33,6 +33,11 @@ function isClinicalWorkspaceTab(tabName) {
 function switchWorkspaceTab(tabName, options) {
     if (typeof requireRoomReady === 'function' && !requireRoomReady(tabName)) return;
 
+    if (tabName !== 'management' && tabName !== 'skin-check'
+        && typeof inspectorToolMode === 'function' && inspectorToolMode()) {
+        inspectorPaneMode = 'view';
+    }
+
     activeWorkspaceTab = tabName;
     const viewSkinCheck = document.getElementById('view-skin-check');
     const viewExcisionGen = document.getElementById('view-excision-generator');

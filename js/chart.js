@@ -234,6 +234,7 @@ function chartLesionInspectorVisible() {
 }
 
 function selectChartVisitItem(section) {
+    if (inspectorToolMode()) inspectorPaneMode = 'view';
     const key = section === 'scope' || section === 'concerns' || section === 'risks' ? section : 'all';
     pendingVisitSection = key;
     if (typeof requireRoomReady === 'function' && !requireRoomReady('history')) return;
@@ -363,6 +364,7 @@ function toggleChartTreeCompleted() {
 
 function selectChartFolder(tabName) {
     selectedVisitSection = '';
+    if (inspectorToolMode()) inspectorPaneMode = 'view';
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab(tabName);
 }
 
