@@ -508,11 +508,6 @@ function marginSuggestFieldSpec(fieldId) {
             diagnosisFn: () => (typeof readInspectorImpression === 'function' ? readInspectorImpression() : ''),
             lesionId: () => document.getElementById('inspEditLesionId')?.value,
             kind: 'excision'
-        },
-        addConsentMargin: {
-            locationId: 'addConsentLoc',
-            diagnosisId: 'addConsentDx',
-            kindFn: () => document.getElementById('addConsentKind')?.value || 'excision'
         }
     }[fieldId] || null;
 }

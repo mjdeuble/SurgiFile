@@ -5,6 +5,7 @@ let inspectorRenderedLesionId = '';
 let inspectorRenderedMode = '';
 let inspectorPaneMode = 'view';
 let inspectorFormLesionId = '';
+let inspectorAdviceKind = 'print';
 let manageLesionUiSource = 'modal';
 
 function chartLesions() {
@@ -340,9 +341,10 @@ function chartTreeNodeLabel(lesion) {
 
 function renderChartTreeNode(lesion, depth, childrenMap) {
     const id = String(lesion.id || '');
+    const toolMode = inspectorPaneMode === 'letter' || inspectorPaneMode === 'billing' || inspectorPaneMode === 'advice';
     const selected = inspectorPaneMode === 'form'
         ? !!(inspectorFormLesionId && id === String(inspectorFormLesionId))
-        : (id && id === String(selectedChartLesionId) && !selectedVisitSection);
+        : (!toolMode && id && id === String(selectedChartLesionId) && !selectedVisitSection);
     const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
     const label = chartTreeNodeLabel(lesion);
     const kids = childrenMap.get(id) || [];
@@ -456,6 +458,7 @@ function renderChartLesionTree() {
     if (addBtn) addBtn.classList.toggle('is-selected', inspectorPaneMode === 'form' && !inspectorFormLesionId);
     renderChartTreeSavedDocs();
     syncChartVisitTreeStatus();
+    syncInspectorActionTreeSelection();
     if (status) {
         if (!model.total) {
             status.textContent = 'No lesions';
@@ -474,7 +477,8 @@ function inspectorLesionMode(lesion) {
 }
 
 function paintInspectorCaption(lesion) {
-    const cap = document.querySelector('#chartLesionInspector .chart-inspector-caption');
+    const cap = document.querySelector('#inspLesionSlot .chart-inspector-caption')
+        || document.querySelector('#chartLesionInspector .chart-inspector-caption');
     if (!cap || !lesion) return;
     const status = typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion.plan || '');
     const dx = typeof formatDiagnosisDisplay === 'function'
@@ -1252,6 +1256,102 @@ function inspectorFormLesion() {
     return items.find((item) => String(item.id) === id) || {};
 }
 
+function inspectorLesionSlot() {
+    return document.getElementById('inspLesionSlot') || document.getElementById('chartLesionInspector');
+}
+
+function inspectorToolMode() {
+    return inspectorPaneMode === 'letter' || inspectorPaneMode === 'billing' || inspectorPaneMode === 'advice';
+}
+
+function showInspectorToolSlot(mode) {
+    const isTool = mode === 'letter' || mode === 'billing' || mode === 'advice';
+    const pairs = [
+        ['inspLesionSlot', !isTool],
+        ['inspLetterSlot', mode === 'letter'],
+        ['inspBillingSlot', mode === 'billing'],
+        ['inspAdviceSlot', mode === 'advice']
+    ];
+    pairs.forEach(([id, on]) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('hidden', !on);
+    });
+}
+
+function dockInspectorTool(mode) {
+    const map = {
+        letter: ['letterModal', 'letterModalCard', 'inspLetterSlot'],
+        billing: ['patientBillingModal', 'billingModalCard', 'inspBillingSlot'],
+        advice: ['aftercarePreviewModal', 'aftercarePreviewCard', 'inspAdviceSlot']
+    };
+    const spec = map[mode];
+    if (!spec) return;
+    const overlay = document.getElementById(spec[0]);
+    const slot = document.getElementById(spec[2]);
+    let card = document.getElementById(spec[1]);
+    if (!card && overlay) card = overlay.firstElementChild;
+    if (card && slot && card.parentElement !== slot) {
+        slot.appendChild(card);
+        card.classList.add('insp-docked');
+    }
+    if (overlay) overlay.classList.add('hidden');
+}
+
+function syncInspectorActionTreeSelection() {
+    const letter = document.getElementById('btnGenerateLetter');
+    const billing = document.getElementById('btnChartBilling');
+    const printBtn = document.getElementById('btnPrintAftercare');
+    const saveBtn = document.getElementById('btnDownloadAftercare');
+    const adviceFolder = document.getElementById('navPatientAdvice');
+    const letterOn = inspectorPaneMode === 'letter';
+    const billingOn = inspectorPaneMode === 'billing';
+    const printOn = inspectorPaneMode === 'advice' && inspectorAdviceKind !== 'download';
+    const saveOn = inspectorPaneMode === 'advice' && inspectorAdviceKind === 'download';
+    if (letter) {
+        letter.classList.toggle('is-selected', letterOn);
+        letter.setAttribute('aria-selected', letterOn ? 'true' : 'false');
+    }
+    if (billing) {
+        billing.classList.toggle('is-selected', billingOn);
+        billing.setAttribute('aria-selected', billingOn ? 'true' : 'false');
+    }
+    if (printBtn) {
+        printBtn.classList.toggle('is-selected', printOn);
+        printBtn.setAttribute('aria-selected', printOn ? 'true' : 'false');
+    }
+    if (saveBtn) {
+        saveBtn.classList.toggle('is-selected', saveOn);
+        saveBtn.setAttribute('aria-selected', saveOn ? 'true' : 'false');
+    }
+    if (adviceFolder) {
+        adviceFolder.classList.toggle('is-selected', inspectorPaneMode === 'advice');
+    }
+}
+
+function openInspectorToolPane(mode, extra) {
+    if (typeof hasCurrentPatient === 'function' && !hasCurrentPatient()) return false;
+    inspectorPaneMode = mode;
+    inspectorFormLesionId = '';
+    selectedVisitSection = '';
+    inspectorAdviceKind = extra?.download ? 'download' : 'print';
+    if (typeof switchWorkspaceTab === 'function'
+        && activeWorkspaceTab !== 'management'
+        && activeWorkspaceTab !== 'skin-check') {
+        switchWorkspaceTab('management', { skipPersist: true });
+    }
+    renderChartLesionInspector({ force: true });
+    if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+    return true;
+}
+
+function closeInspectorToolPane(mode) {
+    if (mode && inspectorPaneMode !== mode) return;
+    if (!inspectorToolMode()) return;
+    inspectorPaneMode = 'view';
+    renderChartLesionInspector({ force: true });
+    if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+}
+
 function renderChartLesionInspector(options) {
     const pane = document.getElementById('chartLesionInspector');
     if (!pane) return;
@@ -1260,13 +1360,22 @@ function renderChartLesionInspector(options) {
     if (!show) return;
     const force = !!(options && options.force);
     const unlocked = typeof visitClinicalUnlocked === 'function' ? visitClinicalUnlocked() : true;
+    showInspectorToolSlot(inspectorPaneMode);
+    syncInspectorActionTreeSelection();
+    if (inspectorToolMode()) {
+        dockInspectorTool(inspectorPaneMode);
+        inspectorRenderedMode = inspectorPaneMode;
+        return;
+    }
+    const slot = inspectorLesionSlot();
+    if (!slot) return;
     if (inspectorPaneMode === 'form') {
         const lesion = inspectorFormLesion();
         const formKey = 'form:' + (inspectorFormLesionId || 'new') + ':' + (unlocked ? 'open' : 'lock');
-        if (!force && inspectorRenderedMode === formKey && pane.querySelector('[data-inspector-form]')) return;
+        if (!force && inspectorRenderedMode === formKey && slot.querySelector('[data-inspector-form]')) return;
         const title = inspectorFormLesionId ? (lesion.location || 'Edit lesion') : 'Add lesion';
         const sub = inspectorFormLesionId ? 'Update the examination details, then save.' : 'Document a new spot on this chart.';
-        pane.innerHTML = `
+        slot.innerHTML = `
             <div class="chart-inspector-caption">
                 <h2>${escapeHtml(title)}</h2>
                 <p>${escapeHtml(sub)}</p>
@@ -1286,12 +1395,12 @@ function renderChartLesionInspector(options) {
     if (!lesion) {
         inspectorRenderedLesionId = '';
         inspectorRenderedMode = '';
-        pane.innerHTML = '<div class="chart-inspector-empty">No lesions on this chart. Click Add lesion to document a spot.</div>';
+        slot.innerHTML = '<div class="chart-inspector-empty">No lesions on this chart. Click Add lesion to document a spot.</div>';
         return;
     }
     const id = String(lesion.id || '');
     const mode = 'view:' + inspectorLesionMode(lesion);
-    if (!force && inspectorRenderedLesionId === id && inspectorRenderedMode === mode && pane.querySelector('[data-inspector-view]')) {
+    if (!force && inspectorRenderedLesionId === id && inspectorRenderedMode === mode && slot.querySelector('[data-inspector-view]')) {
         paintInspectorCaption(lesion);
         return;
     }
@@ -1313,7 +1422,7 @@ function renderChartLesionInspector(options) {
         canResult ? `<button type="button" onclick="openHistologyModal('${safeId}')">${lesion.histologyResult ? 'Edit result' : 'Enter result'}</button>` : '',
         refer ? `<button type="button" onclick="openLetterModalForRefer('${safeId}')">Generate letter</button>` : ''
     ].filter(Boolean).join('');
-    pane.innerHTML = `
+    slot.innerHTML = `
         <div class="chart-inspector-caption">
             <h2>${escapeHtml(lesion.location || 'No site')}</h2>
             <p>${escapeHtml([dx, status].filter(Boolean).join(' · '))}</p>

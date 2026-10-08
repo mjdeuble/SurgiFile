@@ -390,12 +390,20 @@ function openLetterModal(options) {
     syncLetterModalFromDraft();
     renderLetterLesionChecklist();
     refreshLetterPreview();
+    if (typeof openInspectorToolPane === 'function' && typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        openInspectorToolPane('letter');
+        syncLetterModalFromDraft();
+        renderLetterLesionChecklist();
+        refreshLetterPreview();
+        return;
+    }
     modal.classList.remove('hidden');
 }
 
 function closeLetterModal() {
     const modal = document.getElementById('letterModal');
     if (modal) modal.classList.add('hidden');
+    if (typeof closeInspectorToolPane === 'function') closeInspectorToolPane('letter');
 }
 
 function syncLetterModalFromDraft() {

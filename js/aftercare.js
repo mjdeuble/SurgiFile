@@ -697,9 +697,23 @@ function openAftercarePreviewModal(options) {
     const html = generateAftercareHtml();
     const topics = aftercareTopicsFromLesions(list);
     aftercarePreviewPending = { html, topics, download: !!(options && options.download) };
+    if (typeof openInspectorToolPane === 'function' && typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        openInspectorToolPane('advice', { download: !!(options && options.download) });
+    }
     const modal = document.getElementById('aftercarePreviewModal');
     const summary = document.getElementById('aftercarePreviewSummary');
     const frame = document.getElementById('aftercarePreviewFrame');
+    const title = document.getElementById('aftercarePreviewTitle');
+    const subtitle = document.getElementById('aftercarePreviewSubtitle');
+    const confirmBtn = document.getElementById('btnConfirmAftercare');
+    const download = !!(options && options.download);
+    if (title) title.textContent = download ? 'Patient advice — save copy' : 'Patient advice — print';
+    if (subtitle) {
+        subtitle.textContent = download
+            ? 'Confirm to save a chart copy. IEMR records advice as given only after you confirm.'
+            : 'Confirm before print. IEMR records advice as given only after you confirm.';
+    }
+    if (confirmBtn) confirmBtn.textContent = download ? 'Confirm & save copy' : 'Confirm & print';
     if (summary) {
         const bits = aftercarePreviewSummaryLines(list);
         summary.innerHTML = bits.length
@@ -711,6 +725,10 @@ function openAftercarePreviewModal(options) {
     if (frame) {
         frame.srcdoc = html;
     }
+    if (typeof inspectorPaneMode !== 'undefined' && inspectorPaneMode === 'advice') {
+        if (modal) modal.classList.add('hidden');
+        return;
+    }
     if (modal) modal.classList.remove('hidden');
 }
 
@@ -720,6 +738,7 @@ function closeAftercarePreviewModal() {
     const frame = document.getElementById('aftercarePreviewFrame');
     if (frame) frame.srcdoc = '';
     aftercarePreviewPending = null;
+    if (typeof closeInspectorToolPane === 'function') closeInspectorToolPane('advice');
 }
 
 function confirmAftercareGive() {

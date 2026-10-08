@@ -851,7 +851,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             opacity: 0.45;
             cursor: default;
         }
-        .chart-tree-folder.is-active {
+        .chart-tree-folder.is-active,
+        .chart-tree-folder.is-selected {
             background: #0078d4;
             color: #fff;
         }
@@ -1141,6 +1142,353 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         .chart-inspector .hidden {
             display: none !important;
         }
+        .insp-slot {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .insp-slot.hidden {
+            display: none !important;
+        }
+        .insp-tool-card,
+        .insp-docked {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            height: 100%;
+            width: 100%;
+            max-width: none;
+            max-height: none;
+            border: none;
+            box-shadow: none;
+            border-radius: 0;
+            overflow: hidden;
+            background: #fff;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+        }
+        .insp-caption-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        .insp-caption-close {
+            border: 1px solid #8a8a8a;
+            background: #fff;
+            border-radius: 2px;
+            width: 1.4rem;
+            height: 1.4rem;
+            line-height: 1.2;
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .insp-caption-close:hover {
+            background: #e5f1fb;
+            border-color: #0078d4;
+        }
+        .insp-tool-split {
+            flex: 1;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            overflow: hidden;
+        }
+        .insp-tool-form {
+            overflow-y: auto;
+            padding: 0.5rem 0.55rem 0.7rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            border-right: 1px solid #c0c0c0;
+            background: #fff;
+        }
+        .insp-tool-preview {
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 0.5rem 0.55rem 0.7rem;
+            min-height: 0;
+            background: #fff;
+        }
+        .insp-tool-summary {
+            flex-shrink: 0;
+            padding: 0.45rem 0.55rem;
+            border-bottom: 1px solid #c0c0c0;
+            background: #f7f7f7;
+            font-size: 12px;
+        }
+        .insp-tool-preview-frame {
+            flex: 1;
+            min-height: 0;
+            background: #fff;
+            border-bottom: 1px solid #c0c0c0;
+        }
+        .insp-tool-preview-frame iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            background: #fff;
+            min-height: 280px;
+        }
+        .insp-tool-footer {
+            flex-shrink: 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 0.55rem;
+            background: #f3f3f3;
+            border-top: 1px solid #c0c0c0;
+        }
+        .insp-tool-footer-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.3rem;
+            margin-left: auto;
+        }
+        .insp-tool-footer button,
+        .insp-text-btn {
+            padding: 0.18rem 0.55rem;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            background: #fff;
+            border: 1px solid #8a8a8a;
+            border-radius: 2px;
+            cursor: pointer;
+            color: #1a1a1a;
+        }
+        .insp-text-btn {
+            border: none;
+            background: transparent;
+            padding: 0.1rem 0.3rem;
+            color: #0078d4;
+        }
+        .insp-tool-footer button:hover,
+        .insp-text-btn:hover {
+            background: #e5f1fb;
+            border-color: #0078d4;
+        }
+        .insp-tool-primary {
+            background: #0078d4 !important;
+            border-color: #0078d4 !important;
+            color: #fff !important;
+        }
+        .insp-tool-primary:hover {
+            background: #106ebe !important;
+        }
+        .insp-letter-lesion-head,
+        .insp-letter-preview-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 0.3rem;
+        }
+        .insp-letter-lesion-list {
+            max-height: 16rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        .insp-letter-preview {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+            padding: 0.45rem;
+            border: 1px solid #a0a0a0;
+            background: #fafafa;
+            font-size: 11px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            font-family: Consolas, "Courier New", monospace;
+            color: #222;
+        }
+        .consent-win {
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            border: 1px solid #a0a0a0;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            height: calc(100vh - 7.5rem);
+            max-height: calc(100vh - 7.5rem);
+            overflow: hidden;
+        }
+        .consent-win-caption {
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.5rem;
+            background: #e8e8e8;
+            border-bottom: 1px solid #c0c0c0;
+            padding: 0.4rem 0.65rem;
+        }
+        .consent-win-caption h3 {
+            font-size: 13px;
+            font-weight: 700;
+            color: #1a1a1a;
+            line-height: 1.3;
+        }
+        .consent-win-caption p {
+            font-size: 11px;
+            color: #555;
+            margin-top: 0.1rem;
+        }
+        .consent-win-body {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 0.5rem 0.55rem 0.7rem;
+            background: #fff;
+            font-size: 12px;
+            color: #222;
+        }
+        .consent-win-footer {
+            flex-shrink: 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 0.55rem;
+            background: #f3f3f3;
+            border-top: 1px solid #c0c0c0;
+        }
+        .consent-win-btn {
+            padding: 0.18rem 0.55rem;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            background: #fff;
+            border: 1px solid #8a8a8a;
+            border-radius: 2px;
+            cursor: pointer;
+            color: #1a1a1a;
+        }
+        .consent-win-btn:hover {
+            background: #e5f1fb;
+            border-color: #0078d4;
+        }
+        .consent-win-btn-primary {
+            background: #0078d4;
+            border-color: #0078d4;
+            color: #fff;
+        }
+        .consent-win-btn-primary:hover {
+            background: #106ebe;
+            border-color: #106ebe;
+            color: #fff;
+        }
+        .consent-win-btn.is-disabled,
+        .consent-win-btn:disabled {
+            background: #f3f3f3;
+            border-color: #c0c0c0;
+            color: #888;
+            cursor: not-allowed;
+        }
+        .consent-import-row,
+        .consent-custom-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.45rem;
+        }
+        .consent-custom-row .insp-input {
+            flex: 1;
+            min-width: 12rem;
+        }
+        .consent-table-wrap {
+            overflow-x: auto;
+            border: 1px solid #a0a0a0;
+            background: #fff;
+        }
+        .consent-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            text-align: left;
+        }
+        .consent-table thead {
+            background: #e8e8e8;
+        }
+        .consent-table th {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #333;
+            border-bottom: 1px solid #c0c0c0;
+        }
+        .consent-table td,
+        .consent-table th {
+            padding: 0.35rem 0.45rem;
+        }
+        .consent-table tbody tr:hover {
+            background: #f3f8fc;
+        }
+        .consent-table tr.is-excluded {
+            opacity: 0.5;
+        }
+        .consent-section {
+            border: 1px solid #c0c0c0;
+            background: #fafafa;
+            padding: 0.45rem 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+        .consent-section-title,
+        .consent-section > span.block,
+        .consent-section > label.block {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #333;
+        }
+        .consent-risk-row,
+        .consent-custom-item {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.4rem;
+            font-size: 12px;
+            padding: 0.35rem 0.4rem;
+            border: 1px solid #c0c0c0;
+            background: #fff;
+            cursor: pointer;
+        }
+        .consent-risk-row input {
+            margin-top: 0.15rem;
+            flex-shrink: 0;
+        }
+        .consent-custom-item {
+            cursor: default;
+            align-items: center;
+        }
+        @media (max-width: 1024px) {
+            .insp-tool-split {
+                grid-template-columns: 1fr;
+                overflow-y: auto;
+            }
+            .insp-tool-form {
+                border-right: none;
+                border-bottom: 1px solid #c0c0c0;
+            }
+            .insp-tool-preview {
+                min-height: 16rem;
+            }
+        }
         .insp-sub {
             border: 1px solid #c5d4ea;
             background: #f4f8fd;
@@ -1316,6 +1664,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             margin: 0;
             padding: 8px;
             border-radius: 0;
+        }
+        .chart-shell.is-chart-open #view-consent {
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
         }
         .chart-shell.is-chart-open #view-skin-check .rounded-xl,
         .chart-shell.is-chart-open #view-excision-generator .rounded-xl,

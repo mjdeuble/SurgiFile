@@ -125,6 +125,14 @@ function openPatientBillingModal() {
         consultBilling: currentConsultBilling(),
         biopsyBilling: currentBiopsyBilling()
     });
+    if (typeof openInspectorToolPane === 'function' && typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        openInspectorToolPane('billing');
+        applyPatientBillingToDom({
+            consultBilling: currentConsultBilling(),
+            biopsyBilling: currentBiopsyBilling()
+        });
+        return;
+    }
     const modal = document.getElementById('patientBillingModal');
     if (modal) modal.classList.remove('hidden');
 }
@@ -132,6 +140,7 @@ function openPatientBillingModal() {
 function closePatientBillingModal() {
     const modal = document.getElementById('patientBillingModal');
     if (modal) modal.classList.add('hidden');
+    if (typeof closeInspectorToolPane === 'function') closeInspectorToolPane('billing');
 }
 
 function savePatientBillingModal() {

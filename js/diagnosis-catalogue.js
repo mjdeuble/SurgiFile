@@ -584,11 +584,6 @@ function initDiagnosisTypeaheads() {
         }
     });
     bindDiagnosisTypeahead('assignExcisionDiagnosis', {});
-    bindDiagnosisTypeahead('addConsentDx', {
-        onChange: () => {
-            if (typeof updateConsentRiskPreview === 'function') updateConsentRiskPreview();
-        }
-    });
     bindDiagnosisTypeahead('histologyDiagnosis', {
         onChange: () => {
             if (typeof syncHistologyBillingTypeFromResult === 'function') syncHistologyBillingTypeFromResult();
