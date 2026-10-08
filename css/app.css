@@ -982,6 +982,47 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             font-size: 10.5px;
             color: #444;
         }
+        .practice-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            gap: 0.1rem 0.15rem;
+            flex-shrink: 0;
+            padding: 0.28rem 0.4rem 0;
+            background: #ececec;
+            border-bottom: 1px solid #a0a0a0;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+        }
+        .practice-tabs.hidden {
+            display: none;
+        }
+        .practice-tab {
+            margin-bottom: -1px;
+            padding: 0.28rem 0.7rem 0.32rem;
+            border: 1px solid #a0a0a0;
+            border-bottom: 1px solid #a0a0a0;
+            border-radius: 2px 2px 0 0;
+            background: #dcdcdc;
+            color: #1a1a1a;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+        .practice-tab:hover {
+            background: #e5f1fb;
+            border-color: #0078d4;
+        }
+        .practice-tab.is-active {
+            background: #fff;
+            border-bottom-color: #fff;
+            font-weight: 700;
+            color: #003a70;
+        }
+        .chart-shell.is-practice.is-billing .chart-main {
+            overflow: auto;
+        }
         .chart-inspector {
             flex: 1;
             min-height: 0;
@@ -1694,16 +1735,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             background: #e5f1fb;
             border-color: #0078d4;
         }
-        .chart-shell.is-chart-open {
+        .chart-shell.is-chart-open,
+        .chart-shell.is-practice {
             background: #d6d6d6;
         }
-        .chart-shell.is-chart-open .chart-main {
+        .chart-shell.is-chart-open .chart-main,
+        .chart-shell.is-practice .chart-main {
             background: #d6d6d6;
+            overflow: hidden;
         }
         .chart-shell.is-chart-open #view-skin-check,
         .chart-shell.is-chart-open #view-excision-generator,
         .chart-shell.is-chart-open #view-consent,
-        .chart-shell.is-chart-open #view-management {
+        .chart-shell.is-chart-open #view-management,
+        .chart-shell.is-practice #view-management {
             max-width: none;
             margin: 0;
             padding: 8px;

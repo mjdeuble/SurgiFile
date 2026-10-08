@@ -1835,7 +1835,7 @@ function updateChartChrome() {
     const closeBtn = document.getElementById('btnHeaderCloseChart');
     if (closeBtn) closeBtn.classList.toggle('hidden', !open);
     if (typeof syncOpenChartSearchGate === 'function') syncOpenChartSearchGate();
-    const filterBar = document.getElementById('mgmtFilterBar');
+    const filterBar = document.getElementById('practiceFilterBar') || document.getElementById('mgmtFilterBar');
     if (filterBar) filterBar.classList.toggle('hidden', open);
     const counts = document.getElementById('mgmtCounts');
     if (counts && open) {

@@ -307,7 +307,9 @@ function renderManagedLesions() {
     if (!root) return;
 
     document.querySelectorAll('[data-mgmt-filter]').forEach((btn) => {
-        btn.classList.toggle('is-active', btn.getAttribute('data-mgmt-filter') === mgmtActiveFilter);
+        const on = btn.getAttribute('data-mgmt-filter') === mgmtActiveFilter;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     if (typeof updateChartChrome === 'function') updateChartChrome();
 
@@ -345,6 +347,12 @@ function renderManagedLesions() {
         }
         const boardHtml = renderOpenChartBoard();
         root.innerHTML = boardHtml;
+        return;
+    }
+
+    if (mgmtActiveFilter !== 'billing' && typeof syncChartLesionWorkspace === 'function') {
+        if (empty) empty.classList.add('hidden');
+        syncChartLesionWorkspace();
         return;
     }
 
@@ -2076,6 +2084,7 @@ async function returnBillingToConfirmed(id) {
 
 function setMgmtFilter(filter) {
     mgmtActiveFilter = filter === 'active' ? 'open' : filter;
+    if (mgmtActiveFilter !== 'notes' && typeof selectedPracticeDoc !== 'undefined') selectedPracticeDoc = null;
     renderManagedLesions();
 }
 
