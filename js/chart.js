@@ -205,15 +205,233 @@ function requireRoomReady(tabName) {
     return true;
 }
 
+let chartTreeCompletedCollapsed = true;
+
+function chartLesionInspectorVisible() {
+    if (typeof hasCurrentPatient !== 'function' || !hasCurrentPatient()) return false;
+    const tab = typeof activeWorkspaceTab !== 'undefined' ? activeWorkspaceTab : '';
+    return tab === 'management' || tab === 'skin-check';
+}
+
+function ensureSelectedChartLesion() {
+    const items = typeof clinicalChartLesions === 'function' ? clinicalChartLesions() : [];
+    if (!items.length) {
+        selectedChartLesionId = '';
+        return null;
+    }
+    const current = items.find((item) => String(item.id) === String(selectedChartLesionId));
+    if (current) return current;
+    const live = items.find((item) => !(typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(item)));
+    const pick = live || items[0];
+    selectedChartLesionId = String(pick.id || '');
+    return pick;
+}
+
+function chartLesionTreeModel() {
+    const items = typeof clinicalChartLesions === 'function' ? clinicalChartLesions() : [];
+    const byId = new Map(items.map((item) => [String(item.id), item]));
+    const children = new Map();
+    const roots = [];
+    items.forEach((item) => {
+        const pid = item.priorLesionId ? String(item.priorLesionId) : '';
+        if (pid && byId.has(pid)) {
+            if (!children.has(pid)) children.set(pid, []);
+            children.get(pid).push(item);
+        } else {
+            roots.push(item);
+        }
+    });
+    const isLiveBranch = (item) => {
+        const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(item);
+        const kids = children.get(String(item.id)) || [];
+        if (kids.some(isLiveBranch)) return true;
+        return !done;
+    };
+    return {
+        live: roots.filter(isLiveBranch),
+        done: roots.filter((item) => !isLiveBranch(item)),
+        children,
+        total: items.length
+    };
+}
+
+function chartTreeNodeLabel(lesion) {
+    const site = String(lesion?.location || 'No site');
+    const dx = typeof formatDiagnosisDisplay === 'function'
+        ? formatDiagnosisDisplay(lesion?.impression || '')
+        : (lesion?.impression || '');
+    const status = typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion?.managementStatus || '');
+    const today = typeof isVisitLesion === 'function' && isVisitLesion(lesion.id) ? 'Today' : '';
+    const meta = [dx, status, today].filter(Boolean).join(' · ');
+    return { site, meta };
+}
+
+function renderChartTreeNode(lesion, depth, childrenMap) {
+    const id = String(lesion.id || '');
+    const selected = id && id === String(selectedChartLesionId);
+    const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
+    const label = chartTreeNodeLabel(lesion);
+    const kids = childrenMap.get(id) || [];
+    const cls = ['chart-tree-node', selected ? 'is-selected' : '', done ? 'is-done' : ''].filter(Boolean).join(' ');
+    const self = `<button type="button" role="treeitem" aria-selected="${selected ? 'true' : 'false'}" class="${cls}" style="--depth:${depth}" onclick="selectChartLesion('${id.replace(/'/g, '')}', { fromTree: true })">
+        <span class="chart-tree-node-site">${escapeHtml(label.site)}</span>
+        <span class="chart-tree-node-meta">${escapeHtml(label.meta)}</span>
+    </button>`;
+    return self + kids.map((child) => renderChartTreeNode(child, depth + 1, childrenMap)).join('');
+}
+
+function toggleChartTreeCompleted() {
+    chartTreeCompletedCollapsed = !chartTreeCompletedCollapsed;
+    renderChartLesionTree();
+}
+
+function renderChartLesionTree() {
+    const tree = document.getElementById('chartLesionTree');
+    const list = document.getElementById('chartLesionTreeList');
+    const empty = document.getElementById('chartLesionTreeEmpty');
+    const status = document.getElementById('chartLesionTreeStatus');
+    const open = typeof hasCurrentPatient === 'function' && hasCurrentPatient();
+    if (tree) tree.classList.toggle('hidden', !open);
+    const shell = document.getElementById('appShell');
+    if (shell) shell.classList.toggle('is-chart-open', !!open);
+    if (!open || !list) return;
+    ensureSelectedChartLesion();
+    const model = chartLesionTreeModel();
+    if (!model.total) {
+        list.innerHTML = '';
+        if (empty) empty.classList.remove('hidden');
+        if (status) status.textContent = '0 lesions';
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+    let html = '';
+    if (model.live.length) {
+        html += '<p class="chart-tree-group" aria-hidden="true">Current</p>';
+        html += model.live.map((item) => renderChartTreeNode(item, 0, model.children)).join('');
+    }
+    if (model.done.length) {
+        const label = chartTreeCompletedCollapsed
+            ? 'Completed (' + model.done.length + ')'
+            : 'Completed';
+        html += `<button type="button" class="chart-tree-group" onclick="toggleChartTreeCompleted()">${escapeHtml(label)}</button>`;
+        if (!chartTreeCompletedCollapsed) {
+            html += model.done.map((item) => renderChartTreeNode(item, 0, model.children)).join('');
+        }
+    }
+    list.innerHTML = html;
+    if (status) {
+        const liveCount = model.live.length;
+        status.textContent = model.total + ' lesion' + (model.total === 1 ? '' : 's')
+            + (liveCount ? ' · ' + liveCount + ' current' : '');
+    }
+}
+
+function renderChartLesionInspector() {
+    const pane = document.getElementById('chartLesionInspector');
+    if (!pane) return;
+    const show = chartLesionInspectorVisible();
+    pane.classList.toggle('hidden', !show);
+    if (!show) return;
+    const lesion = ensureSelectedChartLesion();
+    if (!lesion) {
+        pane.innerHTML = '<div class="chart-inspector-empty">No lesions on this chart. Click Add in the lesion list to document a spot.</div>';
+        return;
+    }
+    const id = String(lesion.id || '').replace(/'/g, '');
+    const status = typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion.plan || '');
+    const dx = typeof formatDiagnosisDisplay === 'function'
+        ? formatDiagnosisDisplay(lesion.impression || '')
+        : (lesion.impression || '');
+    const history = typeof renderChartLesionHistory === 'function'
+        ? renderChartLesionHistory(lesion)
+        : { historyHtml: '', currentProc: '' };
+    const canResult = typeof canUpdateResult === 'function' && canUpdateResult(lesion);
+    const refer = String(lesion.proposedPlan || '') === 'refer'
+        || (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan));
+    const pendingBill = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion)
+        && typeof lesionCanCloseNoFollowup === 'function' && !lesionCanCloseNoFollowup(lesion);
+    pane.innerHTML = `
+        <div class="chart-inspector-caption">
+            <h2>${escapeHtml(lesion.location || 'No site')}</h2>
+            <p>${escapeHtml([dx, status].filter(Boolean).join(' · '))}</p>
+        </div>
+        <div class="chart-inspector-toolbar">
+            <button type="button" onclick="documentChartLesion('${id}')">Document</button>
+            <button type="button" onclick="openManageLesionModal('${id}')">Manage lesion</button>
+            ${canResult ? `<button type="button" onclick="openHistologyModal('${id}')">Update result</button>` : ''}
+            ${refer ? `<button type="button" onclick="openLetterModalForRefer('${id}')">Generate letter</button>` : ''}
+        </div>
+        <div class="chart-inspector-body">
+            ${pendingBill ? '<p class="text-[11px] font-semibold text-amber-800 mb-2">Clinically finalised · billing still pending</p>' : ''}
+            ${lesion.currentPlan ? `<p class="text-[12px] text-slate-800 mb-2"><strong>Plan:</strong> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
+            ${history.historyHtml || ''}
+            ${history.currentProc || ''}
+            ${typeof renderLesionContactBlock === 'function' ? renderLesionContactBlock(lesion) : ''}
+            ${typeof renderLesionActionLog === 'function' ? renderLesionActionLog(lesion) : ''}
+        </div>`;
+}
+
+function syncChartLesionWorkspace() {
+    const open = typeof hasCurrentPatient === 'function' && hasCurrentPatient();
+    const inspectorOn = chartLesionInspectorVisible();
+    const shell = document.getElementById('appShell');
+    if (shell) shell.classList.toggle('is-chart-open', !!open);
+    document.body.classList.toggle('chart-open', !!open);
+    renderChartLesionTree();
+    renderChartLesionInspector();
+    const viewMgmt = document.getElementById('view-management');
+    const header = document.getElementById('mgmtWorkspaceHeader');
+    const board = document.getElementById('mgmtBoard');
+    const empty = document.getElementById('mgmtEmptyState');
+    if (header) header.classList.toggle('hidden', inspectorOn);
+    if (board) board.classList.toggle('hidden', inspectorOn);
+    if (empty && inspectorOn) empty.classList.add('hidden');
+    const examLesions = document.getElementById('examLesionsBlock');
+    if (examLesions && inspectorOn && activeWorkspaceTab === 'skin-check') {
+        examLesions.classList.add('hidden');
+    }
+    const viewSkin = document.getElementById('view-skin-check');
+    if (viewSkin && inspectorOn && activeWorkspaceTab === 'skin-check') {
+        viewSkin.classList.add('hidden');
+    }
+    if (viewMgmt && inspectorOn && activeWorkspaceTab === 'management') {
+        viewMgmt.classList.add('hidden');
+    } else if (viewMgmt && activeWorkspaceTab === 'management' && !inspectorOn) {
+        viewMgmt.classList.remove('hidden');
+    }
+}
+
+function documentChartLesion(id) {
+    if (typeof visitClinicalUnlocked === 'function' && !visitClinicalUnlocked()) {
+        pendingWorkspaceTab = 'skin-check';
+        if (typeof pulseSanitiseControl === 'function') pulseSanitiseControl();
+        if (typeof openConsultTypeModal === 'function') openConsultTypeModal();
+        showToast('Choose consult type to document a lesion.');
+        return;
+    }
+    if (typeof openLesionModal === 'function') openLesionModal(id);
+}
+
 function selectChartLesion(id, options) {
     selectedChartLesionId = String(id || '');
-    renderChartSidebar();
-    const lesion = chartLesions().find((item) => String(item.id) === selectedChartLesionId);
+    const fromTree = !!(options && options.fromTree);
+    if (typeof renderChartSidebar === 'function') renderChartSidebar();
+    if (fromTree || chartLesionInspectorVisible()) {
+        syncChartLesionWorkspace();
+    }
+    const lesion = (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === selectedChartLesionId);
     if (!lesion) return;
+
+    if (fromTree) {
+        if (activeWorkspaceTab === 'excision-generator' && typeof visitClinicalUnlocked === 'function' && visitClinicalUnlocked()) {
+            if (typeof openProcedureLesionDetail === 'function') openProcedureLesionDetail(lesion.id);
+            else if (typeof applyManagedLesionToExcisionForm === 'function') applyManagedLesionToExcisionForm(lesion);
+        }
+        return;
+    }
 
     if (activeWorkspaceTab === 'management') {
         if (!options?.skipComms && typeof openManageLesionModal === 'function') openManageLesionModal(lesion.id);
-        else if (!options?.skipComms && typeof openLesionCommsModal === 'function') openLesionCommsModal(lesion.id);
         return;
     }
 
@@ -308,4 +526,5 @@ function renderChartSidebar() {
     if (accordion) accordion.classList.toggle('hidden', !patientOn || (tab !== 'history' && tab !== 'skin-check'));
 
     if (tab === 'excision-generator' && typeof renderProcedureWorkspace === 'function') renderProcedureWorkspace();
+    if (typeof syncChartLesionWorkspace === 'function') syncChartLesionWorkspace();
 }

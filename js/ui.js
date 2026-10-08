@@ -90,6 +90,7 @@ function switchWorkspaceTab(tabName, options) {
         prepareExcisionConsentWorkspace();
     }
     if (tabName === 'management') renderManagedLesions();
+    if (typeof syncChartLesionWorkspace === 'function') syncChartLesionWorkspace();
     const sanitation = document.getElementById('sanitationModal');
     if (sanitation) sanitation.classList.add('hidden');
     if (typeof renderChartSidebar === 'function') renderChartSidebar();

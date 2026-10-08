@@ -336,8 +336,12 @@ function renderManagedLesions() {
     }
 
     if (hasCurrentPatient()) {
-        const boardHtml = renderOpenChartBoard();
         if (empty) empty.classList.add('hidden');
+        if (typeof syncChartLesionWorkspace === 'function') {
+            syncChartLesionWorkspace();
+            return;
+        }
+        const boardHtml = renderOpenChartBoard();
         root.innerHTML = boardHtml;
         return;
     }

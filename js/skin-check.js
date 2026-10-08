@@ -594,8 +594,6 @@ function triggerAddLesion() {
         showToast('Choose consult type to unlock Lesions.');
         return;
     }
-    if (activeWorkspaceTab !== 'skin-check') switchWorkspaceTab('skin-check');
-    if (typeof setAccordionCollapsed === 'function') setAccordionCollapsed('sec-lesions', false);
     openLesionModal();
 }
 
@@ -958,10 +956,12 @@ function saveLesion() {
         if (saved && typeof offerLesionToProcedureSession === 'function') {
             offerLesionToProcedureSession(saved);
         }
+        if (saved?.id) selectedChartLesionId = String(saved.id);
         if (typeof renderManagedLesions === 'function') renderManagedLesions();
         closeLesionModal();
         renderLesionsTable();
         if (typeof renderChartSidebar === 'function') renderChartSidebar();
+        if (typeof syncChartLesionWorkspace === 'function') syncChartLesionWorkspace();
         updateOutput();
     };
     if (typeof runBusyAction === 'function') {
@@ -982,7 +982,11 @@ function deleteLesion(id) {
     }
     renderLesionsTable();
     updateOutput();
+    if (typeof selectedChartLesionId !== 'undefined' && String(selectedChartLesionId) === String(id)) {
+        selectedChartLesionId = '';
+    }
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
+    if (typeof syncChartLesionWorkspace === 'function') syncChartLesionWorkspace();
 }
 
 function renderLesionsTable() {

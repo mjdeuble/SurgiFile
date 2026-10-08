@@ -1806,5 +1806,6 @@ function updateChartChrome() {
         iemrEl.textContent = open ? iemrCopyStatusLabel() : '';
     }
     if (typeof renderPatientChartSummary === 'function') renderPatientChartSummary();
+    if (typeof syncChartLesionWorkspace === 'function') syncChartLesionWorkspace();
     updateHeaderPatient();
 }
