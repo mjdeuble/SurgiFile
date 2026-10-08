@@ -909,6 +909,46 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         .chart-tree-node.is-selected.is-done {
             color: #fff;
         }
+        .chart-tree-check {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.4rem;
+        }
+        .chart-tree-check .chart-tree-node-site {
+            flex: 1;
+        }
+        .chart-tree-check-pip {
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 999px;
+            margin-top: 0.28rem;
+            flex-shrink: 0;
+            background: #ea580c;
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+        }
+        .chart-tree-check.is-complete .chart-tree-check-pip {
+            background: #16a34a;
+        }
+        .chart-tree-check.is-incomplete .chart-tree-check-pip {
+            background: #ea580c;
+        }
+        .chart-tree-check.is-complete .chart-tree-node-site {
+            color: #166534;
+        }
+        .chart-tree-check.is-incomplete .chart-tree-node-site {
+            color: #9a3412;
+        }
+        .chart-tree-check.is-selected .chart-tree-node-site,
+        .chart-tree-check.is-selected.is-complete .chart-tree-node-site,
+        .chart-tree-check.is-selected.is-incomplete .chart-tree-node-site {
+            color: #fff;
+        }
+        .chart-tree-check.is-selected .chart-tree-check-pip {
+            box-shadow: 0 0 0 1px #fff;
+        }
+        .chart-tree-check.is-locked {
+            opacity: 0.72;
+        }
         .chart-tree-action .chart-tree-node-site {
             font-weight: 600;
             font-style: italic;
@@ -1010,6 +1050,104 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             padding: 1.2rem 0.8rem;
             color: #666;
             font-size: 12px;
+        }
+        .histo-dossier {
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+        }
+        .histo-report {
+            background: #fff;
+            border: 1px solid #8a8a8a;
+            box-shadow: 0 1px 0 #fff inset;
+            padding: 0.7rem 0.8rem 0.75rem;
+            font-family: "Palatino Linotype", Palatino, "Times New Roman", serif;
+            color: #1a1a1a;
+        }
+        .histo-report.is-previous {
+            background: #f7f4ee;
+            border-color: #b7a48a;
+            color: #3f3a32;
+        }
+        .histo-report.is-planned {
+            background: #f4f7fb;
+            border-color: #9aa7b5;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+        }
+        .histo-report-kicker {
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #555;
+            margin-bottom: 0.15rem;
+        }
+        .histo-report.is-current .histo-report-kicker {
+            color: #0f4c81;
+        }
+        .histo-report.is-previous .histo-report-kicker {
+            color: #6b542b;
+        }
+        .histo-report h3 {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            margin: 0;
+        }
+        .histo-report-meta {
+            font-size: 11.5px;
+            margin: 0.15rem 0 0.45rem;
+            color: #444;
+        }
+        .histo-report-pending {
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            font-size: 11.5px;
+            color: #555;
+            margin: 0.2rem 0 0;
+        }
+        .histo-report-dl {
+            display: grid;
+            gap: 0.28rem 0.8rem;
+        }
+        .histo-report-row {
+            display: grid;
+            grid-template-columns: 7.2rem 1fr;
+            gap: 0.4rem;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+        .histo-report-row dt {
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #666;
+            padding-top: 0.12rem;
+        }
+        .histo-report-row dd {
+            white-space: pre-wrap;
+        }
+        .histo-report-actions {
+            margin-top: 0.5rem;
+            padding-top: 0.4rem;
+            border-top: 1px solid #d0d0d0;
+        }
+        .histo-report-actions button {
+            padding: 0.18rem 0.55rem;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            background: #fff;
+            border: 1px solid #8a8a8a;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+        .histo-report-actions button:hover {
+            background: #e5f1fb;
+            border-color: #0078d4;
         }
         .chart-shell.is-chart-open {
             background: #d6d6d6;

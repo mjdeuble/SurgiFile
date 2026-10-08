@@ -284,6 +284,7 @@ function updateExamSectionHeaders() {
     setExamSectionDone('examSecNumMetadata', examMetadataSectionComplete());
     setExamSectionDone('examSecNumConcerns', concernsSectionComplete());
     setExamSectionDone('examSecNumRisks', screeningSectionComplete());
+    if (typeof syncChartVisitTreeStatus === 'function') syncChartVisitTreeStatus();
 }
 
 function updateExamRequiredFields() {

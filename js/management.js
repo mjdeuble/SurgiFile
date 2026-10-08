@@ -814,10 +814,124 @@ function renderManagedLesionCard(lesion, options) {
 }
 
 function canUpdateResult(lesion) {
-    if (lesion?.priorLesionId) return true;
-    const status = lesionLifecycleStatus(lesion);
-    return status === 'awaiting_histology' || status === 'needs_contact' || status === 'appointment_requested'
-        || !!lesion.procedureCompletedAt || !!lesion.histologyResult;
+    if (!lesion) return false;
+    if (typeof lesionHasSavedHistology === 'function' && lesionHasSavedHistology(lesion)) return true;
+    return typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(lesion)
+        : !!lesion.procedureCompletedAt;
+}
+
+function histoReportRow(label, value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    return `<div class="histo-report-row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(text)}</dd></div>`;
+}
+
+function renderInspectorHistologyReport(lesion, kind) {
+    if (!lesion) return '';
+    const done = typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!lesion.procedureCompletedAt;
+    const hasResult = typeof lesionHasSavedHistology === 'function'
+        ? lesionHasSavedHistology(lesion)
+        : !!String(lesion.histologyResult || '').trim();
+    const showHisto = done || hasResult;
+    const typeLabel = (typeof lesionProcedureTypeLabel === 'function' ? lesionProcedureTypeLabel(lesion) : '') || '';
+    const when = done ? (typeof lesionProcedureAt === 'function' ? lesionProcedureAt(lesion) : lesion.procedureCompletedAt) : '';
+    const date = typeof formatLesionCardDate === 'function' ? formatLesionCardDate(when) : '';
+    const id = String(lesion.id || '').replace(/'/g, '');
+    if (kind === 'current' && !showHisto) {
+        if (!typeLabel && !['planned_procedure', 'current_case'].includes(
+            typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus
+        )) return '';
+        return `<article class="histo-report is-planned">
+            <p class="histo-report-kicker">Current</p>
+            <h3>Planned procedure</h3>
+            <p class="histo-report-meta">${escapeHtml(typeLabel || 'Procedure booked')}</p>
+            <p class="histo-report-pending">Histology is recorded after this procedure is completed.</p>
+        </article>`;
+    }
+    if (!showHisto && kind === 'previous') {
+        const rows = [
+            histoReportRow('Site', lesion.location || ''),
+            histoReportRow('Procedure', typeLabel),
+            histoReportRow('Dimensions', typeof lesionProcedureDimensions === 'function' ? lesionProcedureDimensions(lesion) : ''),
+            histoReportRow('Margin', typeof lesionProcedureMargin === 'function' ? lesionProcedureMargin(lesion) : '')
+        ].join('');
+        if (!rows) return '';
+        return `<article class="histo-report is-previous">
+            <p class="histo-report-kicker">Previous specimen</p>
+            <h3>Procedure record</h3>
+            <p class="histo-report-meta">${escapeHtml([typeLabel, date].filter(Boolean).join(' · '))}</p>
+            <dl class="histo-report-dl">${rows}</dl>
+        </article>`;
+    }
+    const dx = typeof formatDiagnosisDisplay === 'function'
+        ? formatDiagnosisDisplay(lesion.histologyDiagnosis || '')
+        : (lesion.histologyDiagnosis || '');
+    const microscopy = String(lesion.histologyResult || '').trim();
+    const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
+    const pot = lesion.histologyPot ? 'Pot ' + lesion.histologyPot : '';
+    const lab = [accession, !accession && pot ? pot : ''].filter(Boolean).join(' · ');
+    const canEdit = kind === 'current' && canUpdateResult(lesion);
+    const rows = [
+        histoReportRow('Site', lesion.location || 'Not stated'),
+        histoReportRow('Specimen', typeLabel),
+        histoReportRow('Laboratory', lab),
+        histoReportRow('Diagnosis', dx || (done && !microscopy ? 'Pending' : '')),
+        histoReportRow('Microscopy', microscopy || (done ? 'Not yet reported' : '')),
+        histoReportRow('Specimen size', typeof lesionProcedureDimensions === 'function' ? lesionProcedureDimensions(lesion) : ''),
+        histoReportRow('Margin', typeof lesionProcedureMargin === 'function' ? lesionProcedureMargin(lesion) : '')
+    ].join('');
+    return `<article class="histo-report ${kind === 'previous' ? 'is-previous' : 'is-current'}">
+        <p class="histo-report-kicker">${kind === 'previous' ? 'Previous specimen' : 'Current specimen'}</p>
+        <h3>Histopathology report</h3>
+        <p class="histo-report-meta">${escapeHtml([typeLabel, date].filter(Boolean).join(' · ') || 'Specimen')}</p>
+        <dl class="histo-report-dl">${rows}</dl>
+        ${canEdit ? `<div class="histo-report-actions"><button type="button" onclick="openHistologyModal('${id}')">${microscopy ? 'Edit result' : 'Enter result'}</button></div>` : ''}
+    </article>`;
+}
+
+function renderCopiedPriorHistologyReport(lesion) {
+    if (!lesion || typeof lesionHasCopiedPriorHistology !== 'function' || !lesionHasCopiedPriorHistology(lesion)) return '';
+    const dx = typeof formatDiagnosisDisplay === 'function'
+        ? formatDiagnosisDisplay(lesion.priorHistologyDiagnosis || '')
+        : (lesion.priorHistologyDiagnosis || '');
+    const result = String(lesion.priorHistologyResult || '').trim();
+    const date = typeof formatPriorProcedureDate === 'function' ? formatPriorProcedureDate(lesion.priorProcedureAt) : '';
+    const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'prior') : '';
+    const kind = String(lesion.priorProcedureKind || '').trim();
+    const source = typeof priorHistologySourceLabel === 'function' ? priorHistologySourceLabel(lesion) : '';
+    const rows = [
+        histoReportRow('Site', lesion.location || ''),
+        histoReportRow('Specimen', kind),
+        histoReportRow('Source', source),
+        histoReportRow('Laboratory', accession),
+        histoReportRow('Diagnosis', dx),
+        histoReportRow('Microscopy', result)
+    ].join('');
+    if (!rows) return '';
+    return `<article class="histo-report is-previous">
+        <p class="histo-report-kicker">Previous specimen</p>
+        <h3>Histopathology report</h3>
+        <p class="histo-report-meta">${escapeHtml([kind || 'Prior histology', date].filter(Boolean).join(' · '))}</p>
+        <dl class="histo-report-dl">${rows}</dl>
+    </article>`;
+}
+
+function renderInspectorLesionDossier(lesion) {
+    const ancestors = typeof collectLesionAncestors === 'function' ? collectLesionAncestors(lesion) : [];
+    const examSource = ancestors[0] || lesion;
+    const examHtml = typeof renderLesionExamBlock === 'function'
+        ? (renderLesionExamBlock(examSource) || (examSource !== lesion ? renderLesionExamBlock(lesion) : ''))
+        : '';
+    const previousHtml = ancestors.map((item) => renderInspectorHistologyReport(item, 'previous')).filter(Boolean).join('');
+    const copiedHtml = ancestors.length ? '' : renderCopiedPriorHistologyReport(lesion);
+    const currentHtml = renderInspectorHistologyReport(lesion, 'current');
+    return `<div class="histo-dossier">
+        ${examHtml || ''}
+        ${previousHtml}
+        ${copiedHtml}
+        ${currentHtml}
+    </div>`;
 }
 
 function renderManagedLesionActions(lesion) {

@@ -164,6 +164,12 @@ function selectVisitConsultType(type) {
         pendingWorkspaceTab = '';
         switchWorkspaceTab(tab);
     }
+    if (pendingVisitSection) {
+        selectedVisitSection = pendingVisitSection;
+        pendingVisitSection = '';
+        if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('history', { skipPersist: true });
+        if (typeof syncChartLesionWorkspace === 'function') syncChartLesionWorkspace();
+    }
     if (typeof scheduleChartSave === 'function') scheduleChartSave();
 }
 
@@ -211,11 +217,62 @@ function requireRoomReady(tabName) {
 }
 
 let chartTreeCompletedCollapsed = true;
+let selectedVisitSection = '';
+let pendingVisitSection = '';
 
 function chartLesionInspectorVisible() {
     if (typeof hasCurrentPatient !== 'function' || !hasCurrentPatient()) return false;
     const tab = typeof activeWorkspaceTab !== 'undefined' ? activeWorkspaceTab : '';
+    if (tab === 'history') return false;
     return tab === 'management' || tab === 'skin-check';
+}
+
+function selectChartVisitItem(section) {
+    const key = section === 'scope' || section === 'concerns' || section === 'risks' ? section : 'all';
+    pendingVisitSection = key;
+    if (typeof requireRoomReady === 'function' && !requireRoomReady('history')) return;
+    pendingVisitSection = '';
+    selectedVisitSection = key;
+    if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('history');
+}
+
+function syncChartVisitTreeStatus() {
+    const unlocked = typeof visitClinicalUnlocked === 'function' ? visitClinicalUnlocked() : true;
+    const pairs = [
+        ['navVisitScope', typeof examMetadataSectionComplete === 'function' && examMetadataSectionComplete()],
+        ['navVisitConcerns', typeof concernsSectionComplete === 'function' && concernsSectionComplete()],
+        ['navVisitRisks', typeof screeningSectionComplete === 'function' && screeningSectionComplete()]
+    ];
+    pairs.forEach(([id, done]) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        const key = id === 'navVisitScope' ? 'scope' : (id === 'navVisitConcerns' ? 'concerns' : 'risks');
+        btn.classList.toggle('is-complete', !!done);
+        btn.classList.toggle('is-incomplete', !done);
+        btn.classList.toggle('is-selected', selectedVisitSection === key);
+        btn.classList.toggle('is-locked', !unlocked);
+        btn.setAttribute('aria-selected', selectedVisitSection === key ? 'true' : 'false');
+    });
+}
+
+function applyVisitSectionVisibility() {
+    const onHistory = (typeof activeWorkspaceTab !== 'undefined' ? activeWorkspaceTab : '') === 'history';
+    const section = selectedVisitSection || '';
+    const showAll = !onHistory || !section || section === 'all';
+    const cards = {
+        scope: document.getElementById('examCardMetadata'),
+        concerns: document.getElementById('examCardConcerns'),
+        risks: document.getElementById('examCardRisks')
+    };
+    Object.entries(cards).forEach(([key, el]) => {
+        if (!el) return;
+        el.classList.toggle('hidden', onHistory && !showAll && key !== section);
+    });
+    if (!onHistory) return;
+    const openId = section === 'scope' ? 'sec-metadata'
+        : (section === 'concerns' ? 'sec-concerns'
+            : (section === 'risks' ? 'sec-risks' : ''));
+    if (openId && typeof setAccordionCollapsed === 'function') setAccordionCollapsed(openId, false);
 }
 
 function ensureSelectedChartLesion() {
@@ -278,7 +335,7 @@ function chartTreeNodeLabel(lesion) {
 
 function renderChartTreeNode(lesion, depth, childrenMap) {
     const id = String(lesion.id || '');
-    const selected = id && id === String(selectedChartLesionId);
+    const selected = id && id === String(selectedChartLesionId) && !selectedVisitSection;
     const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
     const label = chartTreeNodeLabel(lesion);
     const kids = childrenMap.get(id) || [];
@@ -296,6 +353,7 @@ function toggleChartTreeCompleted() {
 }
 
 function selectChartFolder(tabName) {
+    selectedVisitSection = '';
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab(tabName);
 }
 
@@ -388,6 +446,7 @@ function renderChartLesionTree() {
     }
     if (empty) empty.classList.add('hidden');
     renderChartTreeSavedDocs();
+    syncChartVisitTreeStatus();
     if (status) {
         if (!model.total) {
             status.textContent = 'No lesions';
@@ -415,9 +474,9 @@ function renderChartLesionInspector() {
     const dx = typeof formatDiagnosisDisplay === 'function'
         ? formatDiagnosisDisplay(lesion.impression || '')
         : (lesion.impression || '');
-    const history = typeof renderChartLesionHistory === 'function'
-        ? renderChartLesionHistory(lesion)
-        : { historyHtml: '', currentProc: '' };
+    const dossier = typeof renderInspectorLesionDossier === 'function'
+        ? renderInspectorLesionDossier(lesion)
+        : '';
     const canResult = typeof canUpdateResult === 'function' && canUpdateResult(lesion);
     const refer = String(lesion.proposedPlan || '') === 'refer'
         || (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan));
@@ -431,14 +490,13 @@ function renderChartLesionInspector() {
         <div class="chart-inspector-toolbar">
             <button type="button" onclick="documentChartLesion('${id}')">Document</button>
             <button type="button" onclick="openManageLesionModal('${id}')">Manage lesion</button>
-            ${canResult ? `<button type="button" onclick="openHistologyModal('${id}')">Update result</button>` : ''}
+            ${canResult ? `<button type="button" onclick="openHistologyModal('${id}')">${lesion.histologyResult ? 'Edit result' : 'Enter result'}</button>` : ''}
             ${refer ? `<button type="button" onclick="openLetterModalForRefer('${id}')">Generate letter</button>` : ''}
         </div>
         <div class="chart-inspector-body">
             ${pendingBill ? '<p class="text-[11px] font-semibold text-amber-800 mb-2">Clinically finalised · billing still pending</p>' : ''}
             ${lesion.currentPlan ? `<p class="text-[12px] text-slate-800 mb-2"><strong>Plan:</strong> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
-            ${history.historyHtml || ''}
-            ${history.currentProc || ''}
+            ${dossier}
             ${typeof renderLesionContactBlock === 'function' ? renderLesionContactBlock(lesion) : ''}
             ${typeof renderLesionActionLog === 'function' ? renderLesionActionLog(lesion) : ''}
         </div>`;
@@ -452,6 +510,8 @@ function syncChartLesionWorkspace() {
     document.body.classList.toggle('chart-open', !!open);
     renderChartLesionTree();
     renderChartLesionInspector();
+    applyVisitSectionVisibility();
+    syncChartVisitTreeStatus();
     const viewMgmt = document.getElementById('view-management');
     const header = document.getElementById('mgmtWorkspaceHeader');
     const board = document.getElementById('mgmtBoard');
@@ -487,6 +547,7 @@ function documentChartLesion(id) {
 
 function selectChartLesion(id, options) {
     selectedChartLesionId = String(id || '');
+    selectedVisitSection = '';
     const fromTree = !!(options && options.fromTree);
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
     if (fromTree || chartLesionInspectorVisible()) {
@@ -594,7 +655,13 @@ function renderChartSidebar() {
     setNav(procBtn, 'excision-generator');
     setNav(consentBtn, 'consent');
     setNav(adminBtn, 'management');
+    if (adminBtn) {
+        const visitOn = tab === 'management' || tab === 'history';
+        adminBtn.classList.toggle('is-active', visitOn);
+        adminBtn.setAttribute('aria-selected', visitOn ? 'true' : 'false');
+    }
     if (examBtn) examBtn.setAttribute('aria-expanded', 'true');
+    syncChartVisitTreeStatus();
 
     document.querySelectorAll('#chartActionToolbar [data-rail]').forEach((el) => {
         el.classList.toggle('hidden', !patientOn || !railModeVisible(el.getAttribute('data-rail'), tab));

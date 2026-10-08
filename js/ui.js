@@ -102,6 +102,10 @@ const LESION_ACCORDION_IDS = ['sec-lesions'];
 const EXAM_ACCORDION_IDS = HISTORY_ACCORDION_IDS.concat(LESION_ACCORDION_IDS);
 
 function currentExamAccordionIds() {
+    const visit = typeof selectedVisitSection !== 'undefined' ? selectedVisitSection : '';
+    if (visit === 'scope') return ['sec-metadata'];
+    if (visit === 'concerns') return ['sec-concerns'];
+    if (visit === 'risks') return ['sec-risks'];
     if (typeof activeWorkspaceTab !== 'undefined' && activeWorkspaceTab === 'history') return HISTORY_ACCORDION_IDS;
     if (typeof activeWorkspaceTab !== 'undefined' && activeWorkspaceTab === 'skin-check') return LESION_ACCORDION_IDS;
     return EXAM_ACCORDION_IDS;
