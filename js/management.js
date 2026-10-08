@@ -827,11 +827,28 @@ function histoReportRow(label, value) {
     return `<div class="histo-report-row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(text)}</dd></div>`;
 }
 
-function histoReportHead(kicker, date) {
+function histoReportHead(kicker, date, actionsHtml) {
     return `<div class="histo-report-head">
         <p class="histo-report-kicker">${escapeHtml(kicker)}</p>
-        <p class="histo-report-meta">${escapeHtml(date || '')}</p>
+        <div class="histo-report-head-end">
+            ${date ? `<p class="histo-report-meta">${escapeHtml(date)}</p>` : ''}
+            ${actionsHtml || ''}
+        </div>
     </div>`;
+}
+
+function histoInlineButton(label, onclick) {
+    return `<button type="button" class="histo-inline-btn" onclick="${onclick}">${escapeHtml(label)}</button>`;
+}
+
+function lesionChainHasDoneProcedure(lesion) {
+    if (!lesion) return false;
+    const done = (item) => typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(item)
+        : !!(item?.procedureCompletedAt || item?.excisionFinalisedAt);
+    if (done(lesion)) return true;
+    const ancestors = typeof collectLesionAncestors === 'function' ? collectLesionAncestors(lesion) : [];
+    return ancestors.some(done);
 }
 
 function histoSpecimenHeading(index, typeLabel) {
@@ -849,7 +866,7 @@ function histoSpecimenSizeLine(lesion) {
     return '';
 }
 
-function renderInspectorHistologyReport(lesion, kind, specimenIndex) {
+function renderInspectorHistologyReport(lesion, kind, specimenIndex, options) {
     if (!lesion) return '';
     const done = typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!lesion.procedureCompletedAt;
     const hasResult = typeof lesionHasSavedHistology === 'function'
@@ -862,13 +879,15 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex) {
     const id = String(lesion.id || '').replace(/'/g, '');
     const heading = histoSpecimenHeading(specimenIndex, typeLabel);
     const sizeLine = histoSpecimenSizeLine(lesion);
+    const changePlan = !!(options && options.changePlan) && kind === 'current' && !done;
+    const changePlanBtn = changePlan ? histoInlineButton('Change plan', `editChartLesionPlan('${id}')`) : '';
     if (kind === 'current' && !showHisto) {
         if (!typeLabel && !['planned_procedure', 'current_case'].includes(
             typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus
         )) return '';
         const plannedRows = [histoReportRow('Specimen size', sizeLine)].join('');
         return `<article class="histo-report is-planned">
-            ${histoReportHead(heading, date)}
+            ${histoReportHead(heading, date, changePlanBtn)}
             ${plannedRows ? `<dl class="histo-report-dl">${plannedRows}</dl>` : ''}
             <p class="histo-report-pending">Histology is recorded after this procedure is completed.</p>
         </article>`;
@@ -888,7 +907,10 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex) {
     const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
     const pot = lesion.histologyPot ? 'Pot ' + lesion.histologyPot : '';
     const lab = [accession, !accession && pot ? pot : ''].filter(Boolean).join(' · ');
-    const canEdit = kind === 'current' && canUpdateResult(lesion);
+    const canEditResult = kind === 'current' && canUpdateResult(lesion);
+    const resultBtn = canEditResult
+        ? histoInlineButton(microscopy ? 'Edit result' : 'Enter result', `openHistologyModal('${id}')`)
+        : '';
     const rows = [
         histoReportRow('Laboratory', lab),
         histoReportRow('Diagnosis', dx || (done && !microscopy ? 'Pending' : '')),
@@ -896,9 +918,8 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex) {
         histoReportRow('Specimen size', sizeLine)
     ].join('');
     return `<article class="histo-report ${kind === 'previous' ? 'is-previous' : 'is-current'}">
-        ${histoReportHead(heading, date)}
+        ${histoReportHead(heading, date, resultBtn)}
         <dl class="histo-report-dl">${rows}</dl>
-        ${canEdit ? `<div class="histo-report-actions"><button type="button" onclick="openHistologyModal('${id}')">${microscopy ? 'Edit result' : 'Enter result'}</button></div>` : ''}
     </article>`;
 }
 
@@ -925,7 +946,7 @@ function renderCopiedPriorHistologyReport(lesion, specimenIndex) {
     </article>`;
 }
 
-function renderInspectorExaminationReport(lesion) {
+function renderInspectorExaminationReport(lesion, options) {
     if (!lesion) return '';
     const macro = unspecifiedExamText(lesion.macroscopic);
     const dermoscopy = unspecifiedExamText(lesion.dermoscopy);
@@ -935,17 +956,25 @@ function renderInspectorExaminationReport(lesion) {
     );
     const at = typeof lesionExamAt === 'function' ? lesionExamAt(lesion) : '';
     const date = typeof formatLesionCardDate === 'function' ? formatLesionCardDate(at) : '';
+    const editId = String((options && options.editId) || lesion.id || '').replace(/'/g, '');
+    const hidePlan = !!(options && options.hidePlan);
+    const canEditExam = !!(options && options.canEditExam);
+    const canChangePlan = !!(options && options.canChangePlan) && !hidePlan;
+    const planText = String(lesion.plan || '').trim();
+    const planHtml = hidePlan || !planText
+        ? ''
+        : `<div class="histo-report-row"><dt>Plan</dt><dd class="histo-report-dd-actions"><span>${escapeHtml(planText)}</span>${canChangePlan ? histoInlineButton('Change plan', `editChartLesionPlan('${editId}')`) : ''}</dd></div>`;
     const rows = [
         histoReportRow('Provisional diagnosis', impression),
         histoReportRow('Macroscopic', macro || 'Not recorded'),
         histoReportRow('Dermoscopic', dermoscopy || 'Not recorded'),
-        histoReportRow('Plan', lesion.plan || ''),
-        histoReportRow('Dimensions', typeof lesionExamDimensions === 'function' ? lesionExamDimensions(lesion) : ''),
-        histoReportRow('Margin', typeof lesionExamMargin === 'function' ? lesionExamMargin(lesion) : '')
+        planHtml,
+        histoReportRow('Dimensions', typeof lesionExamDimensions === 'function' ? lesionExamDimensions(lesion) : '')
     ].join('');
     if (!rows) return '';
+    const editBtn = canEditExam ? histoInlineButton('Edit lesion', `editChartLesion('${editId}')`) : '';
     return `<article class="histo-report is-exam">
-        ${histoReportHead('Examination', date || 'Today')}
+        ${histoReportHead('Examination', date || 'Today', editBtn)}
         <dl class="histo-report-dl">${rows}</dl>
     </article>`;
 }
@@ -953,8 +982,20 @@ function renderInspectorExaminationReport(lesion) {
 function renderInspectorLesionDossier(lesion) {
     const ancestors = typeof collectLesionAncestors === 'function' ? collectLesionAncestors(lesion) : [];
     const examSource = ancestors[0] || lesion;
-    const examHtml = renderInspectorExaminationReport(examSource)
-        || (examSource !== lesion ? renderInspectorExaminationReport(lesion) : '');
+    const currentDone = typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(lesion)
+        : !!(lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt);
+    const chainDone = typeof lesionChainHasDoneProcedure === 'function'
+        ? lesionChainHasDoneProcedure(lesion)
+        : currentDone;
+    const examOpts = {
+        editId: String(lesion.id || ''),
+        hidePlan: chainDone,
+        canEditExam: !currentDone,
+        canChangePlan: !chainDone
+    };
+    const examHtml = renderInspectorExaminationReport(examSource, examOpts)
+        || (examSource !== lesion ? renderInspectorExaminationReport(lesion, examOpts) : '');
     const cards = [];
     let specimenIndex = 0;
     if (!ancestors.length) {
@@ -971,7 +1012,9 @@ function renderInspectorLesionDossier(lesion) {
             specimenIndex += 1;
         }
     });
-    const currentHtml = renderInspectorHistologyReport(lesion, 'current', specimenIndex);
+    const currentHtml = renderInspectorHistologyReport(lesion, 'current', specimenIndex, {
+        changePlan: chainDone && !currentDone
+    });
     if (currentHtml) cards.push(currentHtml);
     return `<div class="histo-dossier">
         ${examHtml || ''}

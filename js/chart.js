@@ -5,6 +5,7 @@ let inspectorRenderedLesionId = '';
 let inspectorRenderedMode = '';
 let inspectorPaneMode = 'view';
 let inspectorFormLesionId = '';
+let inspectorFormFocus = '';
 let inspectorAdviceKind = 'print';
 let manageLesionUiSource = 'modal';
 
@@ -1219,7 +1220,7 @@ async function submitInspectorManageLesion() {
     return save({});
 }
 
-function openLesionInInspector(lesionId) {
+function openLesionInInspector(lesionId, options) {
     if (typeof visitClinicalUnlocked === 'function' && !visitClinicalUnlocked()) {
         pendingWorkspaceTab = 'skin-check';
         if (typeof pulseSanitiseControl === 'function') pulseSanitiseControl();
@@ -1229,6 +1230,7 @@ function openLesionInInspector(lesionId) {
     }
     inspectorPaneMode = 'form';
     inspectorFormLesionId = lesionId ? String(lesionId) : '';
+    inspectorFormFocus = options?.focus || '';
     if (lesionId) selectedChartLesionId = String(lesionId);
     selectedVisitSection = '';
     if (typeof switchWorkspaceTab === 'function'
@@ -1243,12 +1245,26 @@ function openLesionInInspector(lesionId) {
 function cancelInspectorLesionForm() {
     inspectorPaneMode = 'view';
     inspectorFormLesionId = '';
+    inspectorFormFocus = '';
     renderChartLesionInspector({ force: true });
     if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
 }
 
 function editChartLesion(id) {
     openLesionInInspector(id);
+}
+
+function editChartLesionPlan(id) {
+    openLesionInInspector(id, { focus: 'plan' });
+}
+
+function focusInspectorPlanField() {
+    const el = document.getElementById('inspLesionPlan');
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.focus();
+    const wrap = el.closest('div');
+    if (wrap) wrap.classList.add('insp-plan-focus');
 }
 
 function inspectorFormLesion() {
@@ -1376,7 +1392,9 @@ function renderChartLesionInspector(options) {
         const formKey = 'form:' + (inspectorFormLesionId || 'new') + ':' + (unlocked ? 'open' : 'lock');
         if (!force && inspectorRenderedMode === formKey && slot.querySelector('[data-inspector-form]')) return;
         const title = inspectorFormLesionId ? (lesion.location || 'Edit lesion') : 'Add lesion';
-        const sub = inspectorFormLesionId ? 'Update the examination details, then save.' : 'Document a new spot on this chart.';
+        const sub = inspectorFormFocus === 'plan'
+            ? 'Choose excision, biopsy, topical, or another plan. Margins and options appear as needed.'
+            : (inspectorFormLesionId ? 'Update the examination details, then save.' : 'Document a new spot on this chart.');
         slot.innerHTML = `
             <div class="chart-inspector-caption">
                 <h2>${escapeHtml(title)}</h2>
@@ -1391,6 +1409,10 @@ function renderChartLesionInspector(options) {
         handleInspectorPlanChange();
         handleInspectorClosureChange();
         syncInspectorPriorHistoSource();
+        if (inspectorFormFocus === 'plan') {
+            inspectorFormFocus = '';
+            requestAnimationFrame(focusInspectorPlanField);
+        }
         return;
     }
     const lesion = ensureSelectedChartLesion();
@@ -1414,14 +1436,11 @@ function renderChartLesionInspector(options) {
     const dossier = typeof renderInspectorLesionDossier === 'function'
         ? renderInspectorLesionDossier(lesion)
         : '';
-    const canResult = typeof canUpdateResult === 'function' && canUpdateResult(lesion);
     const refer = String(lesion.proposedPlan || '') === 'refer'
         || (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan));
     const pendingBill = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion)
         && typeof lesionCanCloseNoFollowup === 'function' && !lesionCanCloseNoFollowup(lesion);
     const toolbar = [
-        `<button type="button" onclick="editChartLesion('${safeId}')">Edit lesion</button>`,
-        canResult ? `<button type="button" onclick="openHistologyModal('${safeId}')">${lesion.histologyResult ? 'Edit result' : 'Enter result'}</button>` : '',
         refer ? `<button type="button" onclick="openLetterModalForRefer('${safeId}')">Generate letter</button>` : ''
     ].filter(Boolean).join('');
     slot.innerHTML = `
