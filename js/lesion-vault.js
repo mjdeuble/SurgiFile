@@ -35,7 +35,7 @@ const LEGACY_STATUS_ALIASES = {
     awaiting_biopsy: 'planned_procedure'
 };
 
-const TIMELINE_TYPES = ['call_attempt', 'voicemail', 'sms', 'spoke', 'result_advised', 'plan', 'procedure', 'abort', 'histology', 'consent'];
+const TIMELINE_TYPES = ['call_attempt', 'voicemail', 'sms', 'spoke', 'result_advised', 'appointment_requested', 'plan', 'procedure', 'abort', 'histology', 'consent'];
 const CALL_OUTCOMES = ['no answer', 'voicemail', 'spoke', 'declined', 'booked', 'patient not ready'];
 
 function newLesionId() {

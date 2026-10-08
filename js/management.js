@@ -593,6 +593,7 @@ function lesionTimelineTypeLabel(type) {
         sms: 'SMS',
         spoke: 'Spoke',
         result_advised: 'Result advised',
+        appointment_requested: 'Appointment',
         plan: 'Plan',
         procedure: 'Procedure',
         abort: 'Aborted',
@@ -603,7 +604,7 @@ function lesionTimelineTypeLabel(type) {
 
 function isLesionContactEvent(event) {
     if (!event) return false;
-    return ['call_attempt', 'voicemail', 'sms', 'spoke', 'result_advised'].includes(event.type)
+    return ['call_attempt', 'voicemail', 'sms', 'spoke', 'result_advised', 'appointment_requested'].includes(event.type)
         || (typeof CALL_OUTCOMES !== 'undefined' && CALL_OUTCOMES.includes(event.outcome));
 }
 
@@ -1170,6 +1171,7 @@ function formatTimelineEvent(event) {
         sms: 'SMS',
         spoke: 'Spoke',
         result_advised: 'Result advised',
+        appointment_requested: 'Appointment',
         plan: 'Plan',
         procedure: 'Procedure',
         abort: 'Aborted',
