@@ -1257,10 +1257,10 @@ function renderInspectorHistologyEntryForm(lesion) {
                 </label>
                 <p id="inspHistologyCaseShareList" class="insp-hint"></p>
             </div>
-            <div class="insp-card" style="margin:0;border-color:#c0c0c0">
+            <div>
                 <p class="insp-label">Billing type</p>
-                <p id="inspHistologyBillingTypeStatus">Assigned automatically from the diagnosis and result.</p>
-                <p class="insp-hint">Melanoma on histology is confirmed. An initial excision of suspected melanoma without histology bills as suspected until a result is in.</p>
+                <p id="inspHistologyBillingTypeStatus" class="insp-hint">Assigned automatically from the diagnosis and result.</p>
+                <p id="inspHistologyBillingTypeHint" class="insp-hint hidden"></p>
                 <input type="hidden" id="inspHistologyBillingType" value="">
                 <div id="inspHistologyBillingTypeFallback" class="hidden">
                     <label class="insp-label" for="inspHistologyBillingTypeOverride">Could not classify this result</label>
@@ -2085,8 +2085,8 @@ function renderChartLesionInspector(options) {
         <div class="chart-inspector-body" data-inspector-view="1">
             ${pendingBill ? '<p class="insp-warn" style="margin-bottom:0.45rem">Clinically finalised · billing still pending</p>' : ''}
             ${lesion.currentPlan ? `<p class="insp-hint" style="margin-bottom:0.45rem"><strong>Plan:</strong> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
-            ${renderInspectorHistologyEntryForm(lesion)}
             ${dossier}
+            ${renderInspectorHistologyEntryForm(lesion)}
             ${renderInspectorPlanContactForm(lesion)}
             ${typeof renderLesionActionLog === 'function' ? renderLesionActionLog(lesion) : ''}
         </div>`;

@@ -2352,6 +2352,7 @@ function histologyFormIds() {
             shareList: 'inspHistologyCaseShareList',
             billingType: 'inspHistologyBillingType',
             billingStatus: 'inspHistologyBillingTypeStatus',
+            billingHint: 'inspHistologyBillingTypeHint',
             billingFallback: 'inspHistologyBillingTypeFallback',
             billingOverride: 'inspHistologyBillingTypeOverride',
             urgent: 'inspHistologyUrgentNote',
@@ -2369,9 +2370,10 @@ function histologyFormIds() {
         shareCount: 'histologyCaseShareCount',
         shareKind: 'histologyCaseShareKind',
         shareList: 'histologyCaseShareList',
-        billingType: 'histologyBillingType',
-        billingStatus: 'histologyBillingTypeStatus',
-        billingFallback: 'histologyBillingTypeFallback',
+            billingType: 'histologyBillingType',
+            billingStatus: 'histologyBillingTypeStatus',
+            billingHint: 'histologyBillingTypeHint',
+            billingFallback: 'histologyBillingTypeFallback',
         billingOverride: 'histologyBillingTypeOverride',
         urgent: 'histologyUrgentNote',
         saveBtn: 'btnSaveHistology'
@@ -2519,6 +2521,19 @@ function syncHistologyBillingTypeFromResult() {
             statusEl.textContent = 'Could not classify automatically — add a catalogue diagnosis, or choose a type.';
         } else {
             statusEl.textContent = 'Assigned automatically from the diagnosis and result.';
+        }
+    }
+    const hintEl = histologyFormEl('billingHint');
+    if (hintEl) {
+        if (inferred === 'confirmed_melanoma') {
+            hintEl.textContent = 'Melanoma on histology bills as confirmed.';
+            hintEl.classList.remove('hidden');
+        } else if (inferred === 'suspected_melanoma') {
+            hintEl.textContent = 'No histology yet — suspected melanoma bills as suspected until a result is in.';
+            hintEl.classList.remove('hidden');
+        } else {
+            hintEl.textContent = '';
+            hintEl.classList.add('hidden');
         }
     }
     const needFallback = !!(combined && !inferred);
