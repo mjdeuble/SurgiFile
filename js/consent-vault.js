@@ -153,6 +153,9 @@ async function saveGeneratedConsentDoc(data, plainText, printHtml) {
     upsertConsentDocMemory(doc);
     if (isVaultLoggedIn()) await writeManagedConsentDoc(doc);
     if (mgmtActiveFilter === 'notes' && typeof renderManagedLesions === 'function') renderManagedLesions();
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && typeof renderChartTreeSavedDocs === 'function') {
+        renderChartTreeSavedDocs();
+    }
     return doc;
 }
 

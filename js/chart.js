@@ -299,6 +299,59 @@ function selectChartFolder(tabName) {
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab(tabName);
 }
 
+function chartTreeSavedDocItems() {
+    const notes = typeof adminVisitNotes === 'function' ? adminVisitNotes() : [];
+    const consents = typeof adminConsentDocs === 'function' ? adminConsentDocs() : [];
+    const items = [];
+    notes.forEach((note) => {
+        const kinds = [];
+        if (typeof consultNoteIsSavable === 'function' && consultNoteIsSavable(note.consultText)) kinds.push('Consult');
+        if (typeof procedureNoteIsSavable === 'function' && procedureNoteIsSavable(note.procedureText)) kinds.push('Procedure');
+        const when = typeof formatLesionWhen === 'function'
+            ? formatLesionWhen(note.updatedAt || note.createdAt)
+            : (note.updatedAt || note.createdAt || '');
+        items.push({
+            kind: 'note',
+            id: String(note.id || ''),
+            site: kinds.join(' / ') || 'Visit note',
+            meta: when
+        });
+    });
+    consents.forEach((doc) => {
+        const when = typeof formatLesionWhen === 'function'
+            ? formatLesionWhen(doc.createdAt)
+            : (doc.createdAt || '');
+        const n = Array.isArray(doc.procedures) ? doc.procedures.length : 0;
+        items.push({
+            kind: 'consent',
+            id: String(doc.id || ''),
+            site: 'Consent',
+            meta: [when, n ? (n + ' procedure' + (n === 1 ? '' : 's')) : ''].filter(Boolean).join(' · ')
+        });
+    });
+    return items;
+}
+
+function renderChartTreeSavedDocs() {
+    const root = document.getElementById('chartTreeSavedDocs');
+    if (!root) return;
+    const items = chartTreeSavedDocItems();
+    if (!items.length) {
+        root.innerHTML = '<p class="chart-tree-empty">No saved notes yet</p>';
+        return;
+    }
+    root.innerHTML = items.map((item) => {
+        const id = String(item.id || '').replace(/'/g, '');
+        const onclick = item.kind === 'consent'
+            ? `openSavedConsentDoc('${id}')`
+            : `openSavedVisitNote('${id}')`;
+        return `<button type="button" role="treeitem" class="chart-tree-node" style="--depth:1" onclick="${onclick}">
+            <span class="chart-tree-node-site">${escapeHtml(item.site)}</span>
+            <span class="chart-tree-node-meta">${escapeHtml(item.meta)}</span>
+        </button>`;
+    }).join('');
+}
+
 function renderChartLesionTree() {
     const tree = document.getElementById('chartLesionTree');
     const list = document.getElementById('chartLesionTreeLesions');
@@ -333,7 +386,8 @@ function renderChartLesionTree() {
             list.innerHTML = html;
         }
     }
-    if (empty) empty.classList.toggle('hidden', !!model.total);
+    if (empty) empty.classList.add('hidden');
+    renderChartTreeSavedDocs();
     if (status) {
         if (!model.total) {
             status.textContent = 'No lesions';

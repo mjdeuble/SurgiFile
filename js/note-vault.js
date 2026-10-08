@@ -203,6 +203,9 @@ async function saveCurrentVisitNotes() {
     upsertVisitNoteMemory(note);
     if (isVaultLoggedIn()) await writeManagedVisitNote(note);
     if (mgmtActiveFilter === 'notes' && typeof renderManagedLesions === 'function') renderManagedLesions();
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && typeof renderChartTreeSavedDocs === 'function') {
+        renderChartTreeSavedDocs();
+    }
     return note;
 }
 
