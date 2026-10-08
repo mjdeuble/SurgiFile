@@ -3000,6 +3000,10 @@ async function submitHistologyModal() {
             }
         }
         closeHistologyModal();
+        if (saved?.lesion && typeof lesions !== 'undefined' && Array.isArray(lesions)) {
+            const idx = lesions.findIndex((item) => String(item.id) === String(id));
+            if (idx !== -1) Object.assign(lesions[idx], saved.lesion);
+        }
         if (typeof selectedChartLesionId !== 'undefined') selectedChartLesionId = id;
         const awaitingQueue = typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive()
             && typeof mgmtActiveFilter !== 'undefined' && mgmtActiveFilter === 'awaiting_histology';

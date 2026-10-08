@@ -2608,6 +2608,12 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
         if (suggestion.ready && suggestion.summary) lesion.suggestedMbsItems = suggestion.summary;
     }
     if (extras.resultOnly) {
+        if (lesionHasSavedHistology(lesion) && (priorStatus === 'awaiting_histology'
+            || canonicalLesionStatus(lesion.managementStatus) === 'awaiting_histology')) {
+            lesion.managementStatus = 'needs_contact';
+            if (!lesion.contactState) lesion.contactState = 'mark_for_contact';
+            lesion.currentPlan = 'Result recorded — set the plan.';
+        }
         const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
         appendLesionTimeline(lesion, {
             type: 'histology',
@@ -2616,12 +2622,6 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
         });
         if (typeof syncBillingFromLesion === 'function') {
             await syncBillingFromLesion(lesion);
-        }
-        if (lesionHasSavedHistology(lesion) && (priorStatus === 'awaiting_histology'
-            || canonicalLesionStatus(lesion.managementStatus) === 'awaiting_histology')) {
-            lesion.managementStatus = 'needs_contact';
-            if (!lesion.contactState) lesion.contactState = 'mark_for_contact';
-            lesion.currentPlan = 'Result recorded — set the plan.';
         }
         await saveManagedLesionRecord(lesion, 'histology', resultText || lesion.histologyResult || '', { silent: true });
         return { lesion, resultOnly: true };
