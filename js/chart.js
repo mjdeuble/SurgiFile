@@ -656,7 +656,7 @@ function renderChartSidebar() {
     setNav(consentBtn, 'consent');
     setNav(adminBtn, 'management');
     if (adminBtn) {
-        const visitOn = tab === 'management' || tab === 'history';
+        const visitOn = tab === 'history';
         adminBtn.classList.toggle('is-active', visitOn);
         adminBtn.setAttribute('aria-selected', visitOn ? 'true' : 'false');
     }
