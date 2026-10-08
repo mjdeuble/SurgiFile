@@ -12,8 +12,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="stylesheet" href="css/tailwind.css?v=170">
-    <link rel="stylesheet" href="css/app.css?v=170">
+    <link rel="stylesheet" href="css/tailwind.css?v=171">
+    <link rel="stylesheet" href="css/app.css?v=171">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -1109,84 +1109,96 @@
         </div>
     </div>
 
-    <div id="authModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/85 backdrop-blur-md p-4">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
-            <div class="bg-slate-900 p-5 text-white flex justify-between items-start gap-3">
+    <div id="authModal" class="auth-overlay" role="presentation">
+        <div class="auth-win" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+            <div class="consent-win-caption">
                 <div>
-                    <h3 class="font-bold text-lg">Clinic Vault</h3>
-                    <p id="authModalSubtitle" class="text-xs text-slate-300 mt-1">Connect the clinic folder, then sign in.</p>
+                    <h3 id="authModalTitle">Clinic Vault</h3>
+                    <p id="authModalSubtitle">Connect the clinic folder, then sign in.</p>
                 </div>
-                <button type="button" id="authModalCloseBtn" onclick="dismissAuthModal()" class="hidden text-slate-400 hover:text-white font-bold text-lg leading-none cursor-pointer disabled:cursor-not-allowed" aria-label="Close" aria-hidden="true" disabled>&times;</button>
+                <button type="button" id="authModalCloseBtn" onclick="dismissAuthModal()" class="insp-caption-close hidden" aria-label="Close" aria-hidden="true" disabled>&times;</button>
             </div>
-            <form class="p-5 space-y-4 text-sm" onsubmit="event.preventDefault(); submitAuthForm();">
-                <div>
-                    <button type="button" id="authConnectFolderBtn" onclick="handleConnectClinicFolder()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold rounded-lg cursor-pointer">Choose clinic folder</button>
-                    <p id="authFolderStatus" class="text-xs text-slate-500 mt-2">No clinic folder connected yet. Use Chrome or Edge, or the installed app, and pick a local folder you can edit. The clinical area stays closed until that folder is connected.</p>
-                </div>
-                <div id="authSignInFields">
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="authUsernameSelect">User</label>
-                    <select id="authUsernameSelect" class="w-full p-2.5 border border-slate-300 rounded-lg bg-white text-sm">
-                        <option value="">Select user...</option>
-                    </select>
-                </div>
-                <div id="authCreateFields" class="hidden">
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="authUsernameInput">New username</label>
-                    <input type="text" id="authUsernameInput" autocomplete="username" placeholder="e.g. jane" class="w-full p-2.5 border border-slate-300 rounded-lg">
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1 mt-3" for="authDisplayName">Full doctor name *</label>
-                    <input type="text" id="authDisplayName" autocomplete="name" placeholder="e.g. Dr Jane Smith" class="w-full p-2.5 border border-slate-300 rounded-lg">
-                    <p class="text-[11px] text-slate-500 mt-1">Set once with the username. Charts, consent, and pathology use this doctor name automatically.</p>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="authPassword">Password</label>
-                    <input type="password" id="authPassword" autocomplete="current-password" class="w-full p-2.5 border border-slate-300 rounded-lg">
-                    <p id="authPasswordHint" class="hidden text-[11px] text-slate-500 mt-1">New users: at least 12 characters. This password unlocks the encrypted clinic files.</p>
-                </div>
-                <div id="authConfirmWrap" class="hidden">
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="authPasswordConfirm">Confirm password</label>
-                    <input type="password" id="authPasswordConfirm" autocomplete="new-password" class="w-full p-2.5 border border-slate-300 rounded-lg">
-                </div>
-                <div class="pt-1">
-                    <button type="submit" id="authSignInBtn" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg cursor-pointer">Sign in</button>
-                    <button type="submit" id="authCreateBtn" class="hidden w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg cursor-pointer">Create user and sign in</button>
-                </div>
-                <p class="text-center">
-                    <button type="button" id="authShowCreateBtn" onclick="setAuthCreateMode(true)" class="text-xs font-semibold text-blue-700 hover:text-blue-900 cursor-pointer">Add user</button>
-                    <button type="button" id="authShowSignInBtn" onclick="setAuthCreateMode(false)" class="hidden text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer">Back to sign in</button>
-                </p>
-                <div id="authLoadProgress" class="hidden pt-1 space-y-1.5" role="status" aria-live="polite">
-                    <div class="auth-load-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="authLoadProgressLabel">
-                        <div id="authLoadProgressBar" class="auth-load-bar"></div>
+            <form class="auth-win-form" onsubmit="event.preventDefault(); submitAuthForm();">
+                <div class="consent-win-body">
+                    <div class="auth-field">
+                        <button type="button" id="authConnectFolderBtn" onclick="handleConnectClinicFolder()" class="consent-win-btn">Choose clinic folder</button>
+                        <p id="authFolderStatus" class="insp-hint text-slate-500">No clinic folder connected yet. Use Chrome or Edge, or the installed app, and pick a local folder you can edit. The clinical area stays closed until that folder is connected.</p>
                     </div>
-                    <p id="authLoadProgressLabel" class="text-[11px] text-slate-500">Loading clinic files…</p>
+                    <div id="authSignInFields" class="auth-field">
+                        <label class="insp-label" for="authUsernameSelect">User</label>
+                        <select id="authUsernameSelect" class="insp-select">
+                            <option value="">Select user...</option>
+                        </select>
+                    </div>
+                    <div id="authCreateFields" class="hidden auth-stack">
+                        <div class="auth-field">
+                            <label class="insp-label" for="authUsernameInput">New username</label>
+                            <input type="text" id="authUsernameInput" autocomplete="username" placeholder="e.g. jane" class="insp-input">
+                        </div>
+                        <div class="auth-field">
+                            <label class="insp-label" for="authDisplayName">Full doctor name *</label>
+                            <input type="text" id="authDisplayName" autocomplete="name" placeholder="e.g. Dr Jane Smith" class="insp-input">
+                            <p class="insp-hint">Set once with the username. Charts, consent, and pathology use this doctor name automatically.</p>
+                        </div>
+                    </div>
+                    <div class="auth-field">
+                        <label class="insp-label" for="authPassword">Password</label>
+                        <input type="password" id="authPassword" autocomplete="current-password" class="insp-input">
+                        <p id="authPasswordHint" class="insp-hint hidden">New users: at least 12 characters. This password unlocks the encrypted clinic files.</p>
+                    </div>
+                    <div id="authConfirmWrap" class="hidden auth-field">
+                        <label class="insp-label" for="authPasswordConfirm">Confirm password</label>
+                        <input type="password" id="authPasswordConfirm" autocomplete="new-password" class="insp-input">
+                    </div>
+                    <div id="authLoadProgress" class="hidden auth-field" role="status" aria-live="polite">
+                        <div class="auth-load-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="authLoadProgressLabel">
+                            <div id="authLoadProgressBar" class="auth-load-bar"></div>
+                        </div>
+                        <p id="authLoadProgressLabel" class="insp-hint">Loading clinic files…</p>
+                    </div>
+                </div>
+                <div class="consent-win-footer">
+                    <div class="auth-win-footer-secondary">
+                        <button type="button" id="authShowCreateBtn" onclick="setAuthCreateMode(true)" class="consent-win-btn">Add user</button>
+                        <button type="button" id="authShowSignInBtn" onclick="setAuthCreateMode(false)" class="consent-win-btn hidden">Back to sign in</button>
+                    </div>
+                    <div class="auth-win-footer-primary">
+                        <button type="submit" id="authSignInBtn" class="consent-win-btn consent-win-btn-primary">Sign in</button>
+                        <button type="submit" id="authCreateBtn" class="consent-win-btn consent-win-btn-primary hidden">Create user and sign in</button>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 
-    <div id="passwordUpgradeModal" class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/85 backdrop-blur-md p-4 hidden">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
-            <div class="bg-slate-900 p-5 text-white">
-                <h3 id="passwordChangeTitle" class="font-bold text-lg">Set a longer vault password</h3>
-                <p id="passwordChangeLead" class="text-xs text-slate-300 mt-1">Your current password is shorter than 12 characters. That password is the only secret for the encrypted clinic files.</p>
+    <div id="passwordUpgradeModal" class="auth-overlay auth-overlay-password hidden" role="presentation">
+        <div class="auth-win" role="dialog" aria-modal="true" aria-labelledby="passwordChangeTitle">
+            <div class="consent-win-caption">
+                <div>
+                    <h3 id="passwordChangeTitle">Set a longer vault password</h3>
+                    <p id="passwordChangeLead">Your current password is shorter than 12 characters. That password is the only secret for the encrypted clinic files.</p>
+                </div>
             </div>
-            <form class="p-5 space-y-4 text-sm" onsubmit="event.preventDefault(); submitPasswordUpgrade();">
-                <div id="passwordChangeCurrentWrap" class="hidden">
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="passwordChangeCurrent">Current password</label>
-                    <input type="password" id="passwordChangeCurrent" autocomplete="current-password" class="w-full p-2.5 border border-slate-300 rounded-lg">
+            <form class="auth-win-form" onsubmit="event.preventDefault(); submitPasswordUpgrade();">
+                <div class="consent-win-body">
+                    <div id="passwordChangeCurrentWrap" class="hidden auth-field">
+                        <label class="insp-label" for="passwordChangeCurrent">Current password</label>
+                        <input type="password" id="passwordChangeCurrent" autocomplete="current-password" class="insp-input">
+                    </div>
+                    <div class="auth-field">
+                        <label class="insp-label" for="passwordUpgradeNew">New password</label>
+                        <input type="password" id="passwordUpgradeNew" autocomplete="new-password" minlength="12" class="insp-input">
+                    </div>
+                    <div class="auth-field">
+                        <label class="insp-label" for="passwordUpgradeConfirm">Confirm new password</label>
+                        <input type="password" id="passwordUpgradeConfirm" autocomplete="new-password" minlength="12" class="insp-input">
+                    </div>
+                    <p class="insp-hint">Must be at least 12 characters. This re-encrypts the clinic files under your user. Keep the USB connected until it finishes.</p>
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="passwordUpgradeNew">New password</label>
-                    <input type="password" id="passwordUpgradeNew" autocomplete="new-password" minlength="12" class="w-full p-2.5 border border-slate-300 rounded-lg">
+                <div class="consent-win-footer">
+                    <button type="button" id="passwordChangeDismiss" onclick="dismissPasswordUpgrade()" class="consent-win-btn">Later</button>
+                    <button type="submit" id="passwordUpgradeSubmit" class="consent-win-btn consent-win-btn-primary">Update password</button>
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="passwordUpgradeConfirm">Confirm new password</label>
-                    <input type="password" id="passwordUpgradeConfirm" autocomplete="new-password" minlength="12" class="w-full p-2.5 border border-slate-300 rounded-lg">
-                </div>
-                <p class="text-[11px] text-slate-500">Must be at least 12 characters. This re-encrypts the clinic files under your user. Keep the USB connected until it finishes.</p>
-                <button type="submit" id="passwordUpgradeSubmit" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg cursor-pointer">Update password</button>
-                <p class="text-center">
-                    <button type="button" id="passwordChangeDismiss" onclick="dismissPasswordUpgrade()" class="text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer">Later</button>
-                </p>
             </form>
         </div>
     </div>
@@ -2508,30 +2520,30 @@
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=170"></script>
-    <script src="js/diagnosis-catalogue.js?v=170"></script>
-    <script src="js/crypto.js?v=170"></script>
-    <script src="js/vault.js?v=170"></script>
-    <script src="js/ui.js?v=170"></script>
-    <script src="js/topical.js?v=170"></script>
-    <script src="js/billing.js?v=170"></script>
-    <script src="js/margin-guide.js?v=170"></script>
-    <script src="js/skin-check.js?v=170"></script>
-    <script src="js/consent.js?v=170"></script>
-    <script src="js/clinic-profile.js?v=170"></script>
-    <script src="js/aftercare.js?v=170"></script>
-    <script src="js/letters.js?v=170"></script>
-    <script src="js/outputs.js?v=170"></script>
-    <script src="js/excision.js?v=170"></script>
-    <script src="js/lesion-vault.js?v=170"></script>
-    <script src="js/billing-vault.js?v=170"></script>
-    <script src="js/chart-vault.js?v=170"></script>
-    <script src="js/note-vault.js?v=170"></script>
-    <script src="js/consent-vault.js?v=170"></script>
-    <script src="js/auth.js?v=170"></script>
-    <script src="js/management.js?v=170"></script>
-    <script src="js/chart.js?v=170"></script>
-    <script src="js/procedure-session.js?v=170"></script>
-    <script src="js/app.js?v=170"></script>
+    <script src="js/state.js?v=171"></script>
+    <script src="js/diagnosis-catalogue.js?v=171"></script>
+    <script src="js/crypto.js?v=171"></script>
+    <script src="js/vault.js?v=171"></script>
+    <script src="js/ui.js?v=171"></script>
+    <script src="js/topical.js?v=171"></script>
+    <script src="js/billing.js?v=171"></script>
+    <script src="js/margin-guide.js?v=171"></script>
+    <script src="js/skin-check.js?v=171"></script>
+    <script src="js/consent.js?v=171"></script>
+    <script src="js/clinic-profile.js?v=171"></script>
+    <script src="js/aftercare.js?v=171"></script>
+    <script src="js/letters.js?v=171"></script>
+    <script src="js/outputs.js?v=171"></script>
+    <script src="js/excision.js?v=171"></script>
+    <script src="js/lesion-vault.js?v=171"></script>
+    <script src="js/billing-vault.js?v=171"></script>
+    <script src="js/chart-vault.js?v=171"></script>
+    <script src="js/note-vault.js?v=171"></script>
+    <script src="js/consent-vault.js?v=171"></script>
+    <script src="js/auth.js?v=171"></script>
+    <script src="js/management.js?v=171"></script>
+    <script src="js/chart.js?v=171"></script>
+    <script src="js/procedure-session.js?v=171"></script>
+    <script src="js/app.js?v=171"></script>
 </body>
 </html>

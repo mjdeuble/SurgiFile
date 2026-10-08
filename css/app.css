@@ -291,6 +291,85 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             background: #2563eb;
             border-radius: 999px;
         }
+        .auth-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.25rem;
+            background: #d6d6d6;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+        }
+        .auth-overlay-password {
+            z-index: 80;
+            background: rgba(214, 214, 214, 0.92);
+        }
+        .auth-overlay.hidden {
+            display: none !important;
+        }
+        .auth-win {
+            width: min(26.5rem, 100%);
+            max-height: calc(100vh - 2.5rem);
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            border: 1px solid #a0a0a0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+            overflow: hidden;
+        }
+        .auth-win-form {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            flex: 1;
+        }
+        .auth-win .consent-win-body {
+            flex: 1 1 auto;
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+        }
+        .auth-win .consent-win-caption {
+            align-items: center;
+        }
+        .auth-win .hidden {
+            display: none !important;
+        }
+        .auth-field,
+        .auth-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 0.18rem;
+        }
+        .auth-stack {
+            gap: 0.65rem;
+        }
+        .auth-win-footer-secondary,
+        .auth-win-footer-primary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.3rem;
+        }
+        .auth-win #authConnectFolderBtn {
+            align-self: flex-start;
+        }
+        .auth-win .auth-load-track {
+            height: 0.45rem;
+            background: #e8e8e8;
+            border: 1px solid #c0c0c0;
+            border-radius: 0;
+        }
+        .auth-win .auth-load-bar {
+            background: #0078d4;
+            border-radius: 0;
+        }
+        .auth-win .insp-hint.text-emerald-700 { color: #166534; }
+        .auth-win .insp-hint.text-red-700 { color: #9b1c1c; }
+        .auth-win .insp-hint.text-amber-700 { color: #92400e; }
+        .auth-win .insp-hint.text-slate-500 { color: #555; }
         #appBusyOverlay {
             position: fixed;
             inset: 0;
