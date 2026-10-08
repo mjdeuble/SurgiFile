@@ -91,6 +91,13 @@ function lesionMatchesFilter(lesion, filter) {
             ? isRequiresManagementStatus(status)
             : ['awaiting_assessment', 'needs_contact', 'appointment_requested'].includes(status);
     }
+    if (typeof isCompletedManagementFilter === 'function'
+        ? isCompletedManagementFilter(filter)
+        : (filter === 'completed' || filter === 'no_followup')) {
+        return typeof lesionIsClinicallyFinalised === 'function'
+            ? lesionIsClinicallyFinalised(lesion)
+            : status === 'no_followup';
+    }
     return status === filter || lesion.managementStatus === filter;
 }
 
@@ -425,6 +432,8 @@ function renderStatusColumn(status, items) {
         : status === 'awaiting_histology' ? 'Awaiting results'
         : (status === 'requires_management' || status === 'needs_contact' || status === 'appointment_requested')
             ? 'Requires management'
+        : (status === 'completed' || status === 'no_followup')
+            ? 'Completed'
         : (LESION_STATUSES[status] || status);
     return renderNamedStatusColumn(title, items);
 }
@@ -2108,6 +2117,7 @@ function normalizeMgmtFilter(filter) {
     const raw = String(filter || 'open');
     if (raw === 'active') return 'open';
     if (raw === 'needs_contact' || raw === 'appointment_requested') return 'requires_management';
+    if (raw === 'no_followup') return 'completed';
     return raw;
 }
 

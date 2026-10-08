@@ -146,6 +146,10 @@ function isRequiresManagementFilter(filter) {
     return REQUIRES_MANAGEMENT_FILTERS.includes(String(filter || ''));
 }
 
+function isCompletedManagementFilter(filter) {
+    return filter === 'completed' || filter === 'no_followup';
+}
+
 function isPostResultFollowupStatus(status) {
     return POST_RESULT_FOLLOWUP_STATUSES.includes(canonicalLesionStatus(status));
 }

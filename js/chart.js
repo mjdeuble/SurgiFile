@@ -224,7 +224,7 @@ function requireRoomReady(tabName) {
     return true;
 }
 
-let chartTreeCompletedCollapsed = true;
+let chartTreeCompletedCollapsed = false;
 let selectedVisitSection = '';
 let pendingVisitSection = '';
 
@@ -259,6 +259,7 @@ function practiceFilterLabel(filter) {
     if (key === 'awaiting_histology') return 'Awaiting results';
     if (key === 'requires_management' || key === 'needs_contact' || key === 'appointment_requested') return 'Requires management';
     if (key === 'planned_procedure' || key === 'planned_excision') return 'Planned procedure';
+    if (key === 'completed' || key === 'no_followup') return 'Completed';
     if (key === 'billing') return 'Billing';
     if (key === 'notes') return 'Saved notes';
     return key;
@@ -588,7 +589,9 @@ function renderPracticeTree() {
         const kids = group.items.map((item, idx) => {
             const id = String(item.id || '').replace(/'/g, '');
             const selected = id && id === String(selectedChartLesionId);
-            const site = (idx + 1) + '. ' + (item.location || 'No site');
+            const site = (idx + 1) + '. ' + (typeof lesionListSiteLabel === 'function'
+                ? lesionListSiteLabel(item)
+                : (item.location || 'No site'));
             const label = typeof chartTreeNodeLabel === 'function' ? chartTreeNodeLabel(item) : { meta: '' };
             const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(item);
             const cls = ['chart-tree-node', selected ? 'is-selected' : '', done ? 'is-done' : ''].filter(Boolean).join(' ');
@@ -777,12 +780,20 @@ function chartLesionTreeModel() {
     };
 }
 
+function lesionListSiteLabel(lesion) {
+    const site = String(lesion?.location || '').trim() || 'No site';
+    const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
+    if (done && !/\(completed\)\s*$/i.test(site)) return site + ' (completed)';
+    return site;
+}
+
 function chartTreeNodeLabel(lesion) {
-    const site = String(lesion?.location || 'No site');
+    const site = lesionListSiteLabel(lesion);
     const dx = typeof formatDiagnosisDisplay === 'function'
         ? formatDiagnosisDisplay(lesion?.impression || '')
         : (lesion?.impression || '');
-    const status = typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion?.managementStatus || '');
+    const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
+    const status = done ? '' : (typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion?.managementStatus || ''));
     const today = typeof isVisitLesion === 'function' && isVisitLesion(lesion.id) ? 'Today' : '';
     const meta = [dx, status, today].filter(Boolean).join(' · ');
     return { site, meta };
