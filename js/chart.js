@@ -841,6 +841,7 @@ function onInspectorManagePlanChange() {
             ? document.querySelector('input[name="inspHistologyNext"][value="' + manageLesionPrevPlan + '"]')
             : null;
         if (prev) prev.checked = true;
+        manageLesionPendingSave = true;
         if (typeof openManageLesionNfaConfirm === 'function') openManageLesionNfaConfirm();
         return;
     }
