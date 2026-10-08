@@ -479,6 +479,9 @@ function completeRiskScreening() {
     if (typeof screeningAskedThisConsult !== 'undefined') screeningAskedThisConsult = true;
     updateScreeningCompleteButton();
     updateExamSectionHeaders();
+    if (typeof updateScreeningOnFileHint === 'function') {
+        updateScreeningOnFileHint(typeof collectChartScreeningFromDom === 'function' ? collectChartScreeningFromDom() : null);
+    }
     if (typeof collapseExamSectionWhenComplete === 'function') collapseExamSectionWhenComplete('sec-risks');
     updateOutput();
     if (typeof scheduleChartSave === 'function') scheduleChartSave();

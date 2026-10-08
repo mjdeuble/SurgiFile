@@ -254,6 +254,42 @@ function examFromDomIsFilled(exam) {
     return !!(exam.scope || exam.fitzpatrick || exam.lastSkinCheck || String(exam.regionalArea || '').trim() || exam.noPatientConcerns);
 }
 
+function screeningFieldsEqual(a, b) {
+    return JSON.stringify(a || {}) === JSON.stringify(b || {});
+}
+
+function formatScreeningOnFileDate(ymd) {
+    const raw = String(ymd || '').trim();
+    if (!raw) return '';
+    const d = new Date(raw.length <= 10 ? raw + 'T00:00:00' : raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function updateScreeningOnFileHint(screening) {
+    const el = document.getElementById('screeningOnFileHint');
+    if (!el) return;
+    const record = screening || currentManagedChart()?.screening || {};
+    const filled = screeningIsFilled(record.groups)
+        || !!(record.completed)
+        || Object.values(record.fields || {}).some(Boolean);
+    if (!filled) {
+        el.classList.add('hidden');
+        el.textContent = '';
+        return;
+    }
+    const sameVisit = !!(record.visitDate && record.visitDate === todayVisitKey());
+    el.classList.remove('hidden');
+    if (sameVisit && (record.completed || (typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete))) {
+        el.textContent = 'Confirmed for this visit.';
+    } else if (record.visitDate) {
+        el.textContent = 'On file from ' + formatScreeningOnFileDate(record.visitDate)
+            + '. Review and complete for this visit if it should go in today’s note.';
+    } else {
+        el.textContent = 'Previous screening is on this chart. Review and complete for this visit if it should go in today’s note.';
+    }
+}
+
 function collectChartScreeningFromDom() {
     const fields = {};
     CHART_SCREENING_FIELDS.forEach((field) => {
@@ -268,12 +304,20 @@ function collectChartScreeningFromDom() {
         dia: groupStates.dia || 'unset',
         hea: groupStates.hea || 'unset'
     };
+    const prev = currentManagedChart()?.screening || {};
+    const filled = screeningIsFilled(groups);
+    const unchanged = screeningFieldsEqual(groups, prev.groups) && screeningFieldsEqual(fields, prev.fields);
+    let visitDate = '';
+    if (screeningMarkedComplete) visitDate = todayVisitKey();
+    else if (unchanged && prev.visitDate) visitDate = prev.visitDate;
+    else if (filled) visitDate = todayVisitKey();
+    else visitDate = prev.visitDate || '';
     return {
         groups,
         fields,
-        filled: screeningIsFilled(groups),
-        completed: !!screeningMarkedComplete,
-        visitDate: (screeningIsFilled(groups) || screeningMarkedComplete) ? todayVisitKey() : ''
+        filled,
+        completed: !!(screeningMarkedComplete || (unchanged && prev.completed)),
+        visitDate
     };
 }
 
@@ -445,10 +489,7 @@ function chartHasLiveWorkspace(chart, chartId) {
             ? isClinicalWorkspaceTab(activeWorkspaceTab)
             : (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')) return true;
         if (typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete) return true;
-        if (typeof groupStates !== 'undefined'
-            && ['canc', 'all', 'bld', 'dia', 'hea'].some((key) => groupStates[key] === 'YES' || groupStates[key] === 'NO')) {
-            return true;
-        }
+        if (typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit()) return true;
     }
     return false;
 }
@@ -799,25 +840,26 @@ function applyChartExamToDom(exam) {
 }
 
 function applyChartScreeningToDom(screening) {
+    const groups = (screening && screening.groups) || {};
+    const fields = (screening && screening.fields) || {};
     const sameVisit = !!(screening && screening.visitDate && screening.visitDate === todayVisitKey());
-    const groups = sameVisit ? (screening.groups || {}) : {};
     ['canc', 'all', 'bld', 'dia', 'hea'].forEach((key) => {
-        const state = sameVisit ? (groups[key] || 'unset') : 'unset';
+        const state = groups[key] || 'unset';
         if (typeof setGroupState === 'function') setGroupState(key, state);
         else groupStates[key] = state;
     });
-    const fields = sameVisit ? (screening.fields || {}) : {};
     CHART_SCREENING_FIELDS.forEach((field) => {
         const el = document.getElementById(field.id);
         if (!el) return;
-        if (field.type === 'checkbox') el.checked = sameVisit && !!fields[field.id];
-        else el.value = sameVisit && fields[field.id] != null ? fields[field.id] : '';
+        if (field.type === 'checkbox') el.checked = !!fields[field.id];
+        else el.value = fields[field.id] != null ? fields[field.id] : '';
     });
-    screeningMarkedComplete = !!(sameVisit && screening.completed);
+    screeningMarkedComplete = !!(sameVisit && screening && screening.completed);
     if (typeof toggleMelanomaSubFields === 'function') toggleMelanomaSubFields();
     if (typeof recalculateRecall === 'function') recalculateRecall();
     if (typeof updateScreeningCompleteButton === 'function') updateScreeningCompleteButton();
     if (typeof updateExamSectionHeaders === 'function') updateExamSectionHeaders();
+    updateScreeningOnFileHint(screening);
 }
 
 function resetScreeningAndExamForm() {
@@ -867,6 +909,7 @@ function resetScreeningAndExamForm() {
         if (typeof applyNoPatientConcerns === 'function') applyNoPatientConcerns(false);
         if (typeof updateScreeningCompleteButton === 'function') updateScreeningCompleteButton();
         if (typeof collapseAllAccordions === 'function') collapseAllAccordions();
+        updateScreeningOnFileHint({});
     } finally {
         applyingChartRecord = false;
     }
@@ -1474,7 +1517,7 @@ function sessionNotesShouldPromptClose() {
     const procedureActive = !!(typeof procedureSession !== 'undefined'
         && (procedureSession.started || procedureSession.completedAt));
     const screeningDone = !!(typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete)
-        || !!(typeof groupStates !== 'undefined' && ['canc', 'all', 'bld', 'dia', 'hea'].some((k) => groupStates[k] === 'YES' || groupStates[k] === 'NO'));
+        || (typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit());
     return !!(examFilled || hasVisitLesions || procedureActive || screeningDone);
 }
 
