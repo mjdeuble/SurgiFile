@@ -254,8 +254,20 @@ function examFromDomIsFilled(exam) {
     return !!(exam.scope || exam.fitzpatrick || exam.lastSkinCheck || String(exam.regionalArea || '').trim() || exam.noPatientConcerns);
 }
 
+function screeningFieldValue(value) {
+    if (value === true) return true;
+    if (value === false || value == null || value === '') return '';
+    return String(value);
+}
+
 function screeningFieldsEqual(a, b) {
-    return JSON.stringify(a || {}) === JSON.stringify(b || {});
+    const left = a || {};
+    const right = b || {};
+    const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+    for (const key of keys) {
+        if (screeningFieldValue(left[key]) !== screeningFieldValue(right[key])) return false;
+    }
+    return true;
 }
 
 function formatScreeningOnFileDate(ymd) {
