@@ -12,8 +12,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="stylesheet" href="css/tailwind.css?v=174">
-    <link rel="stylesheet" href="css/app.css?v=174">
+    <link rel="stylesheet" href="css/tailwind.css?v=175">
+    <link rel="stylesheet" href="css/app.css?v=175">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -1512,18 +1512,11 @@
                     <input type="text" id="histologyProposedPlanNote" class="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="e.g. Efudix forehead · discuss with patient" autocomplete="off">
                 </div>
                 <div class="rounded-lg border border-slate-200 p-3 space-y-2">
-                    <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Contact</p>
-                    <div class="space-y-2">
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyContact" value="mark_for_contact" checked class="text-blue-600" onchange="syncHistologyFollowUpUi()"> Mark for contact</label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyContact" value="advised_now" class="text-blue-600" onchange="syncHistologyFollowUpUi()"> Advised now</label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyContact" value="appointment_requested" class="text-blue-600" onchange="syncHistologyFollowUpUi()"> Appointment requested — discuss result</label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="histologyContact" value="not_reached" class="text-blue-600" onchange="syncHistologyFollowUpUi()"> Not reached</label>
-                    </div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="histologyCallNote">Call / review note (optional)</label>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="histologyCallNote">Add note</label>
                     <textarea id="histologyCallNote" rows="2" class="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="e.g. Morning review — desk to phone after 10"></textarea>
                 </div>
                 <div id="manageLesionTimelineWrap" class="hidden">
-                    <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Previous contact</p>
+                    <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Notes</p>
                     <ul id="manageLesionTimeline" class="lesion-timeline"></ul>
                 </div>
             </div>
@@ -1538,7 +1531,7 @@
         <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
             <div class="bg-blue-900 p-4 text-white">
                 <h3 class="font-bold text-base">Update result</h3>
-                <p class="text-xs text-blue-100 mt-0.5">Record diagnosis, histology, and lab details. Billing type is assigned from the result. Plan and contact are in Manage lesion.</p>
+                <p class="text-xs text-blue-100 mt-0.5">Record diagnosis, histology, and lab details. Billing type is assigned from the result. Plan and notes are in Manage lesion.</p>
             </div>
             <div class="p-5 space-y-3 text-sm overflow-y-auto">
                 <input type="hidden" id="histologyLesionId">
@@ -2520,30 +2513,30 @@
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=174"></script>
-    <script src="js/diagnosis-catalogue.js?v=174"></script>
-    <script src="js/crypto.js?v=174"></script>
-    <script src="js/vault.js?v=174"></script>
-    <script src="js/ui.js?v=174"></script>
-    <script src="js/topical.js?v=174"></script>
-    <script src="js/billing.js?v=174"></script>
-    <script src="js/margin-guide.js?v=174"></script>
-    <script src="js/skin-check.js?v=174"></script>
-    <script src="js/consent.js?v=174"></script>
-    <script src="js/clinic-profile.js?v=174"></script>
-    <script src="js/aftercare.js?v=174"></script>
-    <script src="js/letters.js?v=174"></script>
-    <script src="js/outputs.js?v=174"></script>
-    <script src="js/excision.js?v=174"></script>
-    <script src="js/lesion-vault.js?v=174"></script>
-    <script src="js/billing-vault.js?v=174"></script>
-    <script src="js/chart-vault.js?v=174"></script>
-    <script src="js/note-vault.js?v=174"></script>
-    <script src="js/consent-vault.js?v=174"></script>
-    <script src="js/auth.js?v=174"></script>
-    <script src="js/management.js?v=174"></script>
-    <script src="js/chart.js?v=174"></script>
-    <script src="js/procedure-session.js?v=174"></script>
-    <script src="js/app.js?v=174"></script>
+    <script src="js/state.js?v=175"></script>
+    <script src="js/diagnosis-catalogue.js?v=175"></script>
+    <script src="js/crypto.js?v=175"></script>
+    <script src="js/vault.js?v=175"></script>
+    <script src="js/ui.js?v=175"></script>
+    <script src="js/topical.js?v=175"></script>
+    <script src="js/billing.js?v=175"></script>
+    <script src="js/margin-guide.js?v=175"></script>
+    <script src="js/skin-check.js?v=175"></script>
+    <script src="js/consent.js?v=175"></script>
+    <script src="js/clinic-profile.js?v=175"></script>
+    <script src="js/aftercare.js?v=175"></script>
+    <script src="js/letters.js?v=175"></script>
+    <script src="js/outputs.js?v=175"></script>
+    <script src="js/excision.js?v=175"></script>
+    <script src="js/lesion-vault.js?v=175"></script>
+    <script src="js/billing-vault.js?v=175"></script>
+    <script src="js/chart-vault.js?v=175"></script>
+    <script src="js/note-vault.js?v=175"></script>
+    <script src="js/consent-vault.js?v=175"></script>
+    <script src="js/auth.js?v=175"></script>
+    <script src="js/management.js?v=175"></script>
+    <script src="js/chart.js?v=175"></script>
+    <script src="js/procedure-session.js?v=175"></script>
+    <script src="js/app.js?v=175"></script>
 </body>
 </html>

@@ -43,7 +43,7 @@ const LEGACY_STATUS_ALIASES = {
     awaiting_biopsy: 'planned_procedure'
 };
 
-const TIMELINE_TYPES = ['call_attempt', 'voicemail', 'sms', 'spoke', 'result_advised', 'appointment_requested', 'plan', 'procedure', 'abort', 'histology', 'consent'];
+const TIMELINE_TYPES = ['call_attempt', 'voicemail', 'sms', 'spoke', 'result_advised', 'appointment_requested', 'plan', 'procedure', 'abort', 'histology', 'consent', 'note'];
 const CALL_OUTCOMES = ['no answer', 'voicemail', 'spoke', 'declined', 'booked', 'patient not ready'];
 
 function newLesionId() {
@@ -1164,6 +1164,13 @@ function defaultPlanLine(lesion) {
 function ensureLesionTimeline(lesion) {
     if (!Array.isArray(lesion.timeline)) lesion.timeline = [];
     return lesion.timeline;
+}
+
+function appendLesionNote(lesion, text) {
+    const note = String(text || '').trim();
+    if (!lesion || !note) return null;
+    lesion.adminCallNote = note;
+    return appendLesionTimeline(lesion, { type: 'note', note });
 }
 
 function appendLesionTimeline(lesion, event) {

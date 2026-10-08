@@ -1296,7 +1296,7 @@ function renderInspectorHistologyEntryForm(lesion) {
     </section>`;
 }
 
-function inspectorContactPlaceholder(lesion) {
+function inspectorNotePlaceholder(lesion) {
     const done = !!(lesion && typeof lesionProcedureDone === 'function' && lesionProcedureDone(lesion));
     if (!done) return 'e.g. Advised to rebook for procedure';
     if (!inspectorCanSetResultPlan(lesion)) return 'e.g. Advised result not back yet';
@@ -1311,17 +1311,7 @@ function renderInspectorPlanContactForm(lesion) {
     const further = lesion?.resultPlan === 'further_management' || lesion?.resultPlan === 'plan_excision';
     const planVal = showPlan ? (further ? 'further_management' : (alreadyNfa ? 'no_followup' : '')) : '';
     const proposed = String(lesion?.proposedPlan || '').trim();
-    const contactVal = lesion?.contactState === 'advised_now' || lesion?.resultAdvisedAt
-        ? 'advised_now'
-        : (lesion?.contactState === 'appointment_requested' ? 'appointment_requested'
-            : (lesion?.contactState === 'not_reached' ? 'not_reached' : 'mark_for_contact'));
-    const events = lesion && typeof lesionTimelineNewestFirst === 'function'
-        ? lesionTimelineNewestFirst(lesion).filter((event) => typeof isLesionContactEvent !== 'function' || isLesionContactEvent(event))
-        : [];
-    const timeline = events.length
-        ? `<div><p class="insp-label">Previous contact</p><ul class="lesion-timeline">${events.map(typeof formatTimelineEvent === 'function' ? formatTimelineEvent : (e) => `<li>${escapeHtml(e.note || '')}</li>`).join('')}</ul></div>`
-        : '';
-    const appointmentLabel = showPlan ? 'Appointment requested — discuss result' : 'Appointment requested';
+    const notes = typeof renderLesionNotesListHtml === 'function' ? renderLesionNotesListHtml(lesion) : '';
     const planBlock = showPlan ? `<div>
                 <p class="insp-label">Clinical plan</p>
                 <div class="insp-choice-list">
@@ -1346,26 +1336,17 @@ function renderInspectorPlanContactForm(lesion) {
                 </div>
             </div>` : '';
     return `<section class="insp-card" id="inspPlanContactCard">
-        <div class="insp-card-head">${showPlan ? 'Plan and contact' : 'Contact'}</div>
+        <div class="insp-card-head">${showPlan ? 'Plan' : 'Notes'}</div>
         <div class="insp-card-body">
             <input type="hidden" id="inspManageLesionId" value="${escapeHtml(String(lesion.id || ''))}">
             ${planBlock}
             <div>
-                <p class="insp-label">Contact about this lesion</p>
-                <div class="insp-choice-list">
-                    <label class="insp-choice"><input type="radio" name="inspHistologyContact" value="mark_for_contact"${inspectorChecked(contactVal, 'mark_for_contact')} onchange="syncInspectorFollowUpUi()"> Mark for contact</label>
-                    <label class="insp-choice"><input type="radio" name="inspHistologyContact" value="advised_now"${inspectorChecked(contactVal, 'advised_now')} onchange="syncInspectorFollowUpUi()"> Advised now</label>
-                    <label class="insp-choice"><input type="radio" name="inspHistologyContact" value="appointment_requested"${inspectorChecked(contactVal, 'appointment_requested')} onchange="syncInspectorFollowUpUi()"> ${escapeHtml(appointmentLabel)}</label>
-                    <label class="insp-choice"><input type="radio" name="inspHistologyContact" value="not_reached"${inspectorChecked(contactVal, 'not_reached')} onchange="syncInspectorFollowUpUi()"> Not reached</label>
-                </div>
-                <div>
-                    <label class="insp-label" for="inspHistologyCallNote">Note (optional)</label>
-                    <textarea id="inspHistologyCallNote" rows="2" class="insp-textarea" placeholder="${escapeHtml(inspectorContactPlaceholder(lesion))}">${escapeHtml(lesion.adminCallNote || '')}</textarea>
-                </div>
+                <label class="insp-label" for="inspLesionNote">Add note</label>
+                <textarea id="inspLesionNote" rows="2" class="insp-textarea" placeholder="${escapeHtml(inspectorNotePlaceholder(lesion))}"></textarea>
             </div>
-            ${timeline}
+            ${notes}
             <div class="insp-actions">
-                <button type="button" class="insp-save" id="btnSaveInspectorManage" onclick="submitInspectorManageLesion()">${showPlan ? 'Save plan and contact' : 'Save contact'}</button>
+                <button type="button" class="insp-save" id="btnSaveInspectorManage" onclick="submitInspectorManageLesion()">${showPlan ? 'Save plan' : 'Add note'}</button>
             </div>
         </div>
     </section>`;
@@ -1712,8 +1693,7 @@ async function submitInspectorManageLesion() {
     const next = document.querySelector('input[name="inspHistologyNext"]:checked')?.value || '';
     const proposedPlan = document.querySelector('input[name="inspHistologyProposedPlan"]:checked')?.value || '';
     const proposedPlanNote = document.getElementById('inspHistologyProposedPlanNote')?.value.trim() || '';
-    const contact = document.querySelector('input[name="inspHistologyContact"]:checked')?.value || 'mark_for_contact';
-    const callNote = document.getElementById('inspHistologyCallNote')?.value.trim() || '';
+    const callNote = document.getElementById('inspLesionNote')?.value.trim() || '';
     if (!id) return false;
     const lesion = (typeof managedLesions !== 'undefined' ? managedLesions : [])
         .find((item) => String(item.id) === String(id))
@@ -1740,57 +1720,39 @@ async function submitInspectorManageLesion() {
         return false;
     }
     const extras = {
-        callNote,
-        contact,
+        callNote: '',
+        contact: lesion.contactState || 'mark_for_contact',
         fileNoCall: false,
         proposedPlan: (next === 'further_management' || next === 'plan_excision') ? proposedPlan : '',
         proposedPlanNote: (next === 'further_management' || next === 'plan_excision') ? proposedPlanNote : ''
     };
-    const saveContactOnly = async () => {
-        const fields = {
-            contactState: contact,
-            adminCallNote: callNote
-        };
-        if (contact === 'advised_now') fields.resultAdvisedAt = new Date().toISOString();
-        if (next === 'further_management' && hasExistingResult) {
-            fields.resultPlan = 'further_management';
-            fields.proposedPlan = proposedPlan;
-            fields.proposedPlanNote = proposedPlanNote;
-            const proposedLabel = typeof proposedPlanLabel === 'function' ? proposedPlanLabel(proposedPlan) : proposedPlan;
-            fields.currentPlan = proposedPlanNote || proposedLabel || 'Needs further management';
-            if (lesion.managementStatus === 'no_followup') {
-                fields.managementStatus = 'awaiting_assessment';
-                fields.clinicallyFinalisedAt = '';
-            }
-        } else if (hasExistingResult && contact === 'appointment_requested') {
-            fields.managementStatus = 'appointment_requested';
-            fields.currentPlan = 'Appointment requested — discuss result';
-        } else if (hasExistingResult && lesion.managementStatus !== 'no_followup') {
-            fields.managementStatus = 'needs_contact';
-            fields.currentPlan = callNote || (contact === 'not_reached' ? 'Not reached' : 'Marked for contact');
+    const persistNote = (target) => {
+        if (!callNote || !target) return;
+        if (typeof appendLesionNote === 'function') appendLesionNote(target, callNote);
+        else if (typeof appendLesionTimeline === 'function') {
+            target.adminCallNote = callNote;
+            appendLesionTimeline(target, { type: 'note', note: callNote });
         }
-        const timelineType = contact === 'advised_now' ? 'result_advised'
-            : contact === 'appointment_requested' ? 'appointment_requested'
-            : 'call_attempt';
-        if (typeof appendLesionTimeline === 'function') {
-            appendLesionTimeline(lesion, {
-                type: timelineType,
-                outcome: contact === 'not_reached' ? 'no answer' : '',
-                note: callNote,
-                planAfter: fields.currentPlan || ''
-            });
-            fields.timeline = lesion.timeline;
+    };
+    const saveNoteOnly = async () => {
+        if (!callNote) {
+            showToast('Enter a note.');
+            return false;
         }
-        patchSessionAndManagedLesion(id, fields);
+        persistNote(lesion);
+        patchSessionAndManagedLesion(id, {
+            adminCallNote: callNote,
+            timeline: lesion.timeline
+        });
         const saved = (typeof managedLesions !== 'undefined' ? managedLesions : [])
             .find((item) => String(item.id) === String(id))
             || (typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(id));
         if (saved && typeof persistSessionLesionToVault === 'function') {
             try { await persistSessionLesionToVault(saved); } catch (err) { /* session copy kept */ }
         } else if (saved && typeof saveManagedLesionRecord === 'function' && typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
-            await saveManagedLesionRecord(saved, 'plan', callNote || fields.currentPlan || '');
+            await saveManagedLesionRecord(saved, 'note', callNote);
         }
-        showToast(next === 'further_management' ? 'Further management recorded on this lesion.' : 'Contact updated.');
+        showToast('Note added.');
         renderChartLesionInspector({ force: true });
         if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
         return true;
@@ -1802,10 +1764,11 @@ async function submitInspectorManageLesion() {
             if (typeof upsertManagedLesionMemory === 'function') upsertManagedLesionMemory(lesion);
             const saved = await recordHistologyOutcome(id, '', next, lesion?.billingLesionType || '', extras);
             const live = saved?.lesion || lesion;
+            persistNote(live);
             if (live) patchSessionAndManagedLesion(id, {
                 resultPlan: live.resultPlan,
                 contactState: live.contactState,
-                adminCallNote: callNote,
+                adminCallNote: live.adminCallNote || callNote,
                 managementStatus: live.managementStatus,
                 currentPlan: live.currentPlan,
                 clinicallyFinalisedAt: live.clinicallyFinalisedAt,
@@ -1827,7 +1790,7 @@ async function submitInspectorManageLesion() {
             if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
             return true;
         }
-        return saveContactOnly();
+        return saveNoteOnly();
     };
     if (typeof runBusyAction === 'function') {
         return runBusyAction('Saving lesion…', save, {
@@ -2102,7 +2065,6 @@ function renderChartLesionInspector(options) {
             ${dossier}
             ${renderInspectorHistologyEntryForm(lesion)}
             ${renderInspectorPlanContactForm(lesion)}
-            ${typeof renderLesionActionLog === 'function' ? renderLesionActionLog(lesion) : ''}
         </div>`;
     inspectorRenderedLesionId = id;
     inspectorRenderedMode = mode;

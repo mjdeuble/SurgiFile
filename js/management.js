@@ -624,7 +624,8 @@ function lesionTimelineTypeLabel(type) {
         procedure: 'Procedure',
         abort: 'Aborted',
         histology: 'Histology',
-        consent: 'Consent'
+        consent: 'Consent',
+        note: 'Note'
     }[type] || type || 'Action';
 }
 
@@ -637,6 +638,20 @@ function isLesionContactEvent(event) {
 function isLesionProcedureCardEvent(event) {
     if (!event) return false;
     return event.type === 'consent' || event.type === 'procedure' || event.type === 'plan';
+}
+
+function isLesionNoteEvent(event) {
+    if (!event) return false;
+    if (event.type === 'note') return true;
+    if (!String(event.note || '').trim()) return false;
+    return typeof isLesionContactEvent === 'function' && isLesionContactEvent(event);
+}
+
+function lesionNoteEvents(lesion) {
+    const events = typeof lesionTimelineNewestFirst === 'function'
+        ? lesionTimelineNewestFirst(lesion)
+        : (Array.isArray(lesion?.timeline) ? lesion.timeline.slice().reverse() : []);
+    return events.filter(isLesionNoteEvent);
 }
 
 function latestLesionTimelineNote(lesion, type) {
@@ -830,22 +845,22 @@ function renderLesionProcedureBlock(lesion) {
     return renderLesionCardBlock(done ? 'Procedure' : 'Planned procedure', done ? lesionProcedureAt(lesion) : '', rows);
 }
 
-function renderLesionContactBlock(lesion) {
-    const events = lesionCardEvents(lesion).filter(isLesionContactEvent);
+function renderLesionNotesBlock(lesion) {
+    const events = lesionNoteEvents(lesion);
     if (!events.length) return '';
     return `<section class="lesion-card-block">
-        <h4><span>Contact</span></h4>
+        <h4><span>Notes</span></h4>
         <ul class="lesion-card-log">${events.map(renderLesionCardEventLine).join('')}</ul>
     </section>`;
 }
 
-function renderLesionActionLog(lesion) {
-    const events = lesionCardEvents(lesion).filter((event) => !isLesionContactEvent(event) && !isLesionProcedureCardEvent(event));
+function renderLesionNotesListHtml(lesion) {
+    const events = lesionNoteEvents(lesion);
     if (!events.length) return '';
-    return `<section class="lesion-card-block">
-        <h4><span>Actions</span></h4>
-        <ul class="lesion-card-log">${events.map(renderLesionCardEventLine).join('')}</ul>
-    </section>`;
+    return `<div>
+        <p class="insp-label">Notes</p>
+        <ul class="lesion-timeline">${events.map(typeof formatTimelineEvent === 'function' ? formatTimelineEvent : (e) => `<li>${escapeHtml(e.note || '')}</li>`).join('')}</ul>
+    </div>`;
 }
 
 function renderManagedLesionCard(lesion, options) {
@@ -893,8 +908,7 @@ function renderManagedLesionCard(lesion, options) {
                 : ''}
             ${history.historyHtml}
             ${history.currentProc}
-            ${renderLesionContactBlock(lesion)}
-            ${renderLesionActionLog(lesion)}
+            ${renderLesionNotesBlock(lesion)}
             <div class="flex flex-wrap gap-1.5">${renderManagedLesionActions(lesion, options)}</div>
         </article>`;
 }
@@ -1215,7 +1229,8 @@ function formatTimelineEvent(event) {
         procedure: 'Procedure',
         abort: 'Aborted',
         histology: 'Histology',
-        consent: 'Consent'
+        consent: 'Consent',
+        note: 'Note'
     }[event.type] || event.type;
     const bits = [typeLabel];
     if (event.outcome) bits.push(event.outcome);
@@ -2729,8 +2744,8 @@ function openManageLesionModal(id) {
     fillManageLesionResultSummary(lesion);
     const timelineWrap = document.getElementById('manageLesionTimelineWrap');
     const timelineEl = document.getElementById('manageLesionTimeline');
-    const events = lesion && typeof lesionTimelineNewestFirst === 'function'
-        ? lesionTimelineNewestFirst(lesion).filter((event) => typeof isLesionContactEvent !== 'function' || isLesionContactEvent(event))
+    const events = lesion && typeof lesionNoteEvents === 'function'
+        ? lesionNoteEvents(lesion)
         : [];
     if (timelineWrap) timelineWrap.classList.toggle('hidden', !events.length);
     if (timelineEl) {
@@ -2738,7 +2753,7 @@ function openManageLesionModal(id) {
             ? events.map(formatTimelineEvent).join('')
             : '';
     }
-    if (noteEl) noteEl.value = lesion?.adminCallNote || '';
+    if (noteEl) noteEl.value = '';
     manageLesionPendingSave = false;
     const alreadyNfa = lesionAlreadyClinicallyFinalised(lesion) || lesion?.resultPlan === 'no_followup';
     const further = lesion?.resultPlan === 'further_management' || lesion?.resultPlan === 'plan_excision';
@@ -2756,16 +2771,6 @@ function openManageLesionModal(id) {
     if (proposedEl) proposedEl.checked = true;
     const proposedNoteEl = document.getElementById('histologyProposedPlanNote');
     if (proposedNoteEl) proposedNoteEl.value = lesion?.proposedPlanNote || '';
-    const contactVal = lesion?.contactState === 'advised_now' || lesion?.resultAdvisedAt
-        ? 'advised_now'
-        : (lesion?.contactState === 'appointment_requested' ? 'appointment_requested'
-            : (lesion?.contactState === 'not_reached' ? 'not_reached' : 'mark_for_contact'));
-    const contactEl = document.querySelector('input[name="histologyContact"][value="' + contactVal + '"]');
-    if (contactEl) contactEl.checked = true;
-    else {
-        const mark = document.querySelector('input[name="histologyContact"][value="mark_for_contact"]');
-        if (mark) mark.checked = true;
-    }
     syncHistologyFollowUpUi();
     if (modal) modal.classList.remove('hidden');
 }
@@ -2782,10 +2787,10 @@ async function submitManageLesionModal() {
     const next = document.querySelector('input[name="histologyNext"]:checked')?.value || '';
     const proposedPlan = document.querySelector('input[name="histologyProposedPlan"]:checked')?.value || '';
     const proposedPlanNote = document.getElementById('histologyProposedPlanNote')?.value.trim() || '';
-    const contact = document.querySelector('input[name="histologyContact"]:checked')?.value || 'mark_for_contact';
     const callNote = document.getElementById('histologyCallNote')?.value.trim() || '';
     if (!id) return false;
     const lesion = managedLesions.find((item) => String(item.id) === String(id));
+    const contact = lesion?.contactState || 'mark_for_contact';
     const hasExistingResult = typeof lesionHasSavedHistology === 'function'
         ? lesionHasSavedHistology(lesion)
         : !!String(lesion?.histologyResult || '').trim();
@@ -2807,40 +2812,29 @@ async function submitManageLesionModal() {
     const save = async ({ progress }) => {
         if (progress) progress('Saving lesion…', 0.25);
         const extras = {
-            callNote,
+            callNote: '',
             contact,
             fileNoCall: false,
             proposedPlan: (next === 'further_management' || next === 'plan_excision') ? proposedPlan : '',
             proposedPlanNote: (next === 'further_management' || next === 'plan_excision') ? proposedPlanNote : ''
         };
         const saved = await recordHistologyOutcome(id, '', next, lesion?.billingLesionType || '', extras);
+        if (callNote && saved?.lesion && typeof appendLesionNote === 'function') {
+            appendLesionNote(saved.lesion, callNote);
+            if (typeof saveManagedLesionRecord === 'function' && typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
+                await saveManagedLesionRecord(saved.lesion, 'note', callNote, { silent: true });
+            }
+        }
         closeManageLesionModal();
         const further = next === 'further_management' || next === 'plan_excision';
         let message = 'Lesion updated.';
-        if (further) {
-            if (contact === 'advised_now') message = 'Further management opened on a linked lesion.';
-            else if (contact === 'appointment_requested') message = 'Appointment requested. Contact stays on the linked management lesion.';
-            else if (contact === 'not_reached') message = 'Not reached. Linked management lesion stays on Needs contact.';
-            else message = 'Further management opened. Linked lesion marked for contact.';
-        } else if (next === 'no_followup') {
-            if (saved?.billingHold) {
-                message = contact === 'advised_now'
-                    ? 'Patient advised. Lesion clinically finalised. Unbilled items stay on Billing.'
-                    : 'Lesion clinically finalised. Unbilled items stay on Billing.';
-            } else {
-                message = contact === 'advised_now'
-                    ? 'Patient advised. Lesion clinically finalised.'
-                    : 'Lesion clinically finalised. No further action.';
-            }
-        } else if (contact === 'appointment_requested') {
-            message = 'Appointment requested to discuss the result.';
-        } else if (contact === 'not_reached') {
-            message = 'Not reached — stays on Needs contact.';
-        } else if (contact === 'advised_now') {
-            message = 'Patient advised.';
-        } else {
-            message = 'Marked for contact.';
+        if (further) message = 'Further management opened on a linked lesion.';
+        else if (next === 'no_followup') {
+            message = saved?.billingHold
+                ? 'Lesion clinically finalised. Unbilled items stay on Billing.'
+                : 'Lesion clinically finalised. No further action.';
         }
+        if (callNote) message = (message === 'Lesion updated.' ? 'Note added.' : message);
         showToast(message);
         if (saved?.needResult) {
             showToast('Save a histology result before opening further management.');
