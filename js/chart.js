@@ -25,6 +25,11 @@ function clinicalChartLesions() {
     return items.filter((item) => !(typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(item)));
 }
 
+function chartTreeLesions() {
+    const items = typeof clinicalChartLesions === 'function' ? clinicalChartLesions() : [];
+    return items.filter((item) => typeof isClinicalLesionTile !== 'function' || isClinicalLesionTile(item));
+}
+
 function isVisitLesion(id) {
     return lesions.some((item) => String(item.id) === String(id));
 }
@@ -214,13 +219,18 @@ function chartLesionInspectorVisible() {
 }
 
 function ensureSelectedChartLesion() {
-    const items = typeof clinicalChartLesions === 'function' ? clinicalChartLesions() : [];
+    const items = typeof chartTreeLesions === 'function' ? chartTreeLesions() : [];
     if (!items.length) {
         selectedChartLesionId = '';
         return null;
     }
     const current = items.find((item) => String(item.id) === String(selectedChartLesionId));
     if (current) return current;
+    const child = items.find((item) => String(item.priorLesionId || '') === String(selectedChartLesionId));
+    if (child) {
+        selectedChartLesionId = String(child.id || '');
+        return child;
+    }
     const live = items.find((item) => !(typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(item)));
     const pick = live || items[0];
     selectedChartLesionId = String(pick.id || '');
@@ -228,7 +238,7 @@ function ensureSelectedChartLesion() {
 }
 
 function chartLesionTreeModel() {
-    const items = typeof clinicalChartLesions === 'function' ? clinicalChartLesions() : [];
+    const items = typeof chartTreeLesions === 'function' ? chartTreeLesions() : [];
     const byId = new Map(items.map((item) => [String(item.id), item]));
     const children = new Map();
     const roots = [];
