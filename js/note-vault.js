@@ -38,6 +38,7 @@ function procedureNoteIsSavable(text) {
 }
 
 function currentProcedureNoteText() {
+    if (typeof visitProcedureWorkDone === 'function' && !visitProcedureWorkDone()) return '';
     if (typeof generateExEntryNote !== 'function') return '';
     const note = generateExEntryNote();
     if (!procedureNoteIsSavable(note)) return '';
@@ -208,11 +209,16 @@ async function saveCurrentVisitNotes(options) {
     const procedureOk = procedureNoteIsSavable(procedure);
     const histology = collectVisitHistologyArtefact();
     const advice = collectVisitAftercareArtefact();
-    if (!consultOk && !procedureOk && !histology && !advice) return null;
-
+    const procedureDone = typeof visitProcedureWorkDone === 'function' && visitProcedureWorkDone();
     const visitDate = typeof todayVisitKey === 'function' ? todayVisitKey() : new Date().toISOString().slice(0, 10);
     const now = new Date().toISOString();
     let note = findVisitNoteForDay(chartId, visitDate);
+    const staleProcedureDocs = !!(note && !procedureDone && (
+        String(note.procedureText || '').trim()
+        || String(note.histologySlipText || '').trim()
+        || String(note.histologyPrintHtml || '').trim()
+    ));
+    if (!consultOk && !procedureOk && !histology && !advice && !staleProcedureDocs) return null;
     if (!note) {
         note = {
             id: (typeof newOpaqueRecordId === 'function' ? newOpaqueRecordId('visit') : 'visit-' + Date.now()),
@@ -237,10 +243,15 @@ async function saveCurrentVisitNotes(options) {
     }
     if (consultOk) note.consultText = consult;
     if (procedureOk) note.procedureText = procedure;
+    else if (!procedureDone) note.procedureText = '';
     if (histology) {
         note.histologySlipText = histology.slipText || '';
         note.histologyReportText = histology.reportText || '';
         note.histologyPrintHtml = histology.printHtml || '';
+    } else if (!procedureDone) {
+        note.histologySlipText = '';
+        note.histologyReportText = '';
+        note.histologyPrintHtml = '';
     }
     if (advice) {
         note.aftercareHtml = advice.html || '';

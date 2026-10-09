@@ -355,15 +355,30 @@ function generateProcedureIemrAddendum() {
     return txt.trim();
 }
 
+function visitProcedureWorkDone() {
+    if (typeof procedureSession !== 'undefined' && (procedureSession.started || procedureSession.completedAt)) {
+        if (typeof procedureOutputLesions === 'function') return procedureOutputLesions().length > 0;
+        if (typeof procedureSelectedLesions === 'function') return procedureSelectedLesions().length > 0;
+        return true;
+    }
+    const rows = typeof chartLesions === 'function'
+        ? chartLesions()
+        : (typeof lesions !== 'undefined' ? lesions : []);
+    return (rows || []).some((item) => (typeof lesionPerformedToday === 'function'
+        ? lesionPerformedToday(item)
+        : !!item.procedureCompletedAt));
+}
+
 function generateCompleteInteractionNote() {
-    if (typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
+    const procedureDone = typeof visitProcedureWorkDone === 'function' && visitProcedureWorkDone();
+    if (procedureDone && typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
     // forceFull only when screening was completed this visit (avoids dumping prior-visit answers)
     const includeScreening = typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit();
     let txt = generateEMRNotePlainText({
         includeFullScreening: includeScreening,
         forceFull: includeScreening
     }) || '';
-    if (typeof generateExEntryNote === 'function' && Array.isArray(exLesions) && exLesions.length) {
+    if (procedureDone && typeof generateExEntryNote === 'function' && Array.isArray(exLesions) && exLesions.length) {
         const op = generateExEntryNote();
         if (op && !op.startsWith('Your')) {
             txt += `\n=== OPERATIVE NOTE ===\n\n${op}\n`;
@@ -503,11 +518,16 @@ function generatePathologyOutputs(lesionList) {
 }
 
 function currentHistologySpecimens() {
-    if (typeof procedurePathologyLesions === 'function') {
+    if (typeof visitProcedureWorkDone === 'function' && !visitProcedureWorkDone()) return [];
+    if (typeof procedureSession !== 'undefined' && (procedureSession.started || procedureSession.completedAt)
+        && typeof procedurePathologyLesions === 'function') {
         const proc = procedurePathologyLesions();
         if (Array.isArray(proc) && proc.length) return proc;
     }
-    return typeof getBiopsyLesions === 'function' ? getBiopsyLesions() : [];
+    const rows = typeof getBiopsyLesions === 'function' ? getBiopsyLesions() : [];
+    return rows.filter((item) => (typeof lesionPerformedToday === 'function'
+        ? lesionPerformedToday(item)
+        : !!item.procedureCompletedAt));
 }
 
 function histologySlipIsSavable(slipText) {
