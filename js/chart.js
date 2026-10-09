@@ -2121,7 +2121,6 @@ function renderChartLesionInspector(options) {
         ${toolbar ? `<div class="chart-inspector-toolbar">${toolbar}</div>` : ''}
         <div class="chart-inspector-body" data-inspector-view="1">
             ${pendingBill ? '<p class="insp-warn" style="margin-bottom:0.45rem">Clinically finalised · billing still pending</p>' : ''}
-            ${lesion.currentPlan ? `<p class="insp-hint" style="margin-bottom:0.45rem"><strong>Plan:</strong> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
             ${dossier}
             ${renderInspectorHistologyEntryForm(lesion)}
             ${renderInspectorPlanContactForm(lesion)}
