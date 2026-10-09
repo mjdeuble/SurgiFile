@@ -1181,10 +1181,15 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
             </div>
             <div id="inspPlanTopicalFields" class="insp-sub is-topical hidden">
                 <p class="insp-label" style="margin:0">Topical / field treatment</p>
+                <div class="insp-actions" style="margin:0 0 0.35rem">
+                    <button type="button" id="btnInspShowAkComparison" onclick="openAkComparisonModal()"${disabled}>Show comparison chart</button>
+                    <button type="button" onclick="printAkComparisonChart()"${disabled}>Print comparison</button>
+                </div>
+                <p class="insp-hint">Tick the treatments you discussed. The comparison chart and printout use those columns.</p>
                 <div class="insp-choice-list">
                     ${['cryotherapy|Cryotherapy', 'efudix|Efudix (5-fluorouracil)', 'efudix-calcipotriol|Efudix + Calcipotriol', 'aldara|Aldara (imiquimod)', 'pdt|Red Light PDT'].map((row) => {
                         const [value, label] = row.split('|');
-                        return `<label class="insp-choice"><input type="checkbox" name="inspTopicalDiscussed" value="${value}"${discussed.includes(value) ? ' checked' : ''}${disabled}> ${label}</label>`;
+                        return `<label class="insp-choice"><input type="checkbox" name="inspTopicalDiscussed" value="${value}"${discussed.includes(value) ? ' checked' : ''} onchange="onInspectorTopicalDiscussedChange()"${disabled}> ${label}</label>`;
                     }).join('')}
                 </div>
                 <p class="insp-label">Patient decision</p>
@@ -1393,6 +1398,11 @@ function bindInspectorTypeaheads() {
     }
 }
 
+function onInspectorTopicalDiscussedChange() {
+    if (typeof renderAkComparisonTable === 'function') renderAkComparisonTable();
+    if (typeof updateAkComparisonControls === 'function') updateAkComparisonControls();
+}
+
 function handleInspectorPlanChange() {
     const plan = document.getElementById('inspLesionPlan')?.value || '';
     const bFields = document.getElementById('inspPlanBiopsyFields');
@@ -1416,6 +1426,7 @@ function handleInspectorPlanChange() {
         handleInspectorClosureChange();
     } else if (typeof isTopicalPlan === 'function' && isTopicalPlan(plan)) {
         if (tFields) tFields.classList.remove('hidden');
+        if (typeof updateAkComparisonControls === 'function') updateAkComparisonControls();
     }
 }
 
@@ -1496,21 +1507,26 @@ function collectInspectorCopiedPriorHistology() {
     };
 }
 
-function readInspectorTopicalFields() {
+function readInspectorTopicalFields(existing) {
     const discussed = [];
     document.querySelectorAll('input[name="inspTopicalDiscussed"]:checked').forEach((el) => discussed.push(el.value));
     const decision = document.querySelector('input[name="inspTopicalDecision"]:checked')?.value || '';
+    const keep = existing || {};
     const emptyCryo = typeof emptyCryoFields === 'function' ? emptyCryoFields() : {};
+    const cryo = {};
+    Object.keys(emptyCryo).forEach((key) => {
+        cryo[key] = keep[key] != null ? keep[key] : emptyCryo[key];
+    });
     return {
         topicalDiscussed: discussed,
         topicalDecision: decision,
         topicalNotes: document.getElementById('inspTopicalNotes')?.value.trim() || '',
         topicalFollowUp: document.getElementById('inspTopicalFollowUp')?.value || 'none',
-        pdtRegions: [],
-        pdtAreaId: '',
-        pdtAreaName: '',
-        pdtQuotedPrice: 0,
-        ...emptyCryo
+        pdtRegions: Array.isArray(keep.pdtRegions) ? keep.pdtRegions : [],
+        pdtAreaId: keep.pdtAreaId || '',
+        pdtAreaName: keep.pdtAreaName || '',
+        pdtQuotedPrice: keep.pdtQuotedPrice || 0,
+        ...cryo
     };
 }
 
@@ -1607,7 +1623,12 @@ function saveInspectorLesionDocumentation() {
         graftType = document.getElementById('inspConsultExcisionGraftType')?.value || '';
         if (typeof closureNeedsGraftType === 'function' && !closureNeedsGraftType(excisionClosureType)) graftType = '';
     } else if (typeof isTopicalPlan === 'function' && isTopicalPlan(plan)) {
-        topicalFields = readInspectorTopicalFields();
+        const existingLesion = editId
+            ? ((typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(editId))
+                || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId))
+                || (typeof managedLesions !== 'undefined' ? managedLesions.find((item) => String(item.id) === String(editId)) : null))
+            : null;
+        topicalFields = readInspectorTopicalFields(existingLesion);
         if (!topicalFields.topicalDiscussed.length) {
             showToast('Select at least one treatment that was discussed.');
             return;

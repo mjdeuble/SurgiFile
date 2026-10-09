@@ -816,25 +816,34 @@ function renderLesionExamBlock(lesion) {
     return renderLesionCardBlock('Examination', at, empty);
 }
 
+function topicalDiscussedLabels(lesion) {
+    const ids = Array.isArray(lesion?.topicalDiscussed) ? lesion.topicalDiscussed : [];
+    return ids.map((id) => (typeof topicalLabel === 'function' ? topicalLabel(id) : id)).filter(Boolean).join('; ');
+}
+
 function renderLesionProcedureBlock(lesion) {
     const type = typeof lesionType === 'function' ? lesionType(lesion) : (lesion?.type || '');
     const done = typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!lesionProcedureAt(lesion);
     const planned = ['planned_procedure', 'current_case'].includes(
         typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion?.managementStatus
     );
-    if (type === 'topical' && !done) {
-        const discussed = Array.isArray(lesion?.topicalDiscussed) ? lesion.topicalDiscussed.join(', ') : '';
+    if ((type === 'topical' || (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion?.plan))) && !done) {
+        const decision = typeof formatTopicalDecisionText === 'function'
+            ? formatTopicalDecisionText(lesion)
+            : (lesion?.topicalDecision || '');
         const rows = [
-            lesionCardRow('Decision', escapeHtml(lesion?.topicalDecision || '')),
-            lesionCardRow('Discussed', escapeHtml(discussed)),
+            lesionCardRow('Treatment', 'Topical / field treatment'),
+            lesionCardRow('Discussed', escapeHtml(topicalDiscussedLabels(lesion))),
+            lesionCardRow('Decision', escapeHtml(decision)),
             lesionCardRow('Follow-up', lesion?.topicalFollowUp && lesion.topicalFollowUp !== 'none'
-                ? escapeHtml(lesion.topicalFollowUp) : '')
+                ? escapeHtml(lesion.topicalFollowUp) : ''),
+            lesionCardRow('Notes', escapeHtml(lesion?.topicalNotes || ''))
         ].join('');
-        return renderLesionCardBlock('Topical', lesionExamAt(lesion), rows);
+        return renderLesionCardBlock('Plan', '', rows);
     }
     if (!done && !planned && type !== 'punch' && type !== 'shave' && type !== 'excision') return '';
     const rows = [
-        lesionCardRow('Type', escapeHtml(lesionProcedureTypeLabel(lesion))),
+        lesionCardRow('Procedure', escapeHtml(lesionProcedureTypeLabel(lesion))),
         lesionCardRow('Histology', done ? escapeHtml(lesionHistologyCardValue(lesion)) : ''),
         lesionCardRow('Dimensions', escapeHtml(lesionProcedureDimensions(lesion))),
         lesionCardRow('Margin', escapeHtml(lesionProcedureMargin(lesion))),
@@ -842,7 +851,7 @@ function renderLesionProcedureBlock(lesion) {
         lesionCardRow('Complications', escapeHtml(lesionComplicationCardValue(lesion)))
     ].join('');
     if (!rows) return '';
-    return renderLesionCardBlock(done ? 'Procedure' : 'Planned procedure', done ? lesionProcedureAt(lesion) : '', rows);
+    return renderLesionCardBlock(done ? 'Procedure' : 'Plan', done ? lesionProcedureAt(lesion) : '', rows);
 }
 
 function renderLesionNotesBlock(lesion) {
@@ -977,6 +986,69 @@ function histoSpecimenSizeLine(lesion) {
     return '';
 }
 
+function lesionShowsPlanCard(lesion) {
+    if (!lesion) return false;
+    const done = typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(lesion)
+        : !!(lesion.procedureCompletedAt || lesion.excisionFinalisedAt);
+    if (done) return false;
+    const type = typeof lesionType === 'function' ? lesionType(lesion) : (lesion.type || '');
+    if (type === 'topical' || (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))) return true;
+    const status = typeof lesionLifecycleStatus === 'function'
+        ? lesionLifecycleStatus(lesion)
+        : lesion.managementStatus;
+    if (status === 'planned_procedure' || status === 'current_case' || status === 'topical_followup') return true;
+    return type === 'punch' || type === 'shave' || type === 'excision';
+}
+
+function renderInspectorTopicalPlanRows(lesion) {
+    const decision = typeof formatTopicalDecisionText === 'function'
+        ? formatTopicalDecisionText(lesion)
+        : (typeof topicalLabel === 'function' ? topicalLabel(lesion?.topicalDecision) : (lesion?.topicalDecision || ''));
+    return [
+        histoReportRow('Treatment', 'Topical / field treatment'),
+        histoReportRow('Discussed', topicalDiscussedLabels(lesion)),
+        histoReportRow('Decision', decision),
+        histoReportRow('Follow-up', lesion?.topicalFollowUp && lesion.topicalFollowUp !== 'none'
+            ? lesion.topicalFollowUp : ''),
+        histoReportRow('Notes', lesion?.topicalNotes || '')
+    ].join('');
+}
+
+function renderInspectorPlanCard(lesion, options) {
+    if (!lesionShowsPlanCard(lesion)) return '';
+    options = options || {};
+    const id = String(lesion.id || '').replace(/'/g, '');
+    const topical = (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))
+        || (typeof lesionType === 'function' ? lesionType(lesion) : lesion.type) === 'topical';
+    const changeBtn = options.changePlan !== false
+        ? histoInlineButton('Change plan', `editChartLesionPlan('${id}')`)
+        : '';
+    const compareBtns = topical
+        ? histoInlineButton('Comparison', 'openAkComparisonModal()')
+            + histoInlineButton('Print', 'printAkComparisonChart()')
+        : '';
+    let rows = '';
+    let pending = '';
+    if (topical) {
+        rows = renderInspectorTopicalPlanRows(lesion);
+    } else {
+        const typeLabel = (typeof lesionProcedureTypeLabel === 'function' ? lesionProcedureTypeLabel(lesion) : '')
+            || String(lesion.plan || '').trim();
+        rows = [
+            histoReportRow('Procedure', typeLabel),
+            histoReportRow('Specimen size', histoSpecimenSizeLine(lesion)),
+            histoProcedureMetaRows(lesion, { done: false })
+        ].join('');
+        pending = '<p class="histo-report-pending">Histology is recorded after this procedure is completed.</p>';
+    }
+    return `<article class="histo-report is-plan${topical ? ' is-topical-plan' : ''}" data-inspector-plan="1">
+        ${histoReportHead('Plan', '', compareBtns + changeBtn)}
+        ${rows ? `<dl class="histo-report-dl">${rows}</dl>` : ''}
+        ${pending}
+    </article>`;
+}
+
 function renderInspectorHistologyReport(lesion, kind, specimenIndex, options) {
     if (!lesion) return '';
     const done = typeof lesionProcedureDone === 'function' ? lesionProcedureDone(lesion) : !!lesion.procedureCompletedAt;
@@ -987,25 +1059,9 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex, options) {
     const typeLabel = (typeof lesionProcedureTypeLabel === 'function' ? lesionProcedureTypeLabel(lesion) : '') || '';
     const when = done ? (typeof lesionProcedureAt === 'function' ? lesionProcedureAt(lesion) : lesion.procedureCompletedAt) : '';
     const date = typeof formatLesionCardDate === 'function' ? formatLesionCardDate(when) : '';
-    const id = String(lesion.id || '').replace(/'/g, '');
     const heading = histoSpecimenHeading(specimenIndex, typeLabel);
     const sizeLine = histoSpecimenSizeLine(lesion);
-    const changePlan = !!(options && options.changePlan) && kind === 'current' && !done;
-    const changePlanBtn = changePlan ? histoInlineButton('Change plan', `editChartLesionPlan('${id}')`) : '';
-    if (kind === 'current' && !showHisto) {
-        if (!typeLabel && !['planned_procedure', 'current_case'].includes(
-            typeof lesionLifecycleStatus === 'function' ? lesionLifecycleStatus(lesion) : lesion.managementStatus
-        )) return '';
-        const plannedRows = [
-            histoReportRow('Specimen size', sizeLine),
-            histoProcedureMetaRows(lesion, { done: false })
-        ].join('');
-        return `<article class="histo-report is-planned">
-            ${histoReportHead(heading, date, changePlanBtn)}
-            ${plannedRows ? `<dl class="histo-report-dl">${plannedRows}</dl>` : ''}
-            <p class="histo-report-pending">Histology is recorded after this procedure is completed.</p>
-        </article>`;
-    }
+    if (kind === 'current' && !showHisto) return '';
     if (!showHisto && kind === 'previous') {
         const rows = [
             histoReportRow('Specimen size', sizeLine),
@@ -1077,18 +1133,11 @@ function renderInspectorExaminationReport(lesion, options) {
     const at = typeof lesionExamAt === 'function' ? lesionExamAt(lesion) : '';
     const date = typeof formatLesionCardDate === 'function' ? formatLesionCardDate(at) : '';
     const editId = String((options && options.editId) || lesion.id || '').replace(/'/g, '');
-    const hidePlan = !!(options && options.hidePlan);
     const canEditExam = !!(options && options.canEditExam);
-    const canChangePlan = !!(options && options.canChangePlan) && !hidePlan;
-    const planText = String(lesion.plan || '').trim();
-    const planHtml = hidePlan || !planText
-        ? ''
-        : `<div class="histo-report-row"><dt>Plan</dt><dd class="histo-report-dd-actions"><span>${escapeHtml(planText)}</span>${canChangePlan ? histoInlineButton('Change plan', `editChartLesionPlan('${editId}')`) : ''}</dd></div>`;
     const rows = [
         histoReportRow('Provisional diagnosis', impression),
         histoReportRow('Macroscopic', macro || 'Not recorded'),
         histoReportRow('Dermoscopic', dermoscopy || 'Not recorded'),
-        planHtml,
         histoReportRow('Dimensions', typeof lesionExamDimensions === 'function' ? lesionExamDimensions(lesion) : '')
     ].join('');
     if (!rows) return '';
@@ -1105,14 +1154,9 @@ function renderInspectorLesionDossier(lesion) {
     const currentDone = typeof lesionProcedureDone === 'function'
         ? lesionProcedureDone(lesion)
         : !!(lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt);
-    const chainDone = typeof lesionChainHasDoneProcedure === 'function'
-        ? lesionChainHasDoneProcedure(lesion)
-        : currentDone;
     const examOpts = {
         editId: String(lesion.id || ''),
-        hidePlan: chainDone,
-        canEditExam: !currentDone,
-        canChangePlan: !chainDone
+        canEditExam: !currentDone
     };
     const examHtml = renderInspectorExaminationReport(examSource, examOpts)
         || (examSource !== lesion ? renderInspectorExaminationReport(lesion, examOpts) : '');
@@ -1132,9 +1176,11 @@ function renderInspectorLesionDossier(lesion) {
             specimenIndex += 1;
         }
     });
-    const currentHtml = renderInspectorHistologyReport(lesion, 'current', specimenIndex, {
-        changePlan: chainDone && !currentDone
-    });
+    const planHtml = !currentDone ? renderInspectorPlanCard(lesion, { changePlan: true }) : '';
+    if (planHtml) cards.push(planHtml);
+    const currentHtml = (!planHtml)
+        ? renderInspectorHistologyReport(lesion, 'current', specimenIndex)
+        : '';
     if (currentHtml) cards.push(currentHtml);
     return `<div class="histo-dossier">
         ${examHtml || ''}
