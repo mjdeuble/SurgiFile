@@ -1061,6 +1061,7 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex, options) {
     const date = typeof formatLesionCardDate === 'function' ? formatLesionCardDate(when) : '';
     const heading = histoSpecimenHeading(specimenIndex, typeLabel);
     const sizeLine = histoSpecimenSizeLine(lesion);
+    const id = String(lesion.id || '').replace(/'/g, '');
     if (kind === 'current' && !showHisto) return '';
     if (!showHisto && kind === 'previous') {
         const rows = [
