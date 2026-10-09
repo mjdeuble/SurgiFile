@@ -803,12 +803,21 @@ function chartTreeNodeLabel(lesion) {
     return { site, meta };
 }
 
+function lesionTreeHighlightsActive() {
+    const tab = typeof activeWorkspaceTab !== 'undefined' ? activeWorkspaceTab : '';
+    if (tab === 'excision-generator' || tab === 'consent') return false;
+    if (inspectorPaneMode === 'letter' || inspectorPaneMode === 'billing' || inspectorPaneMode === 'advice') return false;
+    return tab === 'management' || tab === 'skin-check' || tab === 'history';
+}
+
 function renderChartTreeNode(lesion, depth, childrenMap) {
     const id = String(lesion.id || '');
     const toolMode = inspectorPaneMode === 'letter' || inspectorPaneMode === 'billing' || inspectorPaneMode === 'advice';
-    const selected = inspectorPaneMode === 'form'
-        ? !!(inspectorFormLesionId && id === String(inspectorFormLesionId))
-        : (!toolMode && id && id === String(selectedChartLesionId) && !selectedVisitSection);
+    const selected = !lesionTreeHighlightsActive()
+        ? false
+        : (inspectorPaneMode === 'form'
+            ? !!(inspectorFormLesionId && id === String(inspectorFormLesionId))
+            : (!toolMode && id && id === String(selectedChartLesionId) && !selectedVisitSection));
     const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
     const label = chartTreeNodeLabel(lesion);
     const kids = childrenMap.get(id) || [];
@@ -828,6 +837,11 @@ function toggleChartTreeCompleted() {
 function selectChartFolder(tabName) {
     selectedVisitSection = '';
     if (inspectorToolMode()) inspectorPaneMode = 'view';
+    if (tabName === 'excision-generator' || tabName === 'consent') {
+        inspectorPaneMode = 'view';
+        inspectorFormLesionId = '';
+        inspectorFormFocus = '';
+    }
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab(tabName);
 }
 
@@ -964,7 +978,10 @@ function renderChartLesionTree() {
     }
     if (empty) empty.classList.add('hidden');
     const addBtn = document.getElementById('btnTreeAddLesion');
-    if (addBtn) addBtn.classList.toggle('is-selected', inspectorPaneMode === 'form' && !inspectorFormLesionId);
+    if (addBtn) {
+        addBtn.classList.toggle('is-selected', lesionTreeHighlightsActive()
+            && inspectorPaneMode === 'form' && !inspectorFormLesionId);
+    }
     renderChartTreeSavedDocs();
     syncChartVisitTreeStatus();
     syncInspectorActionTreeSelection();
