@@ -312,7 +312,8 @@ function copyTodaysClinicalNote() {
     copyTextToClipboard(text, toast, () => {
         markOutputCopied('emr', text);
         if (typeof markChartIemrCopied === 'function') markChartIemrCopied(text);
-        if (typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
+        if (typeof persistCopiedIemrNote === 'function') persistCopiedIemrNote(text);
+        else if (typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
     });
 }
 

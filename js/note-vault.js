@@ -27,7 +27,7 @@ function consultNoteIsSavable(text) {
     const t = String(text || '').trim();
     if (t.length < 40) return false;
     if (/^Your (generated|clinical)/i.test(t)) return false;
-    return t.includes('SKIN EXAMINATION CLINICAL NOTE') || t.includes('PRE-PROCEDURAL') || t.includes('DOCUMENTED SKIN LESIONS');
+    return /CLINICAL NOTE|PRE-PROCEDURAL|DOCUMENTED SKIN LESIONS|LESIONS DISCUSSED|OPERATIVE NOTE/i.test(t);
 }
 
 function procedureNoteIsSavable(text) {
@@ -50,6 +50,9 @@ function currentProcedureNoteText() {
 }
 
 function currentConsultNoteText() {
+    if (typeof generateCompleteInteractionNote === 'function') {
+        return generateCompleteInteractionNote();
+    }
     if (typeof generateEMRNotePlainText !== 'function') return '';
     const includeScreening = typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit();
     return generateEMRNotePlainText({
@@ -180,14 +183,26 @@ function collectVisitAftercareArtefact() {
     return bundle;
 }
 
-async function saveCurrentVisitNotes() {
+async function saveCurrentVisitNotes(options) {
     if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) return null;
     if (!hasCurrentPatient()) return null;
     const patient = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : currentPatient;
     const chartId = patient.chartId || currentPatient.chartId;
     if (!chartId) return null;
 
-    const consult = currentConsultNoteText();
+    let consult = options && options.consultText != null ? String(options.consultText) : '';
+    if (!consult) {
+        const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
+        const copied = String(chart?.iemr?.examHash || '').trim();
+        if (copied
+            && typeof chartExamCopyIsCurrent === 'function'
+            && chartExamCopyIsCurrent(chart)
+            && consultNoteIsSavable(copied)) {
+            consult = copied;
+        } else {
+            consult = currentConsultNoteText();
+        }
+    }
     const procedure = currentProcedureNoteText();
     const consultOk = consultNoteIsSavable(consult);
     const procedureOk = procedureNoteIsSavable(procedure);
@@ -261,6 +276,24 @@ function scheduleVisitNoteSave() {
             }
         });
     }, 1200);
+}
+
+function persistCopiedIemrNote(text) {
+    const copied = String(text || '').trim();
+    if (!copied) {
+        scheduleVisitNoteSave();
+        return;
+    }
+    if (visitNoteSaveTimer) {
+        clearTimeout(visitNoteSaveTimer);
+        visitNoteSaveTimer = null;
+    }
+    saveCurrentVisitNotes({ consultText: copied }).catch((err) => {
+        console.warn('Could not save copied IEMR as visit note', err);
+        if (typeof toastVaultWriteError === 'function') {
+            toastVaultWriteError('Visit notes could not be saved to the clinic folder. Check folder access.');
+        }
+    });
 }
 
 function visitNoteDaysLeft(note) {

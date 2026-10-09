@@ -1079,8 +1079,16 @@ function examVisitFingerprint() {
             location: item.location,
             impression: item.impression,
             plan: item.plan,
+            proposedPlan: item.proposedPlan,
             macroscopic: item.macroscopic,
-            dermoscopy: item.dermoscopy
+            dermoscopy: item.dermoscopy,
+            histologyDiagnosis: item.histologyDiagnosis,
+            histologyResult: item.histologyResult,
+            punchSize: item.punchSize,
+            length: item.length,
+            width: item.width,
+            margin: item.margin,
+            procedureCompletedAt: item.procedureCompletedAt
         })),
         concerns: patientConcerns || [],
         procedureStarted: !!(procedureSession && procedureSession.started),
@@ -1687,19 +1695,26 @@ function refreshFinaliseVisitModal() {
 }
 
 function copyFinaliseVisitIemr() {
-    const text = document.getElementById('finaliseIemrPreview')?.value || '';
+    const preview = String(document.getElementById('finaliseIemrPreview')?.value || '').trim();
+    const text = preview
+        || (typeof generateCompleteInteractionNote === 'function' ? generateCompleteInteractionNote() : '')
+        || (typeof generateEMRNotePlainText === 'function' ? generateEMRNotePlainText() : '');
     if (!text) {
         showToast('No IEMR note to copy yet.');
         return;
     }
-    if (typeof copyTodaysClinicalNote === 'function') {
-        copyTodaysClinicalNote();
-    } else {
-        copyTextToClipboard(text, 'IEMR copied for Best Practice.', () => {
-            if (typeof markOutputCopied === 'function') markOutputCopied('emr', text);
-            if (typeof markChartIemrCopied === 'function') markChartIemrCopied(text);
-        });
-    }
+    const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
+    const alreadyCopied = (typeof chartExamAlreadyCopiedToday === 'function' && chartExamAlreadyCopiedToday(chart))
+        || !!(typeof outputCopyState !== 'undefined' && outputCopyState.emr && outputCopyState.emr.copied);
+    const toast = alreadyCopied
+        ? 'Full visit note copied. It may duplicate content already in Best Practice — replace the note there rather than append.'
+        : 'Today’s clinical note copied for Best Practice.';
+    copyTextToClipboard(text, toast, () => {
+        if (typeof markOutputCopied === 'function') markOutputCopied('emr', text);
+        if (typeof markChartIemrCopied === 'function') markChartIemrCopied(text);
+        if (typeof persistCopiedIemrNote === 'function') persistCopiedIemrNote(text);
+        else if (typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
+    });
     setTimeout(() => refreshFinaliseVisitModal(), 200);
 }
 
