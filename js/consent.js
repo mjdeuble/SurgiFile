@@ -21,14 +21,14 @@ function updateExcisionConsentModalActions() {
     const cancel = document.getElementById('btnCancelExcisionConsent');
     if (hint) {
         hint.textContent = issued
-            ? 'Consent copied or printed. Done closes and keeps written consent. Cancel consent undoes it.'
-            : 'Copy or print the consent first. Done stays off until then. Cancel consent closes without marking lesions consented.';
+            ? 'Consent copied or printed. Done returns to Lesions and keeps written consent. Cancel consent undoes it.'
+            : 'Copy or print the consent first. Done stays off until then. Cancel consent returns to Lesions without marking lesions consented.';
     }
     if (done) {
         done.disabled = !issued;
         done.className = issued
-            ? 'px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-md transition-colors cursor-pointer'
-            : 'px-5 py-2 bg-slate-300 text-slate-500 font-bold text-xs rounded-lg cursor-not-allowed';
+            ? 'consent-win-btn consent-win-btn-primary'
+            : 'consent-win-btn is-disabled';
         done.title = issued
             ? 'Close and keep written consent'
             : 'Copy or print the consent before closing';
@@ -41,24 +41,32 @@ function updateExcisionConsentModalActions() {
     }
 }
 
-function openExcisionConsentModal() {
+function prepareExcisionConsentWorkspace() {
     if (typeof requireCurrentPatient === 'function' && !requireCurrentPatient('Open a patient chart before generating consent.')) {
-        return;
+        return false;
     }
-    const modal = document.getElementById('excisionConsentModal');
-    if (!modal) return;
-
-    resetExcisionConsentSession();
+    if (!excisionConsentSession.issued) {
+        resetExcisionConsentSession();
+        importExcisionLesions({ silent: true });
+    }
     if (typeof applyCurrentPatientToForms === 'function') applyCurrentPatientToForms();
     else if (typeof syncPatientIdentifiers === 'function') syncPatientIdentifiers('main');
-    importExcisionLesions({ silent: true });
     updateExcisionConsentModalActions();
-    modal.classList.remove('hidden');
+    return true;
+}
+
+function openExcisionConsentModal() {
+    if (typeof switchWorkspaceTab === 'function') {
+        switchWorkspaceTab('consent');
+        return;
+    }
+    prepareExcisionConsentWorkspace();
 }
 
 function closeExcisionConsentModal() {
-    const modal = document.getElementById('excisionConsentModal');
-    if (modal) modal.classList.add('hidden');
+    if (typeof switchWorkspaceTab === 'function' && typeof activeWorkspaceTab !== 'undefined' && activeWorkspaceTab === 'consent') {
+        switchWorkspaceTab('skin-check');
+    }
 }
 
 function onExcisionConsentHeaderClose() {
@@ -236,56 +244,6 @@ function importExcisionLesions(options) {
     }
 }
 
-function addProcedureToConsent() {
-    const locInput = document.getElementById('addConsentLoc');
-    const loc = locInput ? locInput.value.trim() : '';
-    if (!loc) {
-        showToast('Please enter an anatomical location for the procedure.');
-        return;
-    }
-    const kindRaw = document.getElementById('addConsentKind')?.value || 'excision';
-    const kind = kindRaw === 'shave' || kindRaw === 'punch' ? kindRaw : 'excision';
-    const dxRaw = typeof readDiagnosisTypeahead === 'function'
-        ? readDiagnosisTypeahead('addConsentDx')
-        : (document.getElementById('addConsentDx')?.value || '');
-    const dx = (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(dxRaw) : dxRaw) || 'Skin Malignancy';
-    const marginNum = typeof readMmInputValue === 'function'
-        ? readMmInputValue('addConsentMargin')
-        : (document.getElementById('addConsentMargin')?.value.trim() || '');
-    if (kind === 'excision' && !marginNum) {
-        showToast('Enter the planned margin as a number. mm is added automatically.');
-        return;
-    }
-    const margin = marginNum
-        ? (typeof formatMarginDisplay === 'function' ? formatMarginDisplay(marginNum) : marginNum)
-        : '';
-    const recon = kind === 'shave'
-        ? 'Shave / saucerisation'
-        : (kind === 'punch'
-            ? 'Punch biopsy'
-            : (document.getElementById('addConsentRecon')?.value || 'Direct Linear Closure'));
-
-    consentProcedures.push({
-        lesionId: '',
-        procedureKind: kind,
-        includeOnConsent: true,
-        location: loc,
-        diagnosis: dx,
-        margin,
-        reconstruction: recon
-    });
-    if (locInput) locInput.value = '';
-    const marginEl = document.getElementById('addConsentMargin');
-    if (marginEl) marginEl.value = '';
-    if (typeof setDiagnosisTypeahead === 'function') setDiagnosisTypeahead('addConsentDx', '');
-    else {
-        const dxEl = document.getElementById('addConsentDx');
-        if (dxEl) dxEl.value = '';
-    }
-    renderConsentProceduresTable();
-    updateConsentRiskPreview();
-}
-
 function removeConsentProcedure(index) {
     consentProcedures.splice(index, 1);
     renderConsentProceduresTable();
@@ -304,7 +262,7 @@ function renderConsentProceduresTable() {
     if (!tbody) return;
 
     if (consentProcedures.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="p-3 text-center text-slate-400 italic">No unconsented lesions. Excisions, and punch/shave without verbal consent, import automatically — or add one below.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="p-3 text-center text-slate-500 italic">No unconsented lesions. Document each lesion under Lesions first, then Import chart lesions.</td></tr>`;
         return;
     }
 
@@ -312,12 +270,12 @@ function renderConsentProceduresTable() {
         const included = p.includeOnConsent !== false;
         const biopsy = p.procedureKind === 'shave' || p.procedureKind === 'punch';
         return `
-        <tr class="hover:bg-purple-50/40 transition-colors ${included ? '' : 'opacity-50'}">
+        <tr class="${included ? '' : 'is-excluded'}">
             <td class="p-2 text-center">
-                <input type="checkbox" ${included ? 'checked' : ''} onchange="toggleConsentProcedureInclude(${idx}, this.checked)" class="rounded text-purple-600" title="Include on this consent">
+                <input type="checkbox" ${included ? 'checked' : ''} onchange="toggleConsentProcedureInclude(${idx}, this.checked)" title="Include on this consent">
             </td>
             <td class="p-2 font-bold text-slate-500">${idx + 1}</td>
-            <td class="p-2 text-purple-800 font-semibold">${escapeHtml(consentProcedureKindLabel(p.procedureKind))}</td>
+            <td class="p-2 font-semibold">${escapeHtml(consentProcedureKindLabel(p.procedureKind))}</td>
             <td class="p-2 font-semibold text-slate-800">${escapeHtml(p.location)}</td>
             <td class="p-2 text-slate-700">${escapeHtml(p.diagnosis)}</td>
             <td class="p-2 text-slate-600">${escapeHtml(p.margin || '—')}</td>
@@ -448,29 +406,7 @@ function getLocationSpecificRisks(locationStr) {
 }
 
 function getConsentProceduresForRisks() {
-    const listed = selectedConsentProcedures().slice();
-    const draftLoc = document.getElementById('addConsentLoc')?.value.trim();
-    if (!draftLoc) return listed;
-
-    const alreadyListed = listed.some(p => (p.location || '').trim().toLowerCase() === draftLoc.toLowerCase());
-    if (alreadyListed) return listed;
-
-    const kindRaw = document.getElementById('addConsentKind')?.value || 'excision';
-    const kind = kindRaw === 'shave' || kindRaw === 'punch' ? kindRaw : 'excision';
-    const draftDxRaw = typeof readDiagnosisTypeahead === 'function'
-        ? readDiagnosisTypeahead('addConsentDx')
-        : (document.getElementById('addConsentDx')?.value || '');
-    listed.push({
-        location: draftLoc,
-        diagnosis: (typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(draftDxRaw) : draftDxRaw) || '',
-        procedureKind: kind,
-        reconstruction: kind === 'shave'
-            ? 'Shave / saucerisation'
-            : (kind === 'punch'
-                ? 'Punch biopsy'
-                : (document.getElementById('addConsentRecon')?.value || 'Direct Linear Closure'))
-    });
-    return listed;
+    return selectedConsentProcedures().slice();
 }
 
 function getNonTreatmentRisks(diagnosisStr) {
@@ -522,8 +458,8 @@ function updateConsentRiskPreview() {
                 : `<p class="text-slate-500 italic">Direct linear skin closure planned (standard surgical risks apply). Flap, graft, wedge, or secondary-intention risks appear only when that reconstruction is selected.</p>`;
         } else {
             reconBox.innerHTML = allReconRisks.map((r, i) => `
-                <label class="flex items-start text-slate-800 font-medium cursor-pointer bg-purple-50/50 p-2 rounded border border-purple-200">
-                    <input type="checkbox" id="chkReconRisk_${i}" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
+                <label class="consent-risk-row">
+                    <input type="checkbox" id="chkReconRisk_${i}" checked>
                     <span>${typeof escapeHtml === 'function' ? escapeHtml(r) : r}</span>
                 </label>
             `).join('');
@@ -532,13 +468,13 @@ function updateConsentRiskPreview() {
 
     if (locBox) {
         if (procedures.length === 0) {
-            locBox.innerHTML = `<p class="text-slate-500 italic">Add a surgical site above to generate material risks for that anatomic location only.</p>`;
+            locBox.innerHTML = `<p class="text-slate-500 italic">Import chart lesions to generate material risks for that anatomic location only.</p>`;
         } else if (allLocRisks.length === 0) {
             locBox.innerHTML = `<p class="text-slate-500 italic">No extra site-specific material risks matched this location. Standard surgical risks in section A still apply.</p>`;
         } else {
             locBox.innerHTML = allLocRisks.map((r, i) => `
-                <label class="flex items-start text-slate-800 font-medium cursor-pointer bg-purple-50/50 p-2 rounded border border-purple-200">
-                    <input type="checkbox" id="chkLocRisk_${i}" checked class="rounded text-purple-600 mt-0.5 mr-2 shrink-0">
+                <label class="consent-risk-row">
+                    <input type="checkbox" id="chkLocRisk_${i}" checked>
                     <span>${typeof escapeHtml === 'function' ? escapeHtml(r) : r}</span>
                 </label>
             `).join('');
@@ -550,8 +486,8 @@ function updateConsentRiskPreview() {
             nonTxBox.innerHTML = `<p class="text-slate-500 italic">Non-treatment risks appear once a provisional diagnosis is listed for the procedure.</p>`;
         } else {
             nonTxBox.innerHTML = allNonTxRisks.map((r, i) => `
-                <label class="flex items-start text-red-950 font-medium cursor-pointer bg-red-50/50 p-2 rounded border border-red-200">
-                    <input type="checkbox" id="chkNonTxRisk_${i}" checked class="rounded text-red-600 mt-0.5 mr-2 shrink-0">
+                <label class="consent-risk-row">
+                    <input type="checkbox" id="chkNonTxRisk_${i}" checked>
                     <span>${typeof escapeHtml === 'function' ? escapeHtml(r) : r}</span>
                 </label>
             `).join('');
@@ -584,9 +520,9 @@ function renderCustomConsentRisks() {
     }
 
     list.innerHTML = customConsentRisks.map((r, i) => `
-        <div class="flex justify-between items-center p-2 bg-amber-50 border border-amber-200 rounded text-xs">
-            <span class="font-semibold text-amber-950">• ${typeof escapeHtml === 'function' ? escapeHtml(r) : r}</span>
-            <button onclick="removeCustomConsentRisk(${i})" class="text-red-600 font-bold hover:text-red-800 cursor-pointer">&times;</button>
+        <div class="consent-custom-item">
+            <span>• ${typeof escapeHtml === 'function' ? escapeHtml(r) : r}</span>
+            <button type="button" onclick="removeCustomConsentRisk(${i})" class="insp-caption-close" aria-label="Remove custom risk">&times;</button>
         </div>
     `).join('');
 }
@@ -891,53 +827,65 @@ async function generateExcisionConsent(options) {
         showToast('Could not build the consent text.');
         return;
     }
-    let saved = null;
-    let saveFailed = false;
-    if (typeof saveGeneratedConsentDoc === 'function') {
-        try {
-            saved = await saveGeneratedConsentDoc(data, text, printHtml);
-            if (typeof isVaultLoggedIn === 'function' && isVaultLoggedIn() && !saved?.id) saveFailed = true;
-            if (saved?.id) {
-                if (excisionConsentSession.docId && excisionConsentSession.docId !== saved.id && typeof deleteManagedConsentDoc === 'function') {
-                    await deleteManagedConsentDoc(excisionConsentSession.docId);
+    const generate = async ({ progress }) => {
+        let saved = null;
+        let saveFailed = false;
+        if (progress) progress('Saving consent…', 0.25);
+        if (typeof saveGeneratedConsentDoc === 'function') {
+            try {
+                saved = await saveGeneratedConsentDoc(data, text, printHtml);
+                if (typeof isVaultLoggedIn === 'function' && isVaultLoggedIn() && !saved?.id) saveFailed = true;
+                if (saved?.id) {
+                    if (excisionConsentSession.docId && excisionConsentSession.docId !== saved.id && typeof deleteManagedConsentDoc === 'function') {
+                        await deleteManagedConsentDoc(excisionConsentSession.docId);
+                    }
+                    excisionConsentSession.docId = saved.id;
                 }
-                excisionConsentSession.docId = saved.id;
+            } catch (err) {
+                saveFailed = true;
+                console.warn('Could not save consent document', err);
+                if (typeof toastVaultWriteError === 'function') {
+                    toastVaultWriteError('Consent could not be saved to the clinic folder. Check folder access.');
+                } else if (typeof showToast === 'function') {
+                    showToast('Consent could not be saved to the clinic folder. Check folder access.');
+                }
             }
-        } catch (err) {
+        } else if (typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
             saveFailed = true;
-            console.warn('Could not save consent document', err);
-            if (typeof toastVaultWriteError === 'function') {
-                toastVaultWriteError('Consent could not be saved to the clinic folder. Check folder access.');
+        }
+        if (saveFailed) {
+            if (typeof copyTextToClipboard === 'function') {
+                copyTextToClipboard(text, 'Consent copied for BP Premier, but it was not saved in DermRecord.');
             } else if (typeof showToast === 'function') {
-                showToast('Consent could not be saved to the clinic folder. Check folder access.');
+                showToast('Consent was not saved to the clinic folder. Check folder access.');
             }
+            return;
         }
-    } else if (typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
-        saveFailed = true;
-    }
-    if (saveFailed) {
         if (typeof copyTextToClipboard === 'function') {
-            copyTextToClipboard(text, 'Consent copied for BP Premier, but it was not saved in DermRecord.');
-        } else if (typeof showToast === 'function') {
-            showToast('Consent was not saved to the clinic folder. Check folder access.');
+            copyTextToClipboard(text, options?.print ? 'Consent copied for BP Premier. Opening print…' : 'Consent copied for BP Premier.');
+        } else {
+            showToast('Consent text is ready, but copy is unavailable.');
         }
-        return;
+        try {
+            if (progress) progress('Marking lesions consented…', 0.75);
+            await markListedLesionsWrittenConsent(data.procedures);
+            importExcisionLesions({ silent: true });
+        } catch (err) {
+            console.warn('Could not mark lesions consented', err);
+            if (typeof showToast === 'function') showToast('Consent was saved, but lesions could not be marked consented.');
+        }
+        excisionConsentSession.issued = true;
+        updateExcisionConsentModalActions();
+        if (options?.print) printConsentHtml(data);
+        if (progress) progress('Consent ready', 1);
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving consent…', generate, {
+            button: document.getElementById('btnGenerateExcisionConsent'),
+            buttonText: options?.print ? 'Printing…' : 'Saving…'
+        });
     }
-    if (typeof copyTextToClipboard === 'function') {
-        copyTextToClipboard(text, options?.print ? 'Consent copied for BP Premier. Opening print…' : 'Consent copied for BP Premier.');
-    } else {
-        showToast('Consent text is ready, but copy is unavailable.');
-    }
-    try {
-        await markListedLesionsWrittenConsent(data.procedures);
-        importExcisionLesions({ silent: true });
-    } catch (err) {
-        console.warn('Could not mark lesions consented', err);
-        if (typeof showToast === 'function') showToast('Consent was saved, but lesions could not be marked consented.');
-    }
-    excisionConsentSession.issued = true;
-    updateExcisionConsentModalActions();
-    if (options?.print) printConsentHtml(data);
+    return generate({});
 }
 
 function printConsentHtml(data) {

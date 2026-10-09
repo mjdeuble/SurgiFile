@@ -577,19 +577,24 @@ function setDiagnosisTypeahead(inputId, value) {
 function initDiagnosisTypeaheads() {
     indexDiagnosisCatalogue();
     bindDiagnosisTypeahead('lesionImpression', {
+        multi: true,
+        hiddenId: 'lesionImpressionCodes',
         onChange: () => {
             if (typeof handleExamDiagnosisChange === 'function') handleExamDiagnosisChange();
         }
     });
     bindDiagnosisTypeahead('assignExcisionDiagnosis', {});
-    bindDiagnosisTypeahead('addConsentDx', {
-        onChange: () => {
-            if (typeof updateConsentRiskPreview === 'function') updateConsentRiskPreview();
-        }
-    });
     bindDiagnosisTypeahead('histologyDiagnosis', {
         onChange: () => {
             if (typeof syncHistologyBillingTypeFromResult === 'function') syncHistologyBillingTypeFromResult();
+        }
+    });
+    bindDiagnosisTypeahead('priorHistologyDiagnosis', {
+        onChange: (value) => {
+            const current = typeof readExamImpression === 'function' ? readExamImpression() : '';
+            if (!current && value && typeof setDiagnosisTypeahead === 'function') {
+                setDiagnosisTypeahead('lesionImpression', value);
+            }
         }
     });
     bindDiagnosisTypeahead('exPathologySearch', {

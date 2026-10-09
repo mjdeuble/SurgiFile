@@ -165,7 +165,7 @@ function collectVisitSessionFromDom() {
         || !!(prev?.visitDate === today && prev?.screeningAsked);
     return {
         visitDate: today,
-        workspaceTab: (tab === 'skin-check' || tab === 'excision-generator') ? tab : 'management',
+    workspaceTab: (typeof isClinicalWorkspaceTab === 'function' ? isClinicalWorkspaceTab(tab) : (tab === 'skin-check' || tab === 'excision-generator')) ? tab : 'management',
         consultType,
         sanitised: consultType === 'face_to_face' || (typeof isBedSanitised !== 'undefined' ? !!isBedSanitised : false),
         patientConcerns: Array.isArray(patientConcerns) ? patientConcerns.slice() : [],
@@ -183,7 +183,7 @@ function isVisitSessionActive(session) {
     if (session.sanitised) return true;
     if ((session.visitLesionIds || []).length) return true;
     if ((session.patientConcerns || []).length) return true;
-    if (session.workspaceTab === 'skin-check' || session.workspaceTab === 'excision-generator') return true;
+    if (typeof isClinicalWorkspaceTab === 'function' ? isClinicalWorkspaceTab(session.workspaceTab) : (session.workspaceTab === 'skin-check' || session.workspaceTab === 'excision-generator')) return true;
     return false;
 }
 
@@ -254,6 +254,54 @@ function examFromDomIsFilled(exam) {
     return !!(exam.scope || exam.fitzpatrick || exam.lastSkinCheck || String(exam.regionalArea || '').trim() || exam.noPatientConcerns);
 }
 
+function screeningFieldValue(value) {
+    if (value === true) return true;
+    if (value === false || value == null || value === '') return '';
+    return String(value);
+}
+
+function screeningFieldsEqual(a, b) {
+    const left = a || {};
+    const right = b || {};
+    const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+    for (const key of keys) {
+        if (screeningFieldValue(left[key]) !== screeningFieldValue(right[key])) return false;
+    }
+    return true;
+}
+
+function formatScreeningOnFileDate(ymd) {
+    const raw = String(ymd || '').trim();
+    if (!raw) return '';
+    const d = new Date(raw.length <= 10 ? raw + 'T00:00:00' : raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function updateScreeningOnFileHint(screening) {
+    const el = document.getElementById('screeningOnFileHint');
+    if (!el) return;
+    const record = screening || currentManagedChart()?.screening || {};
+    const filled = screeningIsFilled(record.groups)
+        || !!(record.completed)
+        || Object.values(record.fields || {}).some(Boolean);
+    if (!filled) {
+        el.classList.add('hidden');
+        el.textContent = '';
+        return;
+    }
+    const sameVisit = !!(record.visitDate && record.visitDate === todayVisitKey());
+    el.classList.remove('hidden');
+    if (sameVisit && (record.completed || (typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete))) {
+        el.textContent = 'Confirmed for this visit.';
+    } else if (record.visitDate) {
+        el.textContent = 'On file from ' + formatScreeningOnFileDate(record.visitDate)
+            + '. Review and complete for this visit if it should go in today’s note.';
+    } else {
+        el.textContent = 'Previous screening is on this chart. Review and complete for this visit if it should go in today’s note.';
+    }
+}
+
 function collectChartScreeningFromDom() {
     const fields = {};
     CHART_SCREENING_FIELDS.forEach((field) => {
@@ -268,12 +316,20 @@ function collectChartScreeningFromDom() {
         dia: groupStates.dia || 'unset',
         hea: groupStates.hea || 'unset'
     };
+    const prev = currentManagedChart()?.screening || {};
+    const filled = screeningIsFilled(groups);
+    const unchanged = screeningFieldsEqual(groups, prev.groups) && screeningFieldsEqual(fields, prev.fields);
+    let visitDate = '';
+    if (screeningMarkedComplete) visitDate = todayVisitKey();
+    else if (unchanged && prev.visitDate) visitDate = prev.visitDate;
+    else if (filled) visitDate = todayVisitKey();
+    else visitDate = prev.visitDate || '';
     return {
         groups,
         fields,
-        filled: screeningIsFilled(groups),
-        completed: !!screeningMarkedComplete,
-        visitDate: (screeningIsFilled(groups) || screeningMarkedComplete) ? todayVisitKey() : ''
+        filled,
+        completed: !!(screeningMarkedComplete || (unchanged && prev.completed)),
+        visitDate
     };
 }
 
@@ -441,13 +497,11 @@ function chartHasLiveWorkspace(chart, chartId) {
         if (typeof procedureSession !== 'undefined' && procedureSession.started && !procedureSession.completedAt) return true;
         if (typeof lesions !== 'undefined' && lesions.length) return true;
         if (typeof patientConcerns !== 'undefined' && patientConcerns.length) return true;
-        if (typeof activeWorkspaceTab !== 'undefined'
-            && (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')) return true;
+        if (typeof isClinicalWorkspaceTab === 'function'
+            ? isClinicalWorkspaceTab(activeWorkspaceTab)
+            : (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')) return true;
         if (typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete) return true;
-        if (typeof groupStates !== 'undefined'
-            && ['canc', 'all', 'bld', 'dia', 'hea'].some((key) => groupStates[key] === 'YES' || groupStates[key] === 'NO')) {
-            return true;
-        }
+        if (typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit()) return true;
     }
     return false;
 }
@@ -798,25 +852,26 @@ function applyChartExamToDom(exam) {
 }
 
 function applyChartScreeningToDom(screening) {
+    const groups = (screening && screening.groups) || {};
+    const fields = (screening && screening.fields) || {};
     const sameVisit = !!(screening && screening.visitDate && screening.visitDate === todayVisitKey());
-    const groups = sameVisit ? (screening.groups || {}) : {};
     ['canc', 'all', 'bld', 'dia', 'hea'].forEach((key) => {
-        const state = sameVisit ? (groups[key] || 'unset') : 'unset';
+        const state = groups[key] || 'unset';
         if (typeof setGroupState === 'function') setGroupState(key, state);
         else groupStates[key] = state;
     });
-    const fields = sameVisit ? (screening.fields || {}) : {};
     CHART_SCREENING_FIELDS.forEach((field) => {
         const el = document.getElementById(field.id);
         if (!el) return;
-        if (field.type === 'checkbox') el.checked = sameVisit && !!fields[field.id];
-        else el.value = sameVisit && fields[field.id] != null ? fields[field.id] : '';
+        if (field.type === 'checkbox') el.checked = !!fields[field.id];
+        else el.value = fields[field.id] != null ? fields[field.id] : '';
     });
-    screeningMarkedComplete = !!(sameVisit && screening.completed);
+    screeningMarkedComplete = !!(sameVisit && screening && screening.completed);
     if (typeof toggleMelanomaSubFields === 'function') toggleMelanomaSubFields();
     if (typeof recalculateRecall === 'function') recalculateRecall();
     if (typeof updateScreeningCompleteButton === 'function') updateScreeningCompleteButton();
     if (typeof updateExamSectionHeaders === 'function') updateExamSectionHeaders();
+    updateScreeningOnFileHint(screening);
 }
 
 function resetScreeningAndExamForm() {
@@ -866,6 +921,7 @@ function resetScreeningAndExamForm() {
         if (typeof applyNoPatientConcerns === 'function') applyNoPatientConcerns(false);
         if (typeof updateScreeningCompleteButton === 'function') updateScreeningCompleteButton();
         if (typeof collapseAllAccordions === 'function') collapseAllAccordions();
+        updateScreeningOnFileHint({});
     } finally {
         applyingChartRecord = false;
     }
@@ -1023,8 +1079,16 @@ function examVisitFingerprint() {
             location: item.location,
             impression: item.impression,
             plan: item.plan,
+            proposedPlan: item.proposedPlan,
             macroscopic: item.macroscopic,
-            dermoscopy: item.dermoscopy
+            dermoscopy: item.dermoscopy,
+            histologyDiagnosis: item.histologyDiagnosis,
+            histologyResult: item.histologyResult,
+            punchSize: item.punchSize,
+            length: item.length,
+            width: item.width,
+            margin: item.margin,
+            procedureCompletedAt: item.procedureCompletedAt
         })),
         concerns: patientConcerns || [],
         procedureStarted: !!(procedureSession && procedureSession.started),
@@ -1324,6 +1388,15 @@ function knownPatientCharts() {
 }
 
 async function openPatientChart(patient, options) {
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Opening chart…', () => openPatientChartWork(patient, options), {
+            join: typeof isAppBusy === 'function' && isAppBusy()
+        });
+    }
+    return openPatientChartWork(patient, options);
+}
+
+async function openPatientChartWork(patient, options) {
     const identity = typeof patientIdentityFromRecord === 'function' ? patientIdentityFromRecord(patient) : patient;
     const name = String(identity?.name || '').trim();
     const dob = String(identity?.dob || '').trim();
@@ -1334,8 +1407,12 @@ async function openPatientChart(patient, options) {
         return false;
     }
     if (hasCurrentPatient() && currentPatient.chartId !== chartId) {
-        await saveCurrentChartFromDom();
-        resetScreeningAndExamForm();
+        if (typeof blockOpenChartWhileVisitActive === 'function') {
+            blockOpenChartWhileVisitActive(chartId);
+        } else {
+            showToast('Finalise this visit before opening another chart.');
+        }
+        return false;
     }
     setCurrentPatient({ ...identity, name, dob, clinician, chartId }, options);
     const chart = await ensureChartRecord({
@@ -1361,7 +1438,7 @@ async function openPatientChart(patient, options) {
             switchWorkspaceTab('excision-generator', { skipCompleteModal: true, skipPersist: true });
         } else {
             const tab = chart?.visitSession?.workspaceTab;
-            if (tab === 'skin-check' || tab === 'excision-generator') {
+            if (typeof isClinicalWorkspaceTab === 'function' ? isClinicalWorkspaceTab(tab) : (tab === 'skin-check' || tab === 'excision-generator')) {
                 switchWorkspaceTab(tab, { skipCompleteModal: true, skipPersist: true });
             }
         }
@@ -1424,7 +1501,9 @@ async function resumeLastChartAfterLogin() {
         return 'procedure';
     }
     if (hasActiveVisit || (typeof activeWorkspaceTab !== 'undefined'
-        && (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator'))) {
+        && (typeof isClinicalWorkspaceTab === 'function'
+            ? isClinicalWorkspaceTab(activeWorkspaceTab)
+            : (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')))) {
         showToast('Visit restored after sign-in.');
         return 'visit';
     }
@@ -1458,7 +1537,7 @@ function sessionNotesShouldPromptClose() {
     const procedureActive = !!(typeof procedureSession !== 'undefined'
         && (procedureSession.started || procedureSession.completedAt));
     const screeningDone = !!(typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete)
-        || !!(typeof groupStates !== 'undefined' && ['canc', 'all', 'bld', 'dia', 'hea'].some((k) => groupStates[k] === 'YES' || groupStates[k] === 'NO'));
+        || (typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit());
     return !!(examFilled || hasVisitLesions || procedureActive || screeningDone);
 }
 
@@ -1473,11 +1552,11 @@ async function closePatientChart(options) {
         return;
     }
     closeFinaliseVisitModal();
+    await saveCurrentChartFromDom({ endVisit: true });
+    if (typeof saveCurrentVisitNotes === 'function') await saveCurrentVisitNotes();
     if (typeof clearStoredProcedureSession === 'function') {
         await clearStoredProcedureSession();
     }
-    await saveCurrentChartFromDom({ endVisit: true });
-    if (typeof saveCurrentVisitNotes === 'function') await saveCurrentVisitNotes();
     resetScreeningAndExamForm();
     clearCurrentPatient();
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
@@ -1493,8 +1572,8 @@ function requestClosePatientChart() {
         return;
     }
     if (typeof procedureSession !== 'undefined' && procedureSession.started) {
-        showToast('Finish the procedure first, then finalise the visit.');
-        if (typeof openProcedureCompleteModal === 'function') openProcedureCompleteModal();
+        showToast('Complete the procedure first, then finalise the visit.');
+        if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('excision-generator', { skipCompleteModal: true });
         return;
     }
     openFinaliseVisitModal();
@@ -1558,9 +1637,18 @@ function refreshFinaliseVisitModal() {
     }
     if (typeof bindFinaliseBillingCopyClicks === 'function') bindFinaliseBillingCopyClicks();
     if (billHint) {
-        billHint.textContent = state.mode === 'process'
-            ? 'Click a site or an item number to copy it into Best Practice. Same-day procedures bill together. Copy what you need, then mark processed and close so billing is not an extra step.'
-            : 'HOLD until histology. Click each expected item number as a placeholder for reception; change it if the result differs.';
+        const mixed = !!(state.summary && state.summary.mixed);
+        const allBiopsy = !!(state.summary && state.summary.rows && state.summary.rows.length
+            && state.summary.rows.every((row) => row.kind === 'biopsy'));
+        if (state.mode === 'process' && allBiopsy) {
+            billHint.textContent = '30071 can be billed at the procedure. Click a site or item number to copy it into Best Practice, then mark processed and close.';
+        } else if (state.mode === 'process' && mixed) {
+            billHint.textContent = 'Bill ready items now (30071, suspected melanoma, or known histology). Hold the rest until histology is in. Click a site or item number to copy it into Best Practice.';
+        } else if (state.mode === 'process') {
+            billHint.textContent = 'Click a site or an item number to copy it into Best Practice. Same-day procedures bill together. Copy what you need, then mark processed and close so billing is not an extra step.';
+        } else {
+            billHint.textContent = 'HOLD this excision until histology is in. 30071, suspected melanoma, and lesions with known histology can be billed at the procedure. Click each expected item as a placeholder; change it if the result differs.';
+        }
     }
 
     const iemrCopied = typeof outputCopyState !== 'undefined' && outputCopyState.emr
@@ -1607,19 +1695,26 @@ function refreshFinaliseVisitModal() {
 }
 
 function copyFinaliseVisitIemr() {
-    const text = document.getElementById('finaliseIemrPreview')?.value || '';
+    const preview = String(document.getElementById('finaliseIemrPreview')?.value || '').trim();
+    const text = preview
+        || (typeof generateCompleteInteractionNote === 'function' ? generateCompleteInteractionNote() : '')
+        || (typeof generateEMRNotePlainText === 'function' ? generateEMRNotePlainText() : '');
     if (!text) {
         showToast('No IEMR note to copy yet.');
         return;
     }
-    if (typeof copyTodaysClinicalNote === 'function') {
-        copyTodaysClinicalNote();
-    } else {
-        copyTextToClipboard(text, 'IEMR copied for Best Practice.', () => {
-            if (typeof markOutputCopied === 'function') markOutputCopied('emr', text);
-            if (typeof markChartIemrCopied === 'function') markChartIemrCopied(text);
-        });
-    }
+    const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
+    const alreadyCopied = (typeof chartExamAlreadyCopiedToday === 'function' && chartExamAlreadyCopiedToday(chart))
+        || !!(typeof outputCopyState !== 'undefined' && outputCopyState.emr && outputCopyState.emr.copied);
+    const toast = alreadyCopied
+        ? 'Full visit note copied. It may duplicate content already in Best Practice — replace the note there rather than append.'
+        : 'Today’s clinical note copied for Best Practice.';
+    copyTextToClipboard(text, toast, () => {
+        if (typeof markOutputCopied === 'function') markOutputCopied('emr', text);
+        if (typeof markChartIemrCopied === 'function') markChartIemrCopied(text);
+        if (typeof persistCopiedIemrNote === 'function') persistCopiedIemrNote(text);
+        else if (typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
+    });
     setTimeout(() => refreshFinaliseVisitModal(), 200);
 }
 
@@ -1658,12 +1753,27 @@ function copyFinaliseVisitBilling() {
 }
 
 async function submitFinaliseVisit() {
+    const work = async ({ progress }) => {
+        if (progress) progress('Finalising visit…', 0.15);
+        await submitFinaliseVisitWork();
+        if (progress) progress('Visit closed', 1);
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Finalising visit…', work, {
+            button: document.getElementById('btnFinaliseVisitClose'),
+            buttonText: 'Finalising…'
+        });
+    }
+    return submitFinaliseVisitWork();
+}
+
+async function submitFinaliseVisitWork() {
     const lesions = typeof visitProcedureLesionsForFinalise === 'function' ? visitProcedureLesionsForFinalise() : [];
     const state = typeof visitFinaliseBillingState === 'function'
         ? visitFinaliseBillingState(lesions)
         : { mode: lesions.length ? 'hold' : 'close' };
     if (state.mode === 'process' && typeof markVisitLesionsBillingProcessed === 'function') {
-        const result = await markVisitLesionsBillingProcessed(lesions);
+        const result = await markVisitLesionsBillingProcessed(state.lesions || lesions);
         await closePatientChart({ force: true, silent: true });
         const codes = (result.codes || []).filter(Boolean).join(' · ');
         showToast(codes
@@ -1738,9 +1848,15 @@ if (typeof document !== 'undefined') {
 function updateChartChrome() {
     const open = hasCurrentPatient();
     const closeBtn = document.getElementById('btnHeaderCloseChart');
-    const mgmtClose = document.getElementById('btnMgmtCloseChart');
     if (closeBtn) closeBtn.classList.toggle('hidden', !open);
-    if (mgmtClose) mgmtClose.classList.toggle('hidden', !open);
+    if (typeof syncOpenChartSearchGate === 'function') syncOpenChartSearchGate();
+    const filterBar = document.getElementById('practiceFilterBar') || document.getElementById('mgmtFilterBar');
+    if (filterBar) filterBar.classList.toggle('hidden', open);
+    const counts = document.getElementById('mgmtCounts');
+    if (counts && open) {
+        counts.classList.add('hidden');
+        counts.textContent = '';
+    }
     const banner = document.getElementById('mgmtChartBanner');
     const title = document.getElementById('mgmtBoardTitle');
     const iemrEl = document.getElementById('mgmtIemrStatus');
@@ -1750,7 +1866,6 @@ function updateChartChrome() {
     if (sub) {
         sub.textContent = open
             ? ([currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ')
-                + ' · This chart only. Close the chart to see every patient’s lesions.'
                 + (typeof formatScratchpadExpiry === 'function' && formatScratchpadExpiry(currentPatient.chartId)
                     ? ' · Finished work is kept 14 days (' + formatScratchpadExpiry(currentPatient.chartId) + ').'
                     : ''))
@@ -1761,5 +1876,6 @@ function updateChartChrome() {
         iemrEl.textContent = open ? iemrCopyStatusLabel() : '';
     }
     if (typeof renderPatientChartSummary === 'function') renderPatientChartSummary();
+    if (typeof syncChartLesionWorkspace === 'function') syncChartLesionWorkspace();
     updateHeaderPatient();
 }

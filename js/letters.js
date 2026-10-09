@@ -316,13 +316,20 @@ function generateClinicalLetterPlainText(options) {
         selected.forEach((lesion, idx) => {
             const n = idx + 1;
             const site = String(lesion.location || 'Unspecified site').trim();
+            lines.push('');
+            letterPushWrapped(lines, n + '. ' + site);
+            const episode = typeof formatLesionEpisodePlainText === 'function'
+                ? formatLesionEpisodePlainText(lesion, { indent: '   ' })
+                : '';
+            if (episode) {
+                episode.split('\n').forEach((row) => letterPushWrapped(lines, row));
+                return;
+            }
             const dx = letterDiagnosis(lesion) || 'Unspecified';
             const macro = String(lesion.macroscopic || '').trim();
             const derm = String(lesion.dermoscopy || '').trim();
             const histo = letterHistologyLine(lesion);
             const mgmt = letterManagementLine(lesion);
-            lines.push('');
-            letterPushWrapped(lines, n + '. ' + site);
             letterPushWrapped(lines, '   Clinical impression: ' + dx);
             if (macro && macro !== 'Unspecified') letterPushWrapped(lines, '   Macroscopic: ' + macro);
             if (derm && derm !== 'Unspecified') letterPushWrapped(lines, '   Dermoscopy: ' + derm);
@@ -390,12 +397,20 @@ function openLetterModal(options) {
     syncLetterModalFromDraft();
     renderLetterLesionChecklist();
     refreshLetterPreview();
+    if (typeof openInspectorToolPane === 'function' && typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        openInspectorToolPane('letter');
+        syncLetterModalFromDraft();
+        renderLetterLesionChecklist();
+        refreshLetterPreview();
+        return;
+    }
     modal.classList.remove('hidden');
 }
 
 function closeLetterModal() {
     const modal = document.getElementById('letterModal');
     if (modal) modal.classList.add('hidden');
+    if (typeof closeInspectorToolPane === 'function') closeInspectorToolPane('letter');
 }
 
 function syncLetterModalFromDraft() {

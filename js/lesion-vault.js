@@ -30,12 +30,20 @@ const ACTIVE_MANAGEMENT_STATUSES = [
 
 const POST_RESULT_FOLLOWUP_STATUSES = ['awaiting_histology', 'needs_contact', 'appointment_requested'];
 
+const REQUIRES_MANAGEMENT_STATUSES = [
+    'awaiting_assessment',
+    'needs_contact',
+    'appointment_requested'
+];
+
+const REQUIRES_MANAGEMENT_FILTERS = ['requires_management', 'needs_contact', 'appointment_requested'];
+
 const LEGACY_STATUS_ALIASES = {
     planned_excision: 'planned_procedure',
     awaiting_biopsy: 'planned_procedure'
 };
 
-const TIMELINE_TYPES = ['call_attempt', 'voicemail', 'sms', 'spoke', 'result_advised', 'plan', 'procedure', 'abort', 'histology', 'consent'];
+const TIMELINE_TYPES = ['call_attempt', 'voicemail', 'sms', 'spoke', 'result_advised', 'appointment_requested', 'plan', 'procedure', 'abort', 'histology', 'consent', 'note'];
 const CALL_OUTCOMES = ['no answer', 'voicemail', 'spoke', 'declined', 'booked', 'patient not ready'];
 
 function newLesionId() {
@@ -57,20 +65,25 @@ function lesionHasSavedHistology(lesion) {
     return !!String(lesion?.histologyResult || '').trim();
 }
 
+function lesionIsClinicallyFinalised(lesion) {
+    if (!lesion) return false;
+    if (lesion.linkedReexcisionId || (typeof lesionIsSupersededByReexcision === 'function' && lesionIsSupersededByReexcision(lesion))) {
+        return true;
+    }
+    return canonicalLesionStatus(lesion.managementStatus) === 'no_followup';
+}
+
 function statusAfterSavedHistology(lesion) {
     if (lesion?.linkedReexcisionId || (typeof lesionIsSupersededByReexcision === 'function' && lesionIsSupersededByReexcision(lesion))) {
         return 'no_followup';
     }
     const contact = lesion?.contactState || '';
     const plan = lesion?.resultPlan || '';
-    const advised = !!lesion?.resultAdvisedAt || contact === 'advised_now' || contact === 'file_no_call';
+    if (plan === 'no_followup') return 'no_followup';
     if (contact === 'appointment_requested') return 'appointment_requested';
-    if (advised && plan === 'no_followup' && typeof lesionCanCloseNoFollowup === 'function' && lesionCanCloseNoFollowup(lesion)) {
-        return 'no_followup';
-    }
     const stored = canonicalLesionStatus(lesion?.managementStatus);
-    if (stored === 'appointment_requested' && !advised) return 'appointment_requested';
     if (stored === 'no_followup') return 'no_followup';
+    if (stored === 'appointment_requested') return 'appointment_requested';
     return 'needs_contact';
 }
 
@@ -79,10 +92,11 @@ function planLineAfterSavedHistology(lesion, status) {
         ? 'advised_now'
         : (lesion?.contactState || 'mark_for_contact');
     const extras = { fileNoCall: lesion?.contactState === 'file_no_call' };
-    if (status === 'no_followup') return 'No follow-up';
-    if (status === 'needs_contact' && lesion?.resultPlan === 'no_followup' && lesion?.resultAdvisedAt
-        && typeof lesionCanCloseNoFollowup === 'function' && !lesionCanCloseNoFollowup(lesion)) {
-        return 'No follow-up — billing pending';
+    if (status === 'no_followup') {
+        if (typeof lesionCanCloseNoFollowup === 'function' && !lesionCanCloseNoFollowup(lesion)) {
+            return 'No follow-up — billing pending';
+        }
+        return 'No follow-up';
     }
     if (status === 'needs_contact' && isFurtherManagementPlan(lesion?.resultPlan) && lesion?.resultAdvisedAt) {
         return 'Further management — set plan on linked lesion';
@@ -122,6 +136,18 @@ function lesionLifecycleStatus(lesion) {
 
 function isActiveManagementStatus(status) {
     return ACTIVE_MANAGEMENT_STATUSES.includes(canonicalLesionStatus(status));
+}
+
+function isRequiresManagementStatus(status) {
+    return REQUIRES_MANAGEMENT_STATUSES.includes(canonicalLesionStatus(status));
+}
+
+function isRequiresManagementFilter(filter) {
+    return REQUIRES_MANAGEMENT_FILTERS.includes(String(filter || ''));
+}
+
+function isCompletedManagementFilter(filter) {
+    return filter === 'completed' || filter === 'no_followup';
 }
 
 function isPostResultFollowupStatus(status) {
@@ -392,6 +418,18 @@ function findLiveReexcisionChild(prior) {
     return findLinkedReexcisionChild(prior.id);
 }
 
+function lesionHasOwnCompletedEpisode(lesion) {
+    return !!(lesion
+        && typeof lesionProcedureDone === 'function'
+        && lesionProcedureDone(lesion)
+        && lesionHasSavedHistology(lesion));
+}
+
+function findExistingChildOfPrior(priorId) {
+    if (!priorId) return null;
+    return findLinkedReexcisionChild(priorId) || collectReexcisionChildren(priorId)[0] || null;
+}
+
 function latestReexcisionEpisode(lesion) {
     let current = lesion;
     const seen = new Set();
@@ -424,8 +462,15 @@ function lesionIsOrphanReexcisionDuplicate(lesion) {
     return !!(canonical && String(canonical.id) !== String(lesion.id));
 }
 
+function lesionIsPreviousProcedure(lesion) {
+    if (!lesion) return false;
+    if (lesionIsOrphanReexcisionDuplicate(lesion)) return false;
+    if (lesion.linkedReexcisionId || lesion.linkedChildId) return true;
+    return lesionIsSupersededByReexcision(lesion);
+}
+
 function lesionIsHiddenByReexcisionLink(lesion) {
-    return lesionIsSupersededByReexcision(lesion) || lesionIsOrphanReexcisionDuplicate(lesion);
+    return lesionIsOrphanReexcisionDuplicate(lesion);
 }
 
 function lesionBelongsToOpenChart(lesion) {
@@ -471,11 +516,8 @@ function lesionCanBookReexcision(lesion) {
 
 function lesionCanSpawnReexcision(lesion) {
     if (!lesion?.id) return false;
-    if (!lesionHasSavedHistology(lesion)) return false;
-    if (findLinkedReexcisionChild(lesion.id)) return false;
-    const child = findLiveReexcisionChild(lesion);
-    if (child && !lesionProcedureDone(child) && lesionLifecycleStatus(child) !== 'no_followup') return false;
-    return true;
+    if (!lesionHasOwnCompletedEpisode(lesion)) return false;
+    return collectReexcisionChildren(lesion.id).length === 0;
 }
 
 function lesionNeedsNewReexcisionRecord(lesion) {
@@ -581,8 +623,16 @@ function stampHistologyBatchForProcedure(lesionList) {
     return batchId;
 }
 
+function lesionHasCopiedPriorHistology(lesion) {
+    if (!lesion) return false;
+    return !!(String(lesion.priorHistologyResult || '').trim()
+        || String(lesion.priorHistologyDiagnosis || '').trim()
+        || String(lesion.priorHistologyCaseNumber || '').trim());
+}
+
 function histologyAccessionParts(lesion, mode) {
-    const autoPrior = mode === 'prior' || (mode !== 'own' && lesion?.priorLesionId);
+    const autoPrior = mode === 'prior'
+        || (mode !== 'own' && !!(lesion?.priorLesionId || lesionHasCopiedPriorHistology(lesion)));
     if (autoPrior) {
         return {
             number: normalizeHistologyCaseNumber(lesion?.priorHistologyCaseNumber),
@@ -605,16 +655,55 @@ function formatHistologyAccession(lesion, mode) {
     return parts.pot ? (parts.number + ', pot ' + parts.pot) : parts.number;
 }
 
+function formatPriorProcedureDate(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function priorHistologySourceLabel(lesion) {
+    const named = String(lesion?.priorHistologySourceName || '').trim();
+    if (named) return named;
+    const source = String(lesion?.priorHistologySource || '');
+    if (source === 'colleague') return 'colleague / external clinic';
+    if (source === 'own_notes') return 'old chart';
+    return '';
+}
+
 function formatPriorHistologyCitation(lesion) {
     const cited = typeof lesionWithPriorHistologyCitation === 'function'
         ? lesionWithPriorHistologyCitation(lesion)
         : lesion;
-    const accession = formatHistologyAccession(cited, 'prior');
-    if (!accession) return '';
     const parts = histologyAccessionParts(cited, 'prior');
-    let text = 'Previous histology ' + accession;
-    if (parts.kind) text += ' (' + parts.kind + ')';
-    if (parts.result) text += ': ' + parts.result;
+    const accession = formatHistologyAccession(cited, 'prior');
+    const dx = typeof formatDiagnosisDisplay === 'function'
+        ? formatDiagnosisDisplay(cited?.priorHistologyDiagnosis || '')
+        : String(cited?.priorHistologyDiagnosis || '').trim();
+    const result = parts.result || '';
+    const date = formatPriorProcedureDate(cited?.priorProcedureAt);
+    const source = priorHistologySourceLabel(cited);
+    if (!accession && !result && !dx && !date && !parts.kind) return '';
+    let text = 'Previous histology';
+    if (date) text += ' ' + date;
+    if (accession) text += ' ' + accession;
+    if (parts.kind) {
+        const kindLabel = ({
+            punch: 'punch biopsy',
+            shave: 'shave',
+            excision: 'excision',
+            incisional: 'incisional biopsy'
+        })[parts.kind] || parts.kind;
+        text += ' (' + kindLabel + ')';
+    }
+    if (source) text += ' · ' + source;
+    const breslow = String(cited?.priorBreslowMm || '').trim();
+    if (breslow) text += ' · Breslow ' + breslow + ' mm';
+    const detail = dx && result && dx.toLowerCase() !== result.toLowerCase()
+        ? dx + '. ' + result
+        : (dx || result);
+    if (detail) text += ': ' + detail;
     return text;
 }
 
@@ -629,6 +718,11 @@ function lesionWithPriorHistologyCitation(lesion) {
         priorHistologyCaseNumber: lesion.priorHistologyCaseNumber || prior.histologyCaseNumber || '',
         priorHistologyPot: lesion.priorHistologyPot || prior.histologyPot || '',
         priorHistologyResult: lesion.priorHistologyResult || prior.histologyResult || '',
+        priorHistologyDiagnosis: lesion.priorHistologyDiagnosis || prior.histologyDiagnosis || '',
+        priorProcedureAt: lesion.priorProcedureAt || prior.histologyAt || prior.priorProcedureAt || '',
+        priorHistologySource: lesion.priorHistologySource || prior.priorHistologySource || '',
+        priorHistologySourceName: lesion.priorHistologySourceName || prior.priorHistologySourceName || '',
+        priorBreslowMm: lesion.priorBreslowMm || prior.priorBreslowMm || '',
         priorProcedureKind: kind
     };
 }
@@ -654,7 +748,13 @@ function copyPriorHistologyFromLesion(prior, extras) {
     return {
         priorHistologyCaseNumber: normalizeHistologyCaseNumber(extras.priorHistologyCaseNumber || prior?.histologyCaseNumber),
         priorHistologyPot: normalizeHistologyPot(extras.priorHistologyPot || prior?.histologyPot),
-        priorHistologyResult: String(extras.priorHistologyResult || prior?.histologyResult || '').trim()
+        priorHistologyResult: String(extras.priorHistologyResult || prior?.histologyResult || '').trim(),
+        priorHistologyDiagnosis: String(extras.priorHistologyDiagnosis || prior?.histologyDiagnosis || '').trim(),
+        priorProcedureKind: extras.priorProcedureKind || prior?.priorProcedureKind || '',
+        priorProcedureAt: extras.priorProcedureAt || prior?.histologyAt || prior?.priorProcedureAt || '',
+        priorHistologySource: extras.priorHistologySource || prior?.priorHistologySource || '',
+        priorHistologySourceName: extras.priorHistologySourceName || prior?.priorHistologySourceName || '',
+        priorBreslowMm: extras.priorBreslowMm || prior?.priorBreslowMm || ''
     };
 }
 
@@ -782,6 +882,9 @@ function buildReexcisionLesionFromPrior(prior, extras) {
         chartId: extras.chartId || prior.chartId || patient.chartId || '',
         phone: extras.phone || prior.phone || patient.patientPhone || ''
     };
+    if (typeof applyInferredBillingLesionType === 'function') {
+        applyInferredBillingLesionType(child);
+    }
     return child;
 }
 
@@ -841,6 +944,9 @@ function buildManagementChildFromPrior(prior, extras) {
         chartId: extras.chartId || prior.chartId || patient.chartId || '',
         phone: extras.phone || prior.phone || patient.patientPhone || ''
     };
+    if (typeof applyInferredBillingLesionType === 'function') {
+        applyInferredBillingLesionType(child);
+    }
     return child;
 }
 
@@ -879,6 +985,43 @@ async function persistManagementChild(child) {
     return child;
 }
 
+const spawnChildInFlight = new Map();
+
+async function reopenExistingChildOfPrior(prior, child, extras) {
+    extras = extras || {};
+    const now = new Date().toISOString();
+    const template = buildManagementChildFromPrior(prior, extras);
+    const keepExcision = !lesionProcedureDone(child)
+        && (child.type === 'excision'
+            || (typeof lesionIsOpenReexcisionPlan === 'function' && lesionIsOpenReexcisionPlan(child))
+            || String(child.plan || '').includes('Excision'));
+    child.updatedAt = now;
+    if (extras.location) child.location = extras.location;
+    if (extras.impression) child.impression = extras.impression;
+    if (typeof copyPriorHistologyFromLesion === 'function') {
+        Object.assign(child, copyPriorHistologyFromLesion(prior, extras));
+    }
+    if (!keepExcision) {
+        child.managementStatus = template.managementStatus;
+        child.proposedPlan = template.proposedPlan || child.proposedPlan || '';
+        child.proposedPlanNote = template.proposedPlanNote || child.proposedPlanNote || '';
+        child.currentPlan = extras.currentPlan || formatProposedManagementPlan(child);
+        child.contactState = template.contactState;
+        child.resultAdvisedAt = template.resultAdvisedAt || child.resultAdvisedAt || '';
+        child.contactUrgent = !!template.contactUrgent;
+        if (typeof appendLesionTimeline === 'function') {
+            appendLesionTimeline(child, {
+                type: 'plan',
+                note: 'Reopened the existing linked lesion instead of adding another child',
+                planAfter: child.currentPlan
+            });
+        }
+    }
+    await persistManagementChild(child);
+    await closePriorLesionAfterReexcision(prior, child);
+    return child;
+}
+
 async function spawnFurtherManagementChild(prior, extras) {
     extras = extras || {};
     if (!prior?.id) return null;
@@ -886,23 +1029,43 @@ async function spawnFurtherManagementChild(prior, extras) {
         showToast('Save histology before opening further management.');
         return null;
     }
-    const existing = findLinkedReexcisionChild(prior.id);
-    if (existing && !lesionProcedureDone(existing)) {
-        const existingStatus = lesionLifecycleStatus(existing);
-        if (existingStatus !== 'no_followup') return existing;
+    const key = String(prior.id);
+    if (spawnChildInFlight.has(key)) return spawnChildInFlight.get(key);
+
+    const work = (async () => {
+        const existing = findExistingChildOfPrior(prior.id);
+        if (existing) {
+            if (lesionHasOwnCompletedEpisode(existing)) return existing;
+            const status = lesionLifecycleStatus(existing);
+            const open = !lesionProcedureDone(existing) && status !== 'no_followup';
+            if (open) {
+                if (String(prior.linkedReexcisionId || prior.linkedChildId) !== String(existing.id)) {
+                    await closePriorLesionAfterReexcision(prior, existing);
+                }
+                return existing;
+            }
+            return reopenExistingChildOfPrior(prior, existing, extras);
+        }
+        const child = buildManagementChildFromPrior(prior, extras);
+        await persistManagementChild(child);
+        await closePriorLesionAfterReexcision(prior, child);
+        const savedPrior = managedLesions.find((item) => String(item.id) === String(prior.id));
+        if (savedPrior) {
+            savedPrior.resultPlan = 'further_management';
+            savedPrior.linkedChildId = String(child.id);
+            savedPrior.linkedReexcisionId = String(child.id);
+            await writeManagedLesion(savedPrior);
+            upsertManagedLesionMemory(savedPrior);
+        }
+        return child;
+    })();
+
+    spawnChildInFlight.set(key, work);
+    try {
+        return await work;
+    } finally {
+        spawnChildInFlight.delete(key);
     }
-    const child = buildManagementChildFromPrior(prior, extras);
-    await persistManagementChild(child);
-    await closePriorLesionAfterReexcision(prior, child);
-    const savedPrior = managedLesions.find((item) => String(item.id) === String(prior.id));
-    if (savedPrior) {
-        savedPrior.resultPlan = 'further_management';
-        savedPrior.linkedChildId = String(child.id);
-        savedPrior.linkedReexcisionId = String(child.id);
-        await writeManagedLesion(savedPrior);
-        upsertManagedLesionMemory(savedPrior);
-    }
-    return child;
 }
 
 function consentRank(status) {
@@ -965,6 +1128,9 @@ function deriveLesionStatusFromPlan(record) {
         return 'no_followup';
     }
     if (plan.includes('Monitor')) return 'no_followup';
+    if (typeof isDeclineTreatmentPlan === 'function' ? isDeclineTreatmentPlan(plan) : /Declines Treatment/i.test(plan)) {
+        return 'no_followup';
+    }
     return 'awaiting_assessment';
 }
 
@@ -982,12 +1148,22 @@ function defaultPlanLine(lesion) {
     if (status === 'current_case') return 'In theatre now';
     if (status === 'planned_procedure') {
         if (lesion?.priorLesionId && type === 'excision') return 'Re-excision planned';
+        if (typeof lesionHasCopiedPriorHistology === 'function'
+            ? lesionHasCopiedPriorHistology(lesion)
+            : !!(lesion?.priorHistologyResult || lesion?.priorHistologyCaseNumber)) {
+            return type === 'excision' ? 'Excision planned after prior histology' : 'Procedure planned after prior histology';
+        }
         if (type === 'excision') return 'Excision planned';
         if (type === 'shave') return 'Shave biopsy planned';
         if (type === 'punch') return 'Punch biopsy planned';
         return 'Procedure planned';
     }
     if (status === 'topical_followup') return 'Topical follow-up';
+    if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion?.plan)) {
+        return typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(lesion)
+            ? formatDeclinePlanSummary(lesion)
+            : 'Declined recommended treatment';
+    }
     if (status === 'no_followup') return 'No follow-up';
     if (status === 'awaiting_assessment') return 'Awaiting assessment';
     return String(lesion?.plan || '').trim();
@@ -996,6 +1172,13 @@ function defaultPlanLine(lesion) {
 function ensureLesionTimeline(lesion) {
     if (!Array.isArray(lesion.timeline)) lesion.timeline = [];
     return lesion.timeline;
+}
+
+function appendLesionNote(lesion, text) {
+    const note = String(text || '').trim();
+    if (!lesion || !note) return null;
+    lesion.adminCallNote = note;
+    return appendLesionTimeline(lesion, { type: 'note', note });
 }
 
 function appendLesionTimeline(lesion, event) {
@@ -1318,6 +1501,35 @@ function hasCurrentPatient() {
     return !!(currentPatient && currentPatient.chartId);
 }
 
+function blockOpenChartWhileVisitActive(nextChartId) {
+    if (!hasCurrentPatient()) return false;
+    const next = String(nextChartId || '').trim();
+    if (next && String(currentPatient.chartId || '') === next) return false;
+    showToast('Finalise this visit before opening another chart.');
+    return true;
+}
+
+function blockAddPatientWhileVisitActive() {
+    if (!hasCurrentPatient()) return false;
+    showToast('Finalise this visit before adding another patient.');
+    return true;
+}
+
+function syncOpenChartSearchGate() {
+    const open = hasCurrentPatient();
+    const el = document.getElementById('headerOpenChartTools');
+    if (el) el.classList.toggle('hidden', open);
+    if (open && typeof hideChartSearchResults === 'function') hideChartSearchResults();
+}
+
+function onHeaderPatientButtonClick() {
+    if (hasCurrentPatient()) {
+        if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
+        return;
+    }
+    focusPracticeBoardSearch();
+}
+
 function splitPatientName(full) {
     const raw = String(full || '').trim();
     if (!raw) return { firstName: '', lastName: '' };
@@ -1337,6 +1549,150 @@ function composePatientName(firstName, lastName, fallback) {
 
 function normalizePhoneDigits(phone) {
     return String(phone || '').replace(/\D/g, '');
+}
+
+function formatAuPhoneDisplay(raw) {
+    let digits = normalizePhoneDigits(raw);
+    if (!digits) return '';
+    if (digits.startsWith('61') && digits.length >= 9) digits = '0' + digits.slice(2);
+    if (digits.length <= 9 && digits.startsWith('4') && !digits.startsWith('04')) digits = '0' + digits;
+    digits = digits.slice(0, 10);
+    if (digits.startsWith('04')) {
+        if (digits.length <= 4) return digits;
+        if (digits.length <= 7) return digits.slice(0, 4) + ' ' + digits.slice(4);
+        return digits.slice(0, 4) + ' ' + digits.slice(4, 7) + ' ' + digits.slice(7);
+    }
+    if (digits.startsWith('0')) {
+        if (digits.length <= 2) return digits;
+        if (digits.length <= 6) return '(' + digits.slice(0, 2) + ') ' + digits.slice(2);
+        return '(' + digits.slice(0, 2) + ') ' + digits.slice(2, 6) + ' ' + digits.slice(6);
+    }
+    return digits;
+}
+
+function padDobPart(value, size) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length >= size ? digits.slice(0, size) : digits.padStart(size, '0');
+}
+
+function parseDobDigits(raw) {
+    const digits = String(raw || '').replace(/\D/g, '');
+    return {
+        day: digits.slice(0, 2),
+        month: digits.slice(2, 4),
+        year: digits.slice(4, 8)
+    };
+}
+
+function composeChartPatientDob(day, month, year) {
+    const dd = padDobPart(day, 2);
+    const mm = padDobPart(month, 2);
+    const yyyy = String(year || '').replace(/\D/g, '').slice(0, 4);
+    if (!dd && !mm && !yyyy) return '';
+    if (yyyy.length !== 4) return '';
+    const d = Number(dd);
+    const m = Number(mm);
+    const y = Number(yyyy);
+    if (!d || d < 1 || d > 31 || !m || m < 1 || m > 12 || y < 1900) return '';
+    const dt = new Date(y, m - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return '';
+    if (dt.getTime() > Date.now()) return '';
+    return dd + '/' + mm + '/' + yyyy;
+}
+
+function readChartPatientDobFields() {
+    return composeChartPatientDob(
+        document.getElementById('chartPatientDobDay')?.value,
+        document.getElementById('chartPatientDobMonth')?.value,
+        document.getElementById('chartPatientDobYear')?.value
+    );
+}
+
+function fillChartPatientDobFields(raw) {
+    const parts = parseDobDigits(raw);
+    const dayEl = document.getElementById('chartPatientDobDay');
+    const monthEl = document.getElementById('chartPatientDobMonth');
+    const yearEl = document.getElementById('chartPatientDobYear');
+    if (dayEl) dayEl.value = parts.day;
+    if (monthEl) monthEl.value = parts.month;
+    if (yearEl) yearEl.value = parts.year;
+    syncChartPatientDobHidden();
+}
+
+function syncChartPatientDobHidden() {
+    const hidden = document.getElementById('chartPatientDob');
+    if (hidden) hidden.value = readChartPatientDobFields();
+}
+
+function dobSegmentShouldAdvance(el, maxLen) {
+    const digits = String(el?.value || '').replace(/\D/g, '');
+    if (digits.length >= maxLen) return true;
+    if (maxLen !== 2 || digits.length !== 1) return false;
+    const n = Number(digits);
+    if (el.id === 'chartPatientDobDay') return n >= 4;
+    if (el.id === 'chartPatientDobMonth') return n >= 2;
+    return false;
+}
+
+function bindChartPatientDobSegment(el, nextId, prevId, maxLen) {
+    if (!el || el.dataset.dobBound === '1') return;
+    el.dataset.dobBound = '1';
+    el.addEventListener('input', () => {
+        el.value = String(el.value || '').replace(/\D/g, '').slice(0, maxLen);
+        syncChartPatientDobHidden();
+        if (dobSegmentShouldAdvance(el, maxLen) && nextId) {
+            document.getElementById(nextId)?.focus();
+            document.getElementById(nextId)?.select();
+        }
+    });
+    el.addEventListener('keydown', (event) => {
+        if (event.key === 'Backspace' && !el.value && prevId) {
+            event.preventDefault();
+            const prev = document.getElementById(prevId);
+            if (prev) {
+                prev.focus();
+                prev.select();
+            }
+        }
+    });
+    el.addEventListener('blur', () => {
+        if (maxLen === 2 && el.value) el.value = padDobPart(el.value, 2);
+        syncChartPatientDobHidden();
+    });
+    el.addEventListener('paste', (event) => {
+        const text = (event.clipboardData || window.clipboardData)?.getData('text') || '';
+        const digits = String(text).replace(/\D/g, '');
+        if (digits.length < 8) return;
+        event.preventDefault();
+        fillChartPatientDobFields(digits);
+        document.getElementById('chartPatientPhone')?.focus();
+    });
+}
+
+function bindChartPatientIdentityFields() {
+    const dayEl = document.getElementById('chartPatientDobDay');
+    const monthEl = document.getElementById('chartPatientDobMonth');
+    const yearEl = document.getElementById('chartPatientDobYear');
+    const phoneEl = document.getElementById('chartPatientPhone');
+    bindChartPatientDobSegment(dayEl, 'chartPatientDobMonth', '', 2);
+    bindChartPatientDobSegment(monthEl, 'chartPatientDobYear', 'chartPatientDobDay', 2);
+    bindChartPatientDobSegment(yearEl, 'chartPatientPhone', 'chartPatientDobMonth', 4);
+    if (phoneEl && phoneEl.dataset.phoneBound !== '1') {
+        phoneEl.dataset.phoneBound = '1';
+        phoneEl.addEventListener('input', () => {
+            phoneEl.value = formatAuPhoneDisplay(phoneEl.value);
+        });
+        phoneEl.addEventListener('blur', () => {
+            phoneEl.value = formatAuPhoneDisplay(phoneEl.value);
+        });
+        phoneEl.addEventListener('paste', (event) => {
+            const text = (event.clipboardData || window.clipboardData)?.getData('text') || '';
+            if (!text) return;
+            event.preventDefault();
+            phoneEl.value = formatAuPhoneDisplay(text);
+        });
+    }
 }
 
 function patientIdentityFromRecord(source) {
@@ -1473,8 +1829,9 @@ function updateHeaderPatient() {
     if (dobEl) {
         dobEl.textContent = hasCurrentPatient()
             ? [currentPatient.dob, currentPatient.phone, currentPatient.clinician].filter(Boolean).join(' · ')
-            : 'Search the practice board to open a chart';
+            : 'Search to open a chart';
     }
+    if (typeof syncOpenChartSearchGate === 'function') syncOpenChartSearchGate();
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
 }
 
@@ -1500,6 +1857,9 @@ function setCurrentPatient(patient, options) {
     const dob = identity.dob;
     const clinician = (typeof loggedInDoctorName === 'function' && loggedInDoctorName()) || '';
     const chartId = identity.chartId || patientChartId(name, dob);
+    if (!options?.allowChartSwitch && blockOpenChartWhileVisitActive(chartId)) {
+        return;
+    }
     const changed = chartId !== (currentPatient.chartId || '');
     currentPatient = {
         name,
@@ -1525,7 +1885,9 @@ function setCurrentPatient(patient, options) {
         if (typeof renderLesionsTable === 'function') renderLesionsTable();
         if (typeof renderPatientConcerns === 'function') renderPatientConcerns();
         if (typeof updateOutput === 'function') updateOutput();
-        if (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator') {
+        if (typeof isClinicalWorkspaceTab === 'function'
+            ? isClinicalWorkspaceTab(activeWorkspaceTab)
+            : (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')) {
             switchWorkspaceTab('management');
         }
     }
@@ -1629,7 +1991,7 @@ function searchPatientCharts(query) {
 }
 
 function hideChartSearchResults() {
-    ['headerChartSearchResults', 'boardChartSearchResults'].forEach((id) => {
+    ['headerChartSearchResults'].forEach((id) => {
         const el = document.getElementById(id);
         if (!el) return;
         el.classList.add('hidden');
@@ -1673,16 +2035,19 @@ function highlightChartSearchHit() {
 }
 
 function onChartSearchInput(input, resultsId) {
-    const other = resultsId === 'boardChartSearchResults' ? 'headerChartSearchResults' : 'boardChartSearchResults';
-    const otherEl = document.getElementById(other);
-    if (otherEl) {
-        otherEl.classList.add('hidden');
-        otherEl.innerHTML = '';
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        hideChartSearchResults();
+        return;
     }
     renderChartSearchResults(resultsId, input?.value || '');
 }
 
 function onChartSearchKeydown(event, resultsId) {
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        event.preventDefault();
+        hideChartSearchResults();
+        return;
+    }
     if (event.key === 'Escape') {
         hideChartSearchResults();
         event.target.blur();
@@ -1711,11 +2076,18 @@ function onChartSearchKeydown(event, resultsId) {
 async function openPatientFromSearchIndex(idx) {
     const patient = lastChartSearchHits[idx];
     if (!patient) return;
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Opening chart…', async () => openPatientFromSearchIndexWork(idx), {});
+    }
+    return openPatientFromSearchIndexWork(idx);
+}
+
+async function openPatientFromSearchIndexWork(idx) {
+    const patient = lastChartSearchHits[idx];
+    if (!patient) return;
     hideChartSearchResults();
     const headerSearch = document.getElementById('headerChartSearch');
-    const boardSearch = document.getElementById('boardChartSearch');
     if (headerSearch) headerSearch.value = '';
-    if (boardSearch) boardSearch.value = '';
     if (typeof openPatientChart === 'function') await openPatientChart(patient);
     else setCurrentPatient(patient);
     if (pendingSanitise) {
@@ -1731,8 +2103,13 @@ async function openPatientFromSearchIndex(idx) {
 }
 
 function focusPracticeBoardSearch() {
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
+        showToast('Finalise this visit before opening another chart.');
+        return;
+    }
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
-    const input = document.getElementById('boardChartSearch') || document.getElementById('headerChartSearch');
+    const input = document.getElementById('headerChartSearch');
     if (input) {
         input.focus();
         input.select();
@@ -1759,6 +2136,9 @@ async function openKnownPatientByIndex(idx) {
 }
 
 function openAddPatientModal() {
+    if (typeof blockAddPatientWhileVisitActive === 'function' && blockAddPatientWhileVisitActive()) {
+        return;
+    }
     if (typeof loggedInDoctorName === 'function' && !loggedInDoctorName()) {
         showToast('Sign in with a user that has a full doctor name. Charts attach to that doctor automatically.');
         return;
@@ -1770,7 +2150,9 @@ function openAddPatientModal() {
     const phoneEl = document.getElementById('chartPatientPhone');
     if (firstEl) firstEl.value = '';
     if (lastEl) lastEl.value = '';
-    if (dobEl) dobEl.value = '';
+    if (typeof bindChartPatientIdentityFields === 'function') bindChartPatientIdentityFields();
+    if (typeof fillChartPatientDobFields === 'function') fillChartPatientDobFields('');
+    else if (dobEl) dobEl.value = '';
     if (phoneEl) phoneEl.value = '';
     const addConsult = document.getElementById('chartPatientConsultBilling');
     const addBiopsy = document.getElementById('chartPatientBiopsyBilling');
@@ -1794,18 +2176,36 @@ function closePatientModal() {
 }
 
 async function submitAddPatientModal() {
+    if (typeof isAppBusy === 'function' && isAppBusy()) {
+        if (typeof showToast === 'function') showToast('Wait until the current action finishes.');
+        return;
+    }
     const firstName = document.getElementById('chartPatientFirstName')?.value.trim() || '';
     const lastName = document.getElementById('chartPatientLastName')?.value.trim() || '';
-    const dob = document.getElementById('chartPatientDob')?.value.trim() || '';
-    const phone = document.getElementById('chartPatientPhone')?.value.trim() || '';
+    const dob = (typeof readChartPatientDobFields === 'function'
+        ? readChartPatientDobFields()
+        : (document.getElementById('chartPatientDob')?.value.trim() || ''));
+    const phone = typeof formatAuPhoneDisplay === 'function'
+        ? formatAuPhoneDisplay(document.getElementById('chartPatientPhone')?.value || '')
+        : (document.getElementById('chartPatientPhone')?.value.trim() || '');
+    const phoneEl = document.getElementById('chartPatientPhone');
+    if (phoneEl) phoneEl.value = phone;
     const clinician = (typeof loggedInDoctorName === 'function' && loggedInDoctorName()) || '';
     const name = composePatientName(firstName, lastName);
     if (!clinician) {
         showToast('Sign in with a user that has a full doctor name. Charts attach to that doctor automatically.');
         return;
     }
-    if (!firstName || !lastName || !dob) {
-        showToast('Enter first name, last name, and date of birth.');
+    if (!firstName || !lastName) {
+        showToast('Enter first name and last name.');
+        return;
+    }
+    if (!dob) {
+        showToast('Enter date of birth as day, month, and year (for example 12 / 03 / 1960).');
+        const missing = !document.getElementById('chartPatientDobDay')?.value
+            ? 'chartPatientDobDay'
+            : (!document.getElementById('chartPatientDobMonth')?.value ? 'chartPatientDobMonth' : 'chartPatientDobYear');
+        document.getElementById(missing)?.focus();
         return;
     }
     if (normalizePhoneDigits(phone).length < 8) {
@@ -1816,27 +2216,36 @@ async function submitAddPatientModal() {
         showToast('Date of birth needs digits so the chart can be identified.');
         return;
     }
-    closePatientModal();
     const billing = typeof readAddPatientBilling === 'function'
         ? readAddPatientBilling()
         : { consultBilling: 'Private Bill', biopsyBilling: '$20 OOP per biopsy (Item 30071)' };
     const patient = { name, firstName, lastName, dob, phone, clinician, ...billing };
-    if (typeof openPatientChart === 'function') {
-        await openPatientChart(patient);
-    } else {
-        setCurrentPatient(patient);
-        showToast('Chart set to ' + name + '.');
+    const finish = async () => {
+        closePatientModal();
+        if (typeof openPatientChart === 'function') {
+            await openPatientChart(patient);
+        } else {
+            setCurrentPatient(patient);
+            showToast('Chart set to ' + name + '.');
+        }
+        if (pendingSanitise) {
+            pendingSanitise = false;
+            markChartSanitised();
+            return;
+        }
+        if (pendingWorkspaceTab) {
+            const tab = pendingWorkspaceTab;
+            pendingWorkspaceTab = '';
+            switchWorkspaceTab(tab);
+        }
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Creating chart…', finish, {
+            button: document.getElementById('patientModalSubmit'),
+            buttonText: 'Creating chart…'
+        });
     }
-    if (pendingSanitise) {
-        pendingSanitise = false;
-        markChartSanitised();
-        return;
-    }
-    if (pendingWorkspaceTab) {
-        const tab = pendingWorkspaceTab;
-        pendingWorkspaceTab = '';
-        switchWorkspaceTab(tab);
-    }
+    return finish();
 }
 
 async function submitPatientModal() {
@@ -1845,7 +2254,7 @@ async function submitPatientModal() {
 
 function requireCurrentPatient(message) {
     if (hasCurrentPatient()) return true;
-    showToast(message || 'Search for a patient on the practice board, or add a new patient.');
+    showToast(message || 'Search for a patient in the header, or add a new patient.');
     focusPracticeBoardSearch();
     return false;
 }
@@ -2024,8 +2433,17 @@ async function persistSessionLesionToVault(sessionLesion) {
         resultAdvisedAt: sessionLesion.resultAdvisedAt || existing.resultAdvisedAt || '',
         priorHistologyCaseNumber: sessionLesion.priorHistologyCaseNumber || existing.priorHistologyCaseNumber || '',
         priorHistologyPot: sessionLesion.priorHistologyPot || existing.priorHistologyPot || '',
-        priorHistologyResult: sessionLesion.priorHistologyResult || existing.priorHistologyResult || ''
+        priorHistologyResult: sessionLesion.priorHistologyResult || existing.priorHistologyResult || '',
+        priorHistologyDiagnosis: sessionLesion.priorHistologyDiagnosis || existing.priorHistologyDiagnosis || '',
+        priorProcedureAt: sessionLesion.priorProcedureAt || existing.priorProcedureAt || '',
+        priorHistologySource: sessionLesion.priorHistologySource || existing.priorHistologySource || '',
+        priorHistologySourceName: sessionLesion.priorHistologySourceName || existing.priorHistologySourceName || '',
+        priorBreslowMm: sessionLesion.priorBreslowMm || existing.priorBreslowMm || '',
+        priorProcedureKind: sessionLesion.priorProcedureKind || existing.priorProcedureKind || ''
     };
+    if (typeof applyInferredBillingLesionType === 'function') {
+        applyInferredBillingLesionType(next);
+    }
     if (repairLesionAwaitingAfterResult(next)) {
         managementStatus = next.managementStatus;
     }
@@ -2037,6 +2455,14 @@ async function persistSessionLesionToVault(sessionLesion) {
             next.type = 'topical';
             next.currentPlan = defaultPlanLine(next);
         }
+    }
+    if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(sessionLesion.plan) && !completed) {
+        next.managementStatus = 'no_followup';
+        next.type = 'none';
+        next.currentPlan = typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(next)
+            ? formatDeclinePlanSummary(next)
+            : (next.currentPlan || 'Declined recommended treatment');
+        next.clinicallyFinalisedAt = next.clinicallyFinalisedAt || now;
     }
     const planChanged = !existing.id || existing.plan !== next.plan || existing.type !== next.type;
     if (!existing.id) appendLesionHistory(next, 'created', sessionLesion.plan || '');
@@ -2170,10 +2596,14 @@ async function setManagedLesionStatus(id, status, note, extras) {
     }
     if (nextStatus === 'no_followup') {
         lesion.billingStatus = lesion.billingStatus || 'none';
-        if (!lesionCanCloseNoFollowup(lesion)) {
-            showToast('Confirm billing before closing. The lesion stays on the board until then.');
-            return;
+        lesion.clinicallyFinalisedAt = lesion.clinicallyFinalisedAt || new Date().toISOString();
+        if (!extras.currentPlan) {
+            extras.currentPlan = lesionCanCloseNoFollowup(lesion)
+                ? 'No follow-up'
+                : 'No follow-up — billing pending';
         }
+    } else if (canonicalLesionStatus(lesion.managementStatus) === 'no_followup') {
+        lesion.clinicallyFinalisedAt = '';
     }
     if (extras.type) lesion.type = extras.type;
     lesion.managementStatus = nextStatus;
@@ -2186,13 +2616,18 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
     const lesion = managedLesions.find((item) => item.id === id);
     if (!lesion) return;
     extras = extras || {};
+    const priorStatus = typeof lesionLifecycleStatus === 'function'
+        ? lesionLifecycleStatus(lesion)
+        : canonicalLesionStatus(lesion.managementStatus);
     let action = nextAction === 'plan_excision' ? 'further_management' : nextAction;
     const contact = extras.contact || 'mark_for_contact';
     const fileNoCall = !!extras.fileNoCall && action === 'no_followup';
     const proposedPlan = String(extras.proposedPlan || '').trim();
     const proposedPlanNote = String(extras.proposedPlanNote || '').trim();
-    lesion.histologyResult = resultText;
-    lesion.histologyAt = new Date().toISOString();
+    if (String(resultText || '').trim()) {
+        lesion.histologyResult = resultText;
+        lesion.histologyAt = new Date().toISOString();
+    }
     if (Object.prototype.hasOwnProperty.call(extras, 'histologyDiagnosis')) {
         lesion.histologyDiagnosis = extras.histologyDiagnosis || '';
     }
@@ -2215,14 +2650,36 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
         const suggestion = suggestMbsItems(lesion);
         if (suggestion.ready && suggestion.summary) lesion.suggestedMbsItems = suggestion.summary;
     }
+    if (extras.resultOnly) {
+        if (lesionHasSavedHistology(lesion) && (priorStatus === 'awaiting_histology'
+            || canonicalLesionStatus(lesion.managementStatus) === 'awaiting_histology')) {
+            lesion.managementStatus = 'needs_contact';
+            if (!lesion.contactState) lesion.contactState = 'mark_for_contact';
+            lesion.currentPlan = 'Result recorded — set the plan.';
+        }
+        const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
+        appendLesionTimeline(lesion, {
+            type: 'histology',
+            note: [resultText, accession && ('Lab case ' + accession)].filter(Boolean).join(' · '),
+            planAfter: lesion.currentPlan || ''
+        });
+        if (typeof syncBillingFromLesion === 'function') {
+            await syncBillingFromLesion(lesion);
+        }
+        await saveManagedLesionRecord(lesion, 'histology', resultText || lesion.histologyResult || '', { silent: true });
+        return { lesion, resultOnly: true };
+    }
     lesion.resultPlan = action === 'further_management' || action === 'no_followup' ? action : (lesion.resultPlan || '');
+    if (Object.prototype.hasOwnProperty.call(extras, 'callNote')) {
+        lesion.adminCallNote = extras.callNote || '';
+    }
     lesion.contactState = fileNoCall ? 'file_no_call' : contact;
     const advised = contact === 'advised_now' || fileNoCall;
     if (advised) lesion.resultAdvisedAt = new Date().toISOString();
     const planAfter = resultContactPlanLine(lesion.resultPlan, fileNoCall ? 'advised_now' : contact, { fileNoCall });
     const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
     const timelineNote = [extras.callNote || resultText, accession && ('Lab case ' + accession)].filter(Boolean).join(' · ');
-    let timelineType = 'histology';
+    let timelineType = String(resultText || '').trim() ? 'histology' : 'plan';
     let timelineOutcome = '';
     if (advised) timelineType = 'result_advised';
     else if (contact === 'not_reached') {
@@ -2240,7 +2697,12 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
     if (typeof syncBillingFromLesion === 'function') {
         await syncBillingFromLesion(lesion);
     }
-    const note = [extras.callNote ? resultText + ' · ' + extras.callNote : resultText, accession && ('Lab case ' + accession)].filter(Boolean).join(' · ');
+    const note = [
+        extras.callNote
+            ? (String(resultText || '').trim() ? resultText + ' · ' + extras.callNote : extras.callNote)
+            : resultText,
+        accession && ('Lab case ' + accession)
+    ].filter(Boolean).join(' · ');
     if (action === 'further_management') {
         if (!lesionHasSavedHistology(lesion)) {
             showToast('Save the histology result before opening further management.');
@@ -2264,17 +2726,12 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
             openChildId: child?.id || ''
         };
     }
-    if (advised && action === 'no_followup') {
-        if (lesionCanCloseNoFollowup(lesion)) {
-            await setManagedLesionStatus(id, 'no_followup', note, { currentPlan: 'No follow-up' });
-            return { lesion, closed: true };
-        }
-        lesion.managementStatus = lesionLifecycleStatus(lesion) === 'appointment_requested'
-            ? 'appointment_requested'
-            : 'needs_contact';
-        lesion.currentPlan = 'No follow-up — billing pending';
-        await saveManagedLesionRecord(lesion, 'histology', note);
-        return { lesion, billingHold: true };
+    if (action === 'no_followup') {
+        const billingHold = !lesionCanCloseNoFollowup(lesion);
+        await setManagedLesionStatus(id, 'no_followup', note, {
+            currentPlan: billingHold ? 'No follow-up — billing pending' : 'No follow-up'
+        });
+        return { lesion, closed: true, billingHold };
     }
     if (contact === 'appointment_requested') {
         lesion.managementStatus = 'appointment_requested';
@@ -2327,13 +2784,11 @@ async function applyAdviceFromContact(lesion) {
 
     const plan = lesion.resultPlan || '';
     if (plan === 'no_followup') {
-        if (lesionCanCloseNoFollowup(lesion)) {
-            await setManagedLesionStatus(lesion.id, 'no_followup', 'Patient advised', { currentPlan: 'No follow-up' });
-            return { changed: true, closed: true };
-        }
-        lesion.currentPlan = 'No follow-up — billing pending';
-        await saveManagedLesionRecord(lesion, 'comms:advised', 'Patient advised');
-        return { changed: true, billingHold: true };
+        const billingHold = !lesionCanCloseNoFollowup(lesion);
+        await setManagedLesionStatus(lesion.id, 'no_followup', 'Patient advised', {
+            currentPlan: billingHold ? 'No follow-up — billing pending' : 'No follow-up'
+        });
+        return { changed: true, closed: true, billingHold };
     }
     if (isFurtherManagementPlan(plan)) {
         if (typeof lesionHasSavedHistology === 'function' && !lesionHasSavedHistology(lesion)) {
@@ -2411,18 +2866,42 @@ async function closePriorLesionAfterReexcision(prior, child) {
 
 async function persistReexcisionChild(child) {
     if (!child?.id) return null;
+    if (child.priorLesionId) {
+        const existing = findExistingChildOfPrior(child.priorLesionId);
+        if (existing && String(existing.id) !== String(child.id)) {
+            if (lesionHasOwnCompletedEpisode(existing)) {
+                return existing;
+            }
+            const keepConsent = existing.consentStatus || '';
+            const keepConsentedAt = existing.consentedAt || '';
+            child.id = existing.id;
+            child.createdAt = existing.createdAt || child.createdAt;
+            child.history = existing.history || child.history;
+            child.timeline = existing.timeline || child.timeline;
+            Object.assign(existing, child);
+            child = existing;
+            if (keepConsent) {
+                child.consentStatus = keepConsent;
+                child.consentedAt = keepConsentedAt;
+            }
+        }
+    }
     const now = new Date().toISOString();
     const patient = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : {};
     child.createdAt = child.createdAt || now;
     child.updatedAt = now;
     child.type = 'excision';
     child.managementStatus = 'planned_procedure';
-    child.consentStatus = '';
-    child.consentedAt = '';
-    child.procedureCompletedAt = '';
-    child.excisionFinalisedAt = '';
-    child.procedureDetail = null;
-    child.billingStatus = 'none';
+    if (!(typeof consentRank === 'function' ? consentRank(child.consentStatus) : child.consentStatus)) {
+        child.consentStatus = '';
+        child.consentedAt = '';
+    }
+    if (!lesionProcedureDone(child)) {
+        child.procedureCompletedAt = '';
+        child.excisionFinalisedAt = '';
+        child.procedureDetail = null;
+    }
+    child.billingStatus = child.billingStatus || 'none';
     child.schemaVersion = LESION_SCHEMA_VERSION;
     if (patient.chartId) child.chartId = patient.chartId;
     else if (!child.chartId && child.patientName && child.patientDob && typeof patientChartId === 'function') {

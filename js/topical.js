@@ -423,7 +423,15 @@ function isCryoRelevant() {
 }
 
 function getDiscussedTreatmentIds() {
-    return Array.from(document.querySelectorAll('input[name="topicalDiscussed"]:checked')).map(el => el.value);
+    const inspBoxes = document.querySelectorAll('input[name="inspTopicalDiscussed"]');
+    if (inspBoxes.length) {
+        return Array.from(inspBoxes).filter((el) => el.checked).map((el) => el.value);
+    }
+    const modalBoxes = document.querySelectorAll('input[name="topicalDiscussed"]:checked');
+    if (modalBoxes.length) return Array.from(modalBoxes).map((el) => el.value);
+    const lesion = typeof ensureSelectedChartLesion === 'function' ? ensureSelectedChartLesion() : null;
+    if (lesion && Array.isArray(lesion.topicalDiscussed)) return lesion.topicalDiscussed.slice();
+    return [];
 }
 
 function getCryoProtocolById(id) {
@@ -655,6 +663,10 @@ function updateTopicalFieldVisibility() {
         }
     }
     updatePdtQuotePreview();
+    if (!document.getElementById('akComparisonModal')?.classList.contains('hidden')
+        && typeof renderAkComparisonTable === 'function') {
+        renderAkComparisonTable();
+    }
 }
 
 function handleTopicalDecisionChange() {
@@ -997,23 +1009,35 @@ function collectChartAkComparison() {
     };
 }
 
-function renderAkComparisonTable() {
-    const table = document.getElementById('akComparisonTable');
-    if (!table) return;
-    const head = '<thead><tr><th scope="col">Compare</th>' + AK_COMPARISON_OPTIONS.map((opt) => {
+function selectedAkComparisonOptions() {
+    const ids = getDiscussedTreatmentIds().filter((id) => id && id !== TOPICAL_DECISION_DECLINED);
+    const picked = ids.map((id) => AK_COMPARISON_OPTIONS.find((opt) => opt.id === id)).filter(Boolean);
+    return picked.length ? picked : AK_COMPARISON_OPTIONS.slice();
+}
+
+function buildAkComparisonTableHtml(options) {
+    const cols = options || selectedAkComparisonOptions();
+    const head = '<thead><tr><th scope="col">Compare</th>' + cols.map((opt) => {
         return `<th scope="col"><span class="ak-compare-name">${akComparisonEsc(opt.short)}</span><span class="ak-compare-kind">${akComparisonEsc(opt.kind)}</span></th>`;
     }).join('') + '</tr></thead>';
     const body = '<tbody>' + AK_COMPARISON_ROWS.map((row) => {
-        const cells = AK_COMPARISON_OPTIONS.map((opt) => `<td>${akComparisonEsc(opt.cells[row.id] || '')}</td>`).join('');
+        const cells = cols.map((opt) => `<td>${akComparisonEsc(opt.cells[row.id] || '')}</td>`).join('');
         return `<tr><th scope="row">${akComparisonEsc(row.label)}</th>${cells}</tr>`;
     }).join('') + '</tbody>';
-    table.innerHTML = head + body;
+    return head + body;
+}
+
+function renderAkComparisonTable() {
+    const table = document.getElementById('akComparisonTable');
+    if (!table) return;
+    table.innerHTML = buildAkComparisonTableHtml();
 }
 
 function updateAkComparisonControls() {
     const explained = akComparisonWasExplainedToday();
     const showBtns = [
-        document.getElementById('btnShowAkComparison')
+        document.getElementById('btnShowAkComparison'),
+        document.getElementById('btnInspShowAkComparison')
     ];
     showBtns.forEach((btn) => {
         if (!btn) return;
@@ -1025,6 +1049,51 @@ function updateAkComparisonControls() {
         markBtn.textContent = explained ? 'Explained — recorded in IEMR' : 'Explained';
         markBtn.classList.toggle('is-explained', explained);
     }
+}
+
+function buildAkComparisonPrintHtml(options) {
+    const cols = options || selectedAkComparisonOptions();
+    const clinic = (typeof clinicProfile !== 'undefined' && clinicProfile?.name) ? clinicProfile.name : 'DermRecord';
+    const patient = (typeof currentPatient !== 'undefined' && currentPatient?.name) ? currentPatient.name : '';
+    const discussed = cols.map((opt) => opt.full).join('; ');
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sun-spot treatment comparison</title>
+    <style>
+        body { font-family: "Segoe UI", Tahoma, sans-serif; color: #1a1a1a; margin: 16px; }
+        h1 { font-size: 18px; margin: 0 0 4px; }
+        p { font-size: 12px; line-height: 1.4; margin: 0 0 10px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th, td { border: 1px solid #8a8a8a; padding: 6px 8px; vertical-align: top; text-align: left; }
+        thead th { background: #145c3d; color: #fff; }
+        tbody th { background: #e7f3ee; width: 18%; }
+        .kind { display: block; font-size: 10px; font-weight: 600; opacity: 0.85; }
+        @media print { body { margin: 8mm; } }
+    </style>
+</head>
+<body>
+    <h1>Comparing treatments for sun spots</h1>
+    <p>${akComparisonEsc(clinic)}${patient ? ' · ' + akComparisonEsc(patient) : ''}<br>
+    Options discussed: ${akComparisonEsc(discussed)}.</p>
+    <table>${buildAkComparisonTableHtml(cols)}</table>
+    <p>General comparison only — not a personal prescription. Exact days, PBS eligibility, and fees depend on your skin, the body area, and the option you choose.</p>
+    <script>window.onload = function () { window.print(); };<\/script>
+</body>
+</html>`;
+}
+
+function printAkComparisonChart() {
+    const cols = selectedAkComparisonOptions();
+    const printWin = window.open('', '_blank', 'width=1100,height=800');
+    if (!printWin) {
+        if (typeof showToast === 'function') showToast('Unable to open print window. Please check popup permissions.');
+        return;
+    }
+    printWin.document.open();
+    printWin.document.write(buildAkComparisonPrintHtml(cols));
+    printWin.document.close();
 }
 
 function openAkComparisonModal() {
@@ -1051,13 +1120,13 @@ function markAkComparisonExplained() {
     if (typeof requireCurrentPatient === 'function' && !requireCurrentPatient('Open a patient chart before recording that the comparison was explained.')) {
         return;
     }
+    const optionIds = selectedAkComparisonOptions().map((opt) => opt.id);
     akComparisonRecord = {
         explained: true,
         explainedAt: new Date().toISOString(),
         visitDate: typeof todayVisitKey === 'function' ? todayVisitKey() : '',
-        optionIds: AK_COMPARISON_OPTIONS.map((opt) => opt.id)
+        optionIds
     };
-    markAkComparisonDiscussedOnForm();
     updateAkComparisonControls();
     if (typeof updateOutput === 'function') updateOutput();
     if (typeof scheduleChartSave === 'function') scheduleChartSave();

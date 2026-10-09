@@ -364,21 +364,32 @@ function closeClinicProfileModal() {
 }
 
 async function saveClinicProfileFromModal() {
-    try {
-        await saveClinicProfile({
-            clinicName: document.getElementById('clinicProfileName')?.value,
-            address: document.getElementById('clinicProfileAddress')?.value,
-            phone: document.getElementById('clinicProfilePhone')?.value,
-            afterHoursPhone: document.getElementById('clinicProfileAfterHours')?.value,
-            email: document.getElementById('clinicProfileEmail')?.value,
-            smsInfo: document.getElementById('clinicProfileSms')?.value,
-            website: document.getElementById('clinicProfileWebsite')?.value,
-            urgentAdvice: document.getElementById('clinicProfileUrgent')?.value
+    const save = async ({ progress }) => {
+        if (progress) progress('Saving clinic details…', 0.3);
+        try {
+            await saveClinicProfile({
+                clinicName: document.getElementById('clinicProfileName')?.value,
+                address: document.getElementById('clinicProfileAddress')?.value,
+                phone: document.getElementById('clinicProfilePhone')?.value,
+                afterHoursPhone: document.getElementById('clinicProfileAfterHours')?.value,
+                email: document.getElementById('clinicProfileEmail')?.value,
+                smsInfo: document.getElementById('clinicProfileSms')?.value,
+                website: document.getElementById('clinicProfileWebsite')?.value,
+                urgentAdvice: document.getElementById('clinicProfileUrgent')?.value
+            });
+            if (progress) progress('Clinic details saved', 1);
+            showToast('Clinic contact details saved for patient advice sheets.');
+        } catch (err) {
+            showToast(err.message || 'Could not save clinic profile.');
+        }
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving clinic details…', save, {
+            button: document.getElementById('clinicSettingsSaveClinicBtn'),
+            buttonText: 'Saving…'
         });
-        showToast('Clinic contact details saved for patient advice sheets.');
-    } catch (err) {
-        showToast(err.message || 'Could not save clinic profile.');
     }
+    return save({});
 }
 
 function clinicProfileContactLines() {
