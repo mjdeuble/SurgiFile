@@ -156,6 +156,16 @@ function generateEMRNotePlainText(options) {
             : `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
         noteLesions.forEach((l, idx) => {
             txt += `Lesion #${idx + 1}: ${l.location}\n`;
+            const episode = typeof formatLesionEpisodePlainText === 'function'
+                ? formatLesionEpisodePlainText(l, { indent: '    ' })
+                : '';
+            if (episode) {
+                txt += episode + '\n';
+                const comms = typeof lesionIemrCommsLine === 'function' ? lesionIemrCommsLine(l) : '';
+                if (comms) txt += `    ${comms}\n`;
+                txt += `\n`;
+                return;
+            }
             const dx = typeof formatDiagnosisIemr === 'function'
                 ? formatDiagnosisIemr(l.impression)
                 : (l.impression || '');

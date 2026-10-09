@@ -9,6 +9,7 @@ let inspectorFormFocus = '';
 let inspectorAdviceKind = 'print';
 let manageLesionUiSource = 'modal';
 let selectedPracticeDoc = null;
+let selectedChartSavedDoc = null;
 
 function chartLesions() {
     if (!hasCurrentPatient()) return [];
@@ -618,16 +619,38 @@ function renderPracticeDocumentInspector(item) {
     if (!slot || !item) return;
     const when = typeof formatLesionWhen === 'function' ? formatLesionWhen(item.at) : (item.at || '');
     const name = item.patientName || 'Unnamed patient';
-    const meta = [item.patientDob, item.clinician, when].filter(Boolean).join(' · ');
+    const chartOpen = typeof hasCurrentPatient === 'function' && hasCurrentPatient();
+    const title = chartOpen ? (item.site || 'Saved document') : ((item.site || 'Saved document') + ' · ' + name);
+    const meta = chartOpen
+        ? [item.clinician, when].filter(Boolean).join(' · ')
+        : [item.patientDob, item.clinician, when].filter(Boolean).join(' · ');
     const id = String(item.id || '').replace(/'/g, '');
     const kind = item.kind;
     let actions = '';
     let body = '';
-    if (kind === 'consult' || kind === 'procedure') {
-        const text = kind === 'procedure' ? (item.note?.procedureText || '') : (item.note?.consultText || '');
-        actions = `<button type="button" onclick="copySavedVisitNote('${id}', '${kind}')">Copy ${kind === 'procedure' ? 'procedure' : 'consult'}</button>`;
-        body = `<label class="insp-label">${kind === 'procedure' ? 'Procedure note' : 'Consult note'}</label>
-            <textarea readonly class="insp-textarea" rows="16">${escapeHtml(text)}</textarea>`;
+    if (kind === 'consult' || kind === 'procedure' || kind === 'note') {
+        const consult = item.note?.consultText || '';
+        const procedure = item.note?.procedureText || '';
+        const showConsult = kind !== 'procedure' && (kind === 'note'
+            ? (typeof consultNoteIsSavable === 'function' ? consultNoteIsSavable(consult) : !!String(consult).trim())
+            : true);
+        const showProc = kind !== 'consult' && (kind === 'note'
+            ? (typeof procedureNoteIsSavable === 'function' ? procedureNoteIsSavable(procedure) : !!String(procedure).trim())
+            : true);
+        const parts = [];
+        if (showConsult) {
+            parts.push(`<button type="button" onclick="copySavedVisitNote('${id}', 'consult')">Copy consult</button>`);
+        }
+        if (showProc) {
+            parts.push(`<button type="button" onclick="copySavedVisitNote('${id}', 'procedure')">Copy procedure</button>`);
+        }
+        actions = parts.join('');
+        body = [
+            showConsult ? `<label class="insp-label">Consult note</label>
+            <textarea readonly class="insp-textarea" rows="${showProc ? '10' : '16'}">${escapeHtml(consult)}</textarea>` : '',
+            showProc ? `<label class="insp-label">Procedure note</label>
+            <textarea readonly class="insp-textarea" rows="${showConsult ? '10' : '16'}">${escapeHtml(procedure)}</textarea>` : ''
+        ].filter(Boolean).join('');
     } else if (kind === 'histology' || kind === 'advice') {
         const copyKind = kind === 'advice' ? 'advice' : 'histology';
         actions = `<button type="button" onclick="copySavedHtmlDocFromInspector('${id}', '${copyKind}')">Copy text</button>
@@ -638,7 +661,7 @@ function renderPracticeDocumentInspector(item) {
             <iframe id="practiceDocFrame" title="Saved document preview" class="w-full bg-white" style="min-height:22rem;border:1px solid #c0c0c0"></iframe>`;
         slot.innerHTML = `
             <div class="chart-inspector-caption">
-                <h2>${escapeHtml(item.site)} · ${escapeHtml(name)}</h2>
+                <h2>${escapeHtml(title)}</h2>
                 <p>${escapeHtml(meta)}</p>
             </div>
             <div class="chart-inspector-toolbar">${actions}</div>
@@ -654,7 +677,7 @@ function renderPracticeDocumentInspector(item) {
     }
     slot.innerHTML = `
         <div class="chart-inspector-caption">
-            <h2>${escapeHtml(item.site)} · ${escapeHtml(name)}</h2>
+            <h2>${escapeHtml(title)}</h2>
             <p>${escapeHtml(meta)}</p>
         </div>
         ${actions ? `<div class="chart-inspector-toolbar">${actions}</div>` : ''}
@@ -686,6 +709,7 @@ function printSavedHtmlDocFromInspector(id, artefact) {
 
 function selectChartVisitItem(section) {
     if (inspectorToolMode()) inspectorPaneMode = 'view';
+    selectedChartSavedDoc = null;
     const key = section === 'scope' || section === 'concerns' || section === 'risks' ? section : 'all';
     pendingVisitSection = key;
     if (typeof requireRoomReady === 'function' && !requireRoomReady('history')) return;
@@ -817,7 +841,7 @@ function renderChartTreeNode(lesion, depth, childrenMap) {
         ? false
         : (inspectorPaneMode === 'form'
             ? !!(inspectorFormLesionId && id === String(inspectorFormLesionId))
-            : (!toolMode && id && id === String(selectedChartLesionId) && !selectedVisitSection));
+            : (!toolMode && id && id === String(selectedChartLesionId) && !selectedVisitSection && !selectedChartSavedDoc));
     const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
     const label = chartTreeNodeLabel(lesion);
     const kids = childrenMap.get(id) || [];
@@ -836,6 +860,7 @@ function toggleChartTreeCompleted() {
 
 function selectChartFolder(tabName) {
     selectedVisitSection = '';
+    selectedChartSavedDoc = null;
     if (inspectorToolMode()) inspectorPaneMode = 'view';
     if (tabName === 'excision-generator' || tabName === 'consent') {
         inspectorPaneMode = 'view';
@@ -846,55 +871,64 @@ function selectChartFolder(tabName) {
 }
 
 function chartTreeSavedDocItems() {
-    const notes = typeof adminVisitNotes === 'function' ? adminVisitNotes() : [];
-    const consents = typeof adminConsentDocs === 'function' ? adminConsentDocs() : [];
-    const items = [];
-    notes.forEach((note) => {
-        const kinds = [];
-        if (typeof consultNoteIsSavable === 'function' && consultNoteIsSavable(note.consultText)) kinds.push('Consult');
-        if (typeof procedureNoteIsSavable === 'function' && procedureNoteIsSavable(note.procedureText)) kinds.push('Procedure');
+    const docs = typeof practiceSavedDocItems === 'function' ? practiceSavedDocItems() : [];
+    return docs.map((item) => {
         const when = typeof formatLesionWhen === 'function'
-            ? formatLesionWhen(note.updatedAt || note.createdAt)
-            : (note.updatedAt || note.createdAt || '');
-        const id = String(note.id || '');
-        if (kinds.length) {
-            items.push({
-                kind: 'note',
-                id,
-                site: kinds.join(' / ') || 'Visit note',
-                meta: when
-            });
-        }
-        if (typeof visitNoteHasHistology === 'function' ? visitNoteHasHistology(note) : (note.histologySlipText || note.histologyPrintHtml)) {
-            items.push({
-                kind: 'histology',
-                id,
-                site: 'Histology request',
-                meta: when
-            });
-        }
-        if (typeof visitNoteHasAdvice === 'function' ? visitNoteHasAdvice(note) : note.aftercareHtml) {
-            items.push({
-                kind: 'advice',
-                id,
-                site: 'Patient advice',
-                meta: when
-            });
-        }
+            ? formatLesionWhen(item.at)
+            : (item.at || '');
+        const extra = item.kind === 'consent' && Array.isArray(item.note?.procedures)
+            ? (item.note.procedures.length
+                ? item.note.procedures.length + ' procedure' + (item.note.procedures.length === 1 ? '' : 's')
+                : '')
+            : '';
+        return {
+            ...item,
+            site: item.site || 'Saved document',
+            meta: [when, extra].filter(Boolean).join(' · ')
+        };
     });
-    consents.forEach((doc) => {
-        const when = typeof formatLesionWhen === 'function'
-            ? formatLesionWhen(doc.createdAt)
-            : (doc.createdAt || '');
-        const n = Array.isArray(doc.procedures) ? doc.procedures.length : 0;
-        items.push({
-            kind: 'consent',
-            id: String(doc.id || ''),
-            site: 'Consent',
-            meta: [when, n ? (n + ' procedure' + (n === 1 ? '' : 's')) : ''].filter(Boolean).join(' · ')
-        });
-    });
-    return items;
+}
+
+function chartSavedDocKey(item) {
+    return String(item?.kind || '') + ':' + String(item?.id || '');
+}
+
+function findChartSavedDoc(kind, id) {
+    const wantKind = String(kind || selectedChartSavedDoc?.kind || '');
+    const wantId = String(id || selectedChartSavedDoc?.id || '');
+    if (!wantKind || !wantId) return null;
+    const items = chartTreeSavedDocItems();
+    return items.find((item) => item.kind === wantKind && String(item.id) === wantId) || null;
+}
+
+function selectChartSavedDoc(kind, id) {
+    selectedChartSavedDoc = { kind: String(kind || ''), id: String(id || '') };
+    inspectorPaneMode = 'view';
+    inspectorFormLesionId = '';
+    inspectorFormFocus = '';
+    selectedVisitSection = '';
+    if (typeof closeSavedVisitNote === 'function') closeSavedVisitNote();
+    if (typeof closeSavedHtmlDoc === 'function') closeSavedHtmlDoc();
+    if (typeof closeSavedConsentDoc === 'function') closeSavedConsentDoc();
+    if (typeof switchWorkspaceTab === 'function'
+        && activeWorkspaceTab !== 'management'
+        && activeWorkspaceTab !== 'skin-check') {
+        switchWorkspaceTab('management', { skipPersist: true });
+    }
+    if (typeof renderChartLesionInspector === 'function') renderChartLesionInspector({ force: true });
+    if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+}
+
+function openSavedDocumentInInspector(kind, id) {
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && typeof selectChartSavedDoc === 'function') {
+        selectChartSavedDoc(kind, id);
+        return true;
+    }
+    if (typeof practiceNotesActive === 'function' && practiceNotesActive() && typeof selectPracticeDocument === 'function') {
+        selectPracticeDocument(kind, id);
+        return true;
+    }
+    return false;
 }
 
 function renderChartTreeSavedDocs() {
@@ -905,16 +939,12 @@ function renderChartTreeSavedDocs() {
         root.innerHTML = '<p class="chart-tree-empty">No saved notes yet</p>';
         return;
     }
+    const selectedKey = selectedChartSavedDoc ? chartSavedDocKey(selectedChartSavedDoc) : '';
     root.innerHTML = items.map((item) => {
         const id = String(item.id || '').replace(/'/g, '');
-        const onclick = item.kind === 'consent'
-            ? `openSavedConsentDoc('${id}')`
-            : (item.kind === 'histology'
-                ? `openSavedVisitArtefact('${id}', 'histology')`
-                : (item.kind === 'advice'
-                    ? `openSavedVisitArtefact('${id}', 'advice')`
-                    : `openSavedVisitNote('${id}')`));
-        return `<button type="button" role="treeitem" class="chart-tree-node" style="--depth:1" onclick="${onclick}">
+        const kind = String(item.kind || '').replace(/'/g, '');
+        const selected = chartSavedDocKey(item) === selectedKey;
+        return `<button type="button" role="treeitem" aria-selected="${selected ? 'true' : 'false'}" class="chart-tree-node${selected ? ' is-selected' : ''}" style="--depth:1" onclick="selectChartSavedDoc('${kind}', '${id}')">
             <span class="chart-tree-node-site">${escapeHtml(item.site)}</span>
             <span class="chart-tree-node-meta">${escapeHtml(item.meta)}</span>
         </button>`;
@@ -1888,6 +1918,7 @@ function openLesionInInspector(lesionId, options) {
     inspectorFormFocus = options?.focus || '';
     if (lesionId) selectedChartLesionId = String(lesionId);
     selectedVisitSection = '';
+    selectedChartSavedDoc = null;
     if (typeof switchWorkspaceTab === 'function'
         && activeWorkspaceTab !== 'management'
         && activeWorkspaceTab !== 'skin-check') {
@@ -2014,6 +2045,7 @@ function openInspectorToolPane(mode, extra) {
     inspectorPaneMode = mode;
     inspectorFormLesionId = '';
     selectedVisitSection = '';
+    selectedChartSavedDoc = null;
     inspectorAdviceKind = extra?.download ? 'download' : 'print';
     if (typeof switchWorkspaceTab === 'function'
         && activeWorkspaceTab !== 'management'
@@ -2096,6 +2128,16 @@ function renderChartLesionInspector(options) {
         renderPracticeDocumentInspector(doc);
         return;
     }
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && selectedChartSavedDoc) {
+        const doc = findChartSavedDoc();
+        if (doc) {
+            inspectorRenderedLesionId = chartSavedDocKey(doc);
+            inspectorRenderedMode = 'chart-doc';
+            renderPracticeDocumentInspector(doc);
+            return;
+        }
+        selectedChartSavedDoc = null;
+    }
     const lesion = ensureSelectedChartLesion();
     if (!lesion) {
         inspectorRenderedLesionId = '';
@@ -2149,6 +2191,7 @@ function syncChartLesionWorkspace() {
         inspectorFormLesionId = '';
         inspectorFormFocus = '';
     }
+    if (!open) selectedChartSavedDoc = null;
     const inspectorOn = chartLesionInspectorVisible();
     const shell = document.getElementById('appShell');
     if (shell) {
@@ -2202,6 +2245,7 @@ function selectChartLesion(id, options) {
     inspectorFormLesionId = '';
     selectedChartLesionId = String(id || '');
     selectedVisitSection = '';
+    selectedChartSavedDoc = null;
     const fromTree = !!(options && options.fromTree);
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
     if (fromTree || chartLesionInspectorVisible()) {

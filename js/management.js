@@ -1234,6 +1234,221 @@ function renderInspectorLesionDossier(lesion) {
     </div>`;
 }
 
+function episodePlainValue(value) {
+    const text = String(value || '').trim();
+    return text ? text : '';
+}
+
+function episodeDiagnosisText(raw) {
+    if (typeof formatDiagnosisDisplay === 'function') {
+        return String(formatDiagnosisDisplay(raw || '') || raw || '').trim();
+    }
+    return String(raw || '').trim();
+}
+
+function formatLesionExaminationPlainLines(lesion) {
+    if (!lesion) return [];
+    const macro = typeof unspecifiedExamText === 'function' ? unspecifiedExamText(lesion.macroscopic) : String(lesion.macroscopic || '').trim();
+    const dermoscopy = typeof unspecifiedExamText === 'function' ? unspecifiedExamText(lesion.dermoscopy) : String(lesion.dermoscopy || '').trim();
+    const impression = typeof unspecifiedExamText === 'function'
+        ? unspecifiedExamText(episodeDiagnosisText(lesion.impression))
+        : episodeDiagnosisText(lesion.impression);
+    const at = typeof lesionExamAt === 'function' ? lesionExamAt(lesion) : (lesion.createdAt || '');
+    const date = typeof formatLesionCardDate === 'function' ? formatLesionCardDate(at) : '';
+    const dims = typeof lesionExamDimensions === 'function' ? lesionExamDimensions(lesion) : '';
+    const rows = [
+        impression ? ['Provisional diagnosis', impression] : null,
+        macro ? ['Macroscopic', macro] : null,
+        dermoscopy ? ['Dermoscopic', dermoscopy] : null,
+        dims ? ['Dimensions', dims] : null
+    ].filter(Boolean);
+    if (!rows.length && !date) return [];
+    const lines = ['Examination' + (date ? ' (' + date + ')' : '')];
+    if (!rows.length) lines.push('Recorded: Examination saved');
+    else rows.forEach((row) => lines.push(row[0] + ': ' + row[1]));
+    return lines;
+}
+
+function formatCopiedPriorHistologyPlainLines(lesion, specimenIndex) {
+    if (!lesion || typeof lesionHasCopiedPriorHistology !== 'function' || !lesionHasCopiedPriorHistology(lesion)) return [];
+    const dx = episodeDiagnosisText(lesion.priorHistologyDiagnosis);
+    const result = String(lesion.priorHistologyResult || '').trim();
+    const date = typeof formatPriorProcedureDate === 'function' ? formatPriorProcedureDate(lesion.priorProcedureAt) : '';
+    const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'prior') : '';
+    const kind = String(lesion.priorProcedureKind || '').trim() || 'Prior histology';
+    const source = typeof priorHistologySourceLabel === 'function' ? priorHistologySourceLabel(lesion) : '';
+    const heading = typeof histoSpecimenHeading === 'function'
+        ? histoSpecimenHeading(specimenIndex, kind)
+        : ('Specimen ' + (Number(specimenIndex) + 1) + ' · ' + kind);
+    const rows = [
+        source ? ['Source', source] : null,
+        accession ? ['Laboratory', accession] : null,
+        dx ? ['Diagnosis', dx] : null,
+        result ? ['Microscopy', result] : null
+    ].filter(Boolean);
+    if (!rows.length) return [];
+    const lines = [heading + (date ? ' (' + date + ')' : '')];
+    rows.forEach((row) => lines.push(row[0] + ': ' + row[1]));
+    return lines;
+}
+
+function formatLesionSpecimenPlainLines(lesion, specimenIndex, kind) {
+    if (!lesion) return [];
+    const done = typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(lesion)
+        : !!(lesion.procedureCompletedAt || lesion.excisionFinalisedAt);
+    const hasResult = typeof lesionHasSavedHistology === 'function'
+        ? lesionHasSavedHistology(lesion)
+        : !!String(lesion.histologyResult || '').trim();
+    const showHisto = done || hasResult;
+    const typeLabel = (typeof lesionProcedureTypeLabel === 'function' ? lesionProcedureTypeLabel(lesion) : '') || '';
+    const when = done
+        ? (typeof lesionProcedureAt === 'function' ? lesionProcedureAt(lesion) : (lesion.procedureCompletedAt || ''))
+        : '';
+    const date = typeof formatLesionCardDate === 'function' ? formatLesionCardDate(when) : '';
+    const heading = typeof histoSpecimenHeading === 'function'
+        ? histoSpecimenHeading(specimenIndex, typeLabel)
+        : ('Specimen ' + (Number(specimenIndex) + 1) + (typeLabel ? ' · ' + typeLabel : ''));
+    const sizeLine = typeof histoSpecimenSizeLine === 'function' ? histoSpecimenSizeLine(lesion) : '';
+    const consent = typeof lesionConsentCardValue === 'function' ? lesionConsentCardValue(lesion) : '';
+    const complications = typeof lesionComplicationCardValue === 'function' ? lesionComplicationCardValue(lesion) : '';
+    if (kind === 'current' && !showHisto) return [];
+    if (!showHisto && kind === 'previous') {
+        const rows = [
+            sizeLine ? ['Specimen size', sizeLine] : null,
+            consent ? ['Consent', consent] : null,
+            complications ? ['Complications', complications] : null
+        ].filter(Boolean);
+        if (!rows.length) return [];
+        const lines = [heading + (date ? ' (' + date + ')' : '')];
+        rows.forEach((row) => lines.push(row[0] + ': ' + row[1]));
+        return lines;
+    }
+    if (!showHisto) return [];
+    const dx = episodeDiagnosisText(lesion.histologyDiagnosis);
+    const microscopy = String(lesion.histologyResult || '').trim();
+    const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
+    const pot = lesion.histologyPot ? 'Pot ' + lesion.histologyPot : '';
+    const lab = [accession, !accession && pot ? pot : ''].filter(Boolean).join(' · ');
+    const rows = [
+        lab ? ['Laboratory', lab] : null,
+        (dx || (done && !microscopy)) ? ['Diagnosis', dx || 'Pending'] : null,
+        (microscopy || done) ? ['Microscopy', microscopy || 'Not yet reported'] : null,
+        sizeLine ? ['Specimen size', sizeLine] : null,
+        consent ? ['Consent', consent] : null,
+        complications ? ['Complications', complications] : null
+    ].filter(Boolean);
+    if (!rows.length) return [];
+    const lines = [heading + (date ? ' (' + date + ')' : '')];
+    rows.forEach((row) => lines.push(row[0] + ': ' + row[1]));
+    return lines;
+}
+
+function formatLesionPlanPlainLines(lesion) {
+    if (!lesion || (typeof lesionShowsPlanCard === 'function' && !lesionShowsPlanCard(lesion))) return [];
+    const topical = (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))
+        || (typeof lesionType === 'function' ? lesionType(lesion) : lesion.type) === 'topical';
+    const decline = typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan);
+    const proposedKey = String(lesion.proposedPlan || '').trim();
+    const proposed = !topical && !decline && !!proposedKey
+        && !(typeof isPunchShaveBiopsyPlan === 'function' && isPunchShaveBiopsyPlan(lesion.plan))
+        && !(typeof isExcisionBookingPlan === 'function' && isExcisionBookingPlan(lesion.plan));
+    const lines = ['Plan'];
+    const push = (label, value) => {
+        const v = episodePlainValue(value);
+        if (!v) return;
+        lines.push(label + ': ' + v);
+    };
+    if (decline) {
+        const summary = typeof formatDeclinePlanSummary === 'function' ? formatDeclinePlanSummary(lesion) : '';
+        const risks = typeof formatDeclineRisksText === 'function' ? formatDeclineRisksText(lesion) : '';
+        const form = typeof formatDeclineFormLabel === 'function' ? formatDeclineFormLabel(lesion.declineForm) : '';
+        push('Disposition', summary || 'Declines Treatment / Other');
+        push('Reason', lesion.declineReason);
+        push('Alternatives', lesion.declineAlternatives);
+        push('Risks explained', risks);
+        push('Capacity', lesion.declineCapacity === 'concerns'
+            ? ('Concerns — ' + (lesion.declineCapacityNote || ''))
+            : 'Appears to have capacity');
+        push('Recorded as', form);
+        push('Safety-net', lesion.declineSafetyNetAdvice);
+        push('Review', lesion.declineReview && lesion.declineReview !== 'none' ? lesion.declineReview : '');
+        push('Notes', lesion.declineNotes);
+    } else if (topical) {
+        const decision = typeof formatTopicalDecisionText === 'function'
+            ? formatTopicalDecisionText(lesion)
+            : (typeof topicalLabel === 'function' ? topicalLabel(lesion.topicalDecision) : (lesion.topicalDecision || ''));
+        const discussed = typeof topicalDiscussedLabels === 'function' ? topicalDiscussedLabels(lesion) : '';
+        push('Treatment', 'Topical / field treatment');
+        push('Discussed', discussed);
+        push('Decision', decision);
+        push('Follow-up', lesion.topicalFollowUp && lesion.topicalFollowUp !== 'none' ? lesion.topicalFollowUp : '');
+        push('Notes', lesion.topicalNotes);
+    } else if (proposed) {
+        const label = (typeof proposedPlanLabel === 'function' ? proposedPlanLabel(proposedKey) : '')
+            || proposedKey
+            || 'Further management — choose a plan';
+        push('Proposed', label);
+        push('Note', lesion.proposedPlanNote);
+    } else {
+        const typeLabel = (typeof lesionProcedureTypeLabel === 'function' ? lesionProcedureTypeLabel(lesion) : '')
+            || String(lesion.plan || '').trim();
+        const sizeLine = typeof histoSpecimenSizeLine === 'function' ? histoSpecimenSizeLine(lesion) : '';
+        const consent = typeof lesionConsentCardValue === 'function' ? lesionConsentCardValue(lesion) : '';
+        push('Procedure', typeLabel);
+        push('Specimen size', sizeLine);
+        push('Consent', consent);
+    }
+    return lines.length > 1 ? lines : [];
+}
+
+function formatLesionEpisodePlainLines(lesion) {
+    if (!lesion) return [];
+    const ancestors = typeof collectLesionAncestors === 'function' ? collectLesionAncestors(lesion) : [];
+    const examSource = ancestors[0] || lesion;
+    const lines = [];
+    const exam = formatLesionExaminationPlainLines(examSource);
+    if (exam.length) lines.push(...exam);
+    else if (examSource !== lesion) lines.push(...formatLesionExaminationPlainLines(lesion));
+    let specimenIndex = 0;
+    if (!ancestors.length) {
+        const copied = formatCopiedPriorHistologyPlainLines(lesion, specimenIndex);
+        if (copied.length) {
+            lines.push(...copied);
+            specimenIndex += 1;
+        }
+    }
+    ancestors.forEach((item) => {
+        const spec = formatLesionSpecimenPlainLines(item, specimenIndex, 'previous');
+        if (spec.length) {
+            lines.push(...spec);
+            specimenIndex += 1;
+        }
+    });
+    const currentDone = typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(lesion)
+        : !!(lesion.procedureCompletedAt || lesion.excisionFinalisedAt);
+    if (!currentDone) {
+        const plan = formatLesionPlanPlainLines(lesion);
+        if (plan.length) lines.push(...plan);
+        else lines.push(...formatLesionSpecimenPlainLines(lesion, specimenIndex, 'current'));
+    } else {
+        lines.push(...formatLesionSpecimenPlainLines(lesion, specimenIndex, 'current'));
+    }
+    return lines.filter(Boolean);
+}
+
+function formatLesionEpisodePlainText(lesion, options) {
+    const indent = options && options.indent != null ? String(options.indent) : '';
+    const detailIndent = indent + '    ';
+    const headingRe = /^(Examination|Specimen\s+\d+|Plan)\b/;
+    return formatLesionEpisodePlainLines(lesion).map((line) => {
+        const text = String(line || '').trim();
+        if (!text) return '';
+        return headingRe.test(text) ? indent + text : detailIndent + text;
+    }).filter(Boolean).join('\n');
+}
+
 function renderManagedLesionActions(lesion) {
     const id = String(lesion.id || '').replace(/'/g, '');
     const btns = [];

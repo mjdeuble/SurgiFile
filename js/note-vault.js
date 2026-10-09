@@ -322,8 +322,20 @@ function renderSavedVisitNoteCard(note) {
 
 function openSavedVisitNote(id) {
     const note = findVisitNote(id);
+    if (!note) {
+        showToast('Saved note not found.');
+        return;
+    }
+    const kind = (typeof consultNoteIsSavable === 'function' && consultNoteIsSavable(note.consultText))
+        ? 'consult'
+        : ((typeof procedureNoteIsSavable === 'function' && procedureNoteIsSavable(note.procedureText))
+            ? 'procedure'
+            : '');
+    if (kind && typeof openSavedDocumentInInspector === 'function' && openSavedDocumentInInspector(kind, note.id)) {
+        return;
+    }
     const modal = document.getElementById('savedNoteModal');
-    if (!note || !modal) {
+    if (!modal) {
         showToast('Saved note not found.');
         return;
     }
@@ -399,8 +411,15 @@ function visitArtefactFilename(note, artefact) {
 function openSavedVisitArtefact(id, artefact) {
     const note = findVisitNote(id);
     const kind = artefact === 'advice' ? 'advice' : 'histology';
+    if (!note) {
+        showToast('Saved document not found.');
+        return;
+    }
+    if (typeof openSavedDocumentInInspector === 'function' && openSavedDocumentInInspector(kind, note.id)) {
+        return;
+    }
     const modal = document.getElementById('savedHtmlDocModal');
-    if (!note || !modal) {
+    if (!modal) {
         showToast('Saved document not found.');
         return;
     }
