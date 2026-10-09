@@ -994,6 +994,7 @@ function lesionShowsPlanCard(lesion) {
     if (done) return false;
     const type = typeof lesionType === 'function' ? lesionType(lesion) : (lesion.type || '');
     if (type === 'topical' || (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))) return true;
+    if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan)) return true;
     const status = typeof lesionLifecycleStatus === 'function'
         ? lesionLifecycleStatus(lesion)
         : lesion.managementStatus;
@@ -1015,22 +1016,44 @@ function renderInspectorTopicalPlanRows(lesion) {
     ].join('');
 }
 
+function renderInspectorDeclinePlanRows(lesion) {
+    const summary = typeof formatDeclinePlanSummary === 'function' ? formatDeclinePlanSummary(lesion) : '';
+    const risks = typeof formatDeclineRisksText === 'function' ? formatDeclineRisksText(lesion) : '';
+    const form = typeof formatDeclineFormLabel === 'function' ? formatDeclineFormLabel(lesion?.declineForm) : '';
+    return [
+        histoReportRow('Disposition', summary || 'Declines Treatment / Other'),
+        histoReportRow('Reason', lesion?.declineReason || ''),
+        histoReportRow('Alternatives', lesion?.declineAlternatives || ''),
+        histoReportRow('Risks explained', risks),
+        histoReportRow('Capacity', lesion?.declineCapacity === 'concerns'
+            ? ('Concerns — ' + (lesion.declineCapacityNote || ''))
+            : 'Appears to have capacity'),
+        histoReportRow('Recorded as', form),
+        histoReportRow('Safety-net', lesion?.declineSafetyNetAdvice || ''),
+        histoReportRow('Review', lesion?.declineReview && lesion.declineReview !== 'none' ? lesion.declineReview : ''),
+        histoReportRow('Notes', lesion?.declineNotes || '')
+    ].join('');
+}
+
 function renderInspectorPlanCard(lesion, options) {
     if (!lesionShowsPlanCard(lesion)) return '';
     options = options || {};
     const id = String(lesion.id || '').replace(/'/g, '');
     const topical = (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))
         || (typeof lesionType === 'function' ? lesionType(lesion) : lesion.type) === 'topical';
+    const decline = typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan);
     const changeBtn = options.changePlan !== false
         ? histoInlineButton('Change plan', `editChartLesionPlan('${id}')`)
         : '';
-    const compareBtns = topical
+    const extraBtns = topical
         ? histoInlineButton('Comparison', 'openAkComparisonModal()')
             + histoInlineButton('Print', 'printAkComparisonChart()')
-        : '';
+        : (decline ? histoInlineButton('Print', 'printDeclineAcknowledgement(\'insp\')') : '');
     let rows = '';
     let pending = '';
-    if (topical) {
+    if (decline) {
+        rows = renderInspectorDeclinePlanRows(lesion);
+    } else if (topical) {
         rows = renderInspectorTopicalPlanRows(lesion);
     } else {
         const typeLabel = (typeof lesionProcedureTypeLabel === 'function' ? lesionProcedureTypeLabel(lesion) : '')
@@ -1042,8 +1065,8 @@ function renderInspectorPlanCard(lesion, options) {
         ].join('');
         pending = '<p class="histo-report-pending">Histology is recorded after this procedure is completed.</p>';
     }
-    return `<article class="histo-report is-plan${topical ? ' is-topical-plan' : ''}" data-inspector-plan="1">
-        ${histoReportHead('Plan', '', compareBtns + changeBtn)}
+    return `<article class="histo-report is-plan${topical ? ' is-topical-plan' : ''}${decline ? ' is-decline-plan' : ''}" data-inspector-plan="1">
+        ${histoReportHead('Plan', '', extraBtns + changeBtn)}
         ${rows ? `<dl class="histo-report-dl">${rows}</dl>` : ''}
         ${pending}
     </article>`;

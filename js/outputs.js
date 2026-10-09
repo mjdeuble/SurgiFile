@@ -55,6 +55,11 @@ function formatLesionPlanIemr(lesion) {
     if (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan)) {
         return 'Topical / Field Treatment';
     }
+    if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan)) {
+        return typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(lesion)
+            ? formatDeclinePlanSummary(lesion)
+            : 'Declines Treatment / Other';
+    }
     const biopsyPlan = typeof isPunchShaveBiopsyPlan === 'function'
         ? isPunchShaveBiopsyPlan(lesion.plan)
         : /Biopsy/i.test(String(lesion.plan || ''));
@@ -184,6 +189,7 @@ function generateEMRNotePlainText(options) {
                 }
             }
             txt += formatTopicalEmrLines(l);
+            if (typeof formatDeclineEmrLines === 'function') txt += formatDeclineEmrLines(l);
             txt += `\n`;
         });
     } else if (!remote) {

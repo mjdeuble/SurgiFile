@@ -1014,6 +1014,9 @@ function inspectorDocPlanValue(lesion) {
         return typeof PUNCH_SHAVE_BIOPSY_PLAN === 'string' ? PUNCH_SHAVE_BIOPSY_PLAN : 'Punch / Shave Biopsy';
     }
     if (typeof isTopicalPlan === 'function' && isTopicalPlan(planElValue)) return 'Topical / Field Treatment';
+    if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(planElValue)) {
+        return typeof DECLINE_TREATMENT_PLAN === 'string' ? DECLINE_TREATMENT_PLAN : 'Declines Treatment / Other';
+    }
     if (typeof isConfirmedHistologyExcisionPlan === 'function'
         && (isConfirmedHistologyExcisionPlan(planElValue)
             || (!lesion?.priorLesionId && typeof lesionHasCopiedPriorHistology === 'function' && lesionHasCopiedPriorHistology(lesion)))) {
@@ -1078,6 +1081,7 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                     <option value="Histology already confirmed — book excision"${inspectorOpt(plan, 'Histology already confirmed — book excision')}>Histology already confirmed — book excision</option>
                     <option value="Topical / Field Treatment"${inspectorOpt(plan, 'Topical / Field Treatment')}>Topical / Field Treatment</option>
                     <option value="Refer / Specialist"${inspectorOpt(plan, 'Refer / Specialist')}>Refer / Specialist</option>
+                    <option value="Declines Treatment / Other"${inspectorOpt(plan, 'Declines Treatment / Other')}>Declines Treatment / Other</option>
                 </select>
             </div>
             <div id="inspPlanBiopsyFields" class="insp-sub hidden">
@@ -1214,6 +1218,11 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                     <label class="insp-label" for="inspTopicalNotes">Notes</label>
                     <input type="text" id="inspTopicalNotes" class="insp-input" value="${escapeHtml(lesion.topicalNotes || '')}"${disabled}>
                 </div>
+            </div>
+            <div id="inspPlanDeclineFields" class="insp-sub is-decline hidden">
+                ${typeof renderDeclinePlanFieldsHtml === 'function'
+                    ? renderDeclinePlanFieldsHtml('insp', lesion, !unlocked)
+                    : ''}
             </div>
             <div class="insp-actions">
                 <button type="button" onclick="cancelInspectorLesionForm()">Cancel</button>
@@ -1409,10 +1418,12 @@ function handleInspectorPlanChange() {
     const eFields = document.getElementById('inspPlanExcisionFields');
     const tFields = document.getElementById('inspPlanTopicalFields');
     const hFields = document.getElementById('inspPlanConfirmedHistoFields');
+    const dFields = document.getElementById('inspPlanDeclineFields');
     if (bFields) bFields.classList.add('hidden');
     if (eFields) eFields.classList.add('hidden');
     if (tFields) tFields.classList.add('hidden');
     if (hFields) hFields.classList.add('hidden');
+    if (dFields) dFields.classList.add('hidden');
     if (typeof isPunchShaveBiopsyPlan === 'function' && isPunchShaveBiopsyPlan(plan)) {
         if (bFields) bFields.classList.remove('hidden');
         handleInspectorBiopsyTypeChange();
@@ -1427,6 +1438,9 @@ function handleInspectorPlanChange() {
     } else if (typeof isTopicalPlan === 'function' && isTopicalPlan(plan)) {
         if (tFields) tFields.classList.remove('hidden');
         if (typeof updateAkComparisonControls === 'function') updateAkComparisonControls();
+    } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
+        if (dFields) dFields.classList.remove('hidden');
+        if (typeof syncDeclinePlanUi === 'function') syncDeclinePlanUi('insp');
     }
 }
 
@@ -1576,6 +1590,7 @@ function saveInspectorLesionDocumentation() {
     let excisionClosureType = '';
     let graftType = '';
     let topicalFields = typeof emptyTopicalFields === 'function' ? emptyTopicalFields() : {};
+    let declineFields = typeof emptyDeclineFields === 'function' ? emptyDeclineFields() : {};
     let length = '';
     let width = '';
     let margin = '';
@@ -1637,6 +1652,15 @@ function saveInspectorLesionDocumentation() {
             showToast('Record the patient decision, or mark treatment as declined.');
             return;
         }
+    } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
+        declineFields = typeof readDeclineFieldsFromForm === 'function'
+            ? readDeclineFieldsFromForm('insp')
+            : declineFields;
+        const declineError = typeof validateDeclineFields === 'function' ? validateDeclineFields(declineFields) : '';
+        if (declineError) {
+            showToast(declineError);
+            return;
+        }
     }
     pendingLesionSaveSource = '';
     inspectorPaneMode = 'view';
@@ -1664,6 +1688,7 @@ function saveInspectorLesionDocumentation() {
             ? inferBillingReconstruction({ excisionReconstruction, excisionClosureType })
             : '',
         ...topicalFields,
+        ...declineFields,
         ...(copiedPrior || {}),
         ...(patientSnap || {})
     };
@@ -1696,6 +1721,12 @@ function saveInspectorLesionDocumentation() {
         if (copiedPrior) lesionRecord.currentPlan = 'Excision planned after prior histology';
     } else if (typeof isTopicalPlan === 'function' && isTopicalPlan(plan)) {
         lesionRecord.type = 'topical';
+    } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
+        lesionRecord.type = 'none';
+        lesionRecord.managementStatus = 'no_followup';
+        lesionRecord.currentPlan = typeof formatDeclinePlanSummary === 'function'
+            ? formatDeclinePlanSummary(lesionRecord)
+            : 'Declined recommended treatment';
     } else {
         lesionRecord.type = 'none';
     }

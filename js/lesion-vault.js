@@ -1128,6 +1128,9 @@ function deriveLesionStatusFromPlan(record) {
         return 'no_followup';
     }
     if (plan.includes('Monitor')) return 'no_followup';
+    if (typeof isDeclineTreatmentPlan === 'function' ? isDeclineTreatmentPlan(plan) : /Declines Treatment/i.test(plan)) {
+        return 'no_followup';
+    }
     return 'awaiting_assessment';
 }
 
@@ -1156,6 +1159,11 @@ function defaultPlanLine(lesion) {
         return 'Procedure planned';
     }
     if (status === 'topical_followup') return 'Topical follow-up';
+    if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion?.plan)) {
+        return typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(lesion)
+            ? formatDeclinePlanSummary(lesion)
+            : 'Declined recommended treatment';
+    }
     if (status === 'no_followup') return 'No follow-up';
     if (status === 'awaiting_assessment') return 'Awaiting assessment';
     return String(lesion?.plan || '').trim();
@@ -2447,6 +2455,14 @@ async function persistSessionLesionToVault(sessionLesion) {
             next.type = 'topical';
             next.currentPlan = defaultPlanLine(next);
         }
+    }
+    if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(sessionLesion.plan) && !completed) {
+        next.managementStatus = 'no_followup';
+        next.type = 'none';
+        next.currentPlan = typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(next)
+            ? formatDeclinePlanSummary(next)
+            : (next.currentPlan || 'Declined recommended treatment');
+        next.clinicallyFinalisedAt = next.clinicallyFinalisedAt || now;
     }
     const planChanged = !existing.id || existing.plan !== next.plan || existing.type !== next.type;
     if (!existing.id) appendLesionHistory(next, 'created', sessionLesion.plan || '');

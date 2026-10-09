@@ -639,6 +639,9 @@ function openLesionModal(lesionId = null) {
             if (isTopicalPlan(item.plan) && planEl.value !== item.plan) {
                 planEl.value = 'Topical / Field Treatment';
             }
+            if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(item.plan)) {
+                planEl.value = typeof DECLINE_TREATMENT_PLAN === 'string' ? DECLINE_TREATMENT_PLAN : 'Declines Treatment / Other';
+            }
             if (isConfirmedHistologyExcisionPlan(item.plan)
                 || (!item.priorLesionId && lesionHasCopiedPriorHistology(item))) {
                 planEl.value = CONFIRMED_HISTOLOGY_EXCISION_PLAN;
@@ -670,6 +673,7 @@ function openLesionModal(lesionId = null) {
             }
             if (examPunch) examPunch.value = typeof parseMarginMm === 'function' ? (parseMarginMm(item.punchSize) || item.punchSize || '') : (item.punchSize || '');
             populateTopicalForm(item);
+            if (typeof mountDeclinePlanFields === 'function') mountDeclinePlanFields('planDeclineFields', '', item);
         }
     } else {
         document.getElementById('lesionModalTitle').innerText = "Document Skin Lesion";
@@ -695,6 +699,7 @@ function openLesionModal(lesionId = null) {
 
         resetTopicalForm();
         clearPriorHistologyForm();
+        if (typeof mountDeclinePlanFields === 'function') mountDeclinePlanFields('planDeclineFields', '', emptyDeclineFields());
     }
 
     handlePlanChange();
@@ -756,11 +761,13 @@ function handlePlanChange() {
     const eFields = document.getElementById('planExcisionFields');
     const tFields = document.getElementById('planTopicalFields');
     const hFields = document.getElementById('planConfirmedHistoFields');
+    const dFields = document.getElementById('planDeclineFields');
 
     if (bFields) bFields.classList.add('hidden');
     if (eFields) eFields.classList.add('hidden');
     if (tFields) tFields.classList.add('hidden');
     if (hFields) hFields.classList.add('hidden');
+    if (dFields) dFields.classList.add('hidden');
 
     if (isPunchShaveBiopsyPlan(plan)) {
         if (bFields) bFields.classList.remove('hidden');
@@ -776,6 +783,14 @@ function handlePlanChange() {
     } else if (isTopicalPlan(plan)) {
         if (tFields) tFields.classList.remove('hidden');
         updateTopicalFieldVisibility();
+    } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
+        if (dFields) {
+            if (!dFields.innerHTML && typeof mountDeclinePlanFields === 'function') {
+                mountDeclinePlanFields('planDeclineFields', '', emptyDeclineFields());
+            }
+            dFields.classList.remove('hidden');
+        }
+        if (typeof syncDeclinePlanUi === 'function') syncDeclinePlanUi('');
     }
 }
 
@@ -817,6 +832,7 @@ function saveLesion() {
     let excisionClosureType = '';
     let graftType = '';
     let topicalFields = emptyTopicalFields();
+    let declineFields = typeof emptyDeclineFields === 'function' ? emptyDeclineFields() : {};
     let length = '';
     let width = '';
     let margin = '';
@@ -883,6 +899,15 @@ function saveLesion() {
             showToast('Choose a cryotherapy protocol (or enter freeze time) before saving.');
             return;
         }
+    } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
+        declineFields = typeof readDeclineFieldsFromForm === 'function'
+            ? readDeclineFieldsFromForm('')
+            : declineFields;
+        const declineError = typeof validateDeclineFields === 'function' ? validateDeclineFields(declineFields) : '';
+        if (declineError) {
+            showToast(declineError);
+            return;
+        }
     }
 
     const patientSnap = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : null;
@@ -907,6 +932,7 @@ function saveLesion() {
             ? inferBillingReconstruction({ excisionReconstruction, excisionClosureType })
             : '',
         ...topicalFields,
+        ...declineFields,
         ...(copiedPrior || {}),
         ...(patientSnap || {})
     };
@@ -945,6 +971,12 @@ function saveLesion() {
         if (copiedPrior) lesionRecord.currentPlan = 'Excision planned after prior histology';
     } else if (isTopicalPlan(plan)) {
         lesionRecord.type = 'topical';
+    } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
+        lesionRecord.type = 'none';
+        lesionRecord.managementStatus = 'no_followup';
+        lesionRecord.currentPlan = typeof formatDeclinePlanSummary === 'function'
+            ? formatDeclinePlanSummary(lesionRecord)
+            : 'Declined recommended treatment';
     } else {
         lesionRecord.type = 'none';
     }
@@ -1044,16 +1076,18 @@ function renderLesionsTable() {
             <td class="p-3 text-slate-700">${escapeHtml(typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(l.impression) : (l.impression || ''))}</td>
             <td class="p-3"><span class="text-[11px] font-semibold text-blue-800">${escapeHtml(status)}</span>${l.currentPlan ? `<div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(l.currentPlan)}</div>` : ''}${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(l) ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(l)))}</span>` : ''}</td>
             <td class="p-3">
-                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${(l.plan || '').includes('Biopsy') ? 'bg-blue-100 text-blue-800' : (l.plan || '').includes('Excision') ? 'bg-purple-100 text-purple-800' : (typeof isReferLesionPlan === 'function' && isReferLesionPlan(l.plan)) ? 'bg-indigo-100 text-indigo-800' : isTopicalPlan(l.plan) ? 'bg-teal-100 text-teal-800' : (l.plan || '').includes('Awaiting') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'}">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${(l.plan || '').includes('Biopsy') ? 'bg-blue-100 text-blue-800' : (l.plan || '').includes('Excision') ? 'bg-purple-100 text-purple-800' : (typeof isReferLesionPlan === 'function' && isReferLesionPlan(l.plan)) ? 'bg-indigo-100 text-indigo-800' : isTopicalPlan(l.plan) ? 'bg-teal-100 text-teal-800' : (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(l.plan)) ? 'bg-amber-100 text-amber-950 border border-amber-300' : (l.plan || '').includes('Awaiting') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'}">
                             ${escapeHtml(isTopicalPlan(l.plan)
                                 ? formatTopicalTableBadge(l)
-                                : ((typeof isReferLesionPlan === 'function' && isReferLesionPlan(l.plan))
+                                : ((typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(l.plan))
+                                    ? (typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(l) || 'Declines Treatment / Other')
+                                    : ((typeof isReferLesionPlan === 'function' && isReferLesionPlan(l.plan))
                                     ? 'Refer / Specialist'
                                     : (l.priorLesionId
                                         ? 'Re-excision'
                                         : (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(l.plan)
                                             ? 'Prior histology · excision'
-                                            : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`))))}
+                                            : `${l.plan || ''} ${l.biopsyType ? '(' + l.biopsyType + ')' : ''}`)))))}
                         </span>
             </td>
             <td class="p-3 text-right space-x-2">
