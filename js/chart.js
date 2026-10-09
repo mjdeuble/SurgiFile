@@ -1007,14 +1007,10 @@ function paintInspectorCaption(lesion) {
     const cap = document.querySelector('#inspLesionSlot .chart-inspector-caption')
         || document.querySelector('#chartLesionInspector .chart-inspector-caption');
     if (!cap || !lesion) return;
-    const status = typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion.plan || '');
-    const dx = typeof formatDiagnosisDisplay === 'function'
-        ? formatDiagnosisDisplay(lesion.impression || '')
-        : (lesion.impression || '');
     const h2 = cap.querySelector('h2');
     const p = cap.querySelector('p');
     if (h2) h2.textContent = lesion.location || 'No site';
-    if (p) p.textContent = [dx, status].filter(Boolean).join(' · ');
+    if (p) p.remove();
 }
 
 function inspectorOpt(current, value) {
@@ -2107,10 +2103,6 @@ function renderChartLesionInspector(options) {
         return;
     }
     const safeId = id.replace(/'/g, '');
-    const status = typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion.plan || '');
-    const dx = typeof formatDiagnosisDisplay === 'function'
-        ? formatDiagnosisDisplay(lesion.impression || '')
-        : (lesion.impression || '');
     const dossier = typeof renderInspectorLesionDossier === 'function'
         ? renderInspectorLesionDossier(lesion)
         : '';
@@ -2125,7 +2117,6 @@ function renderChartLesionInspector(options) {
     slot.innerHTML = `
         <div class="chart-inspector-caption">
             <h2>${escapeHtml(lesion.location || 'No site')}</h2>
-            <p>${escapeHtml([dx, status].filter(Boolean).join(' · '))}</p>
         </div>
         ${toolbar ? `<div class="chart-inspector-toolbar">${toolbar}</div>` : ''}
         <div class="chart-inspector-body" data-inspector-view="1">
