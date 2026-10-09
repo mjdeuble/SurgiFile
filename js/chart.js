@@ -1027,6 +1027,15 @@ function inspectorDocPlanValue(lesion) {
         return typeof PUNCH_SHAVE_BIOPSY_PLAN === 'string' ? PUNCH_SHAVE_BIOPSY_PLAN : 'Punch / Shave Biopsy';
     }
     if (typeof isTopicalPlan === 'function' && isTopicalPlan(planElValue)) return 'Topical / Field Treatment';
+    if (!planElValue && String(lesion?.proposedPlan || '') === 'topical') return 'Topical / Field Treatment';
+    if (!planElValue && String(lesion?.proposedPlan || '') === 'excision') {
+        return 'Formally Book Excision Procedure';
+    }
+    if (!planElValue && String(lesion?.proposedPlan || '') === 'biopsy') {
+        return typeof PUNCH_SHAVE_BIOPSY_PLAN === 'string' ? PUNCH_SHAVE_BIOPSY_PLAN : 'Punch / Shave Biopsy';
+    }
+    if (!planElValue && String(lesion?.proposedPlan || '') === 'refer') return 'Refer / Specialist';
+    if (!planElValue && String(lesion?.proposedPlan || '') === 'monitor') return 'Monitor / Reassure (Benign)';
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(planElValue)) {
         return typeof DECLINE_TREATMENT_PLAN === 'string' ? DECLINE_TREATMENT_PLAN : 'Declines Treatment / Other';
     }
