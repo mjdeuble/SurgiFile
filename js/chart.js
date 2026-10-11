@@ -1252,8 +1252,75 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                 <div class="insp-choice-row">
                     ${['cryotherapy|Cryotherapy', 'efudix|Efudix', 'efudix-calcipotriol|Efudix + Calcipotriol', 'aldara|Aldara', 'pdt|PDT', 'declined|Declined'].map((row) => {
                         const [value, label] = row.split('|');
-                        return `<label class="insp-choice"><input type="radio" name="inspTopicalDecision" value="${value}"${inspectorChecked(lesion.topicalDecision, value)}${disabled}> ${label}</label>`;
+                        return `<label class="insp-choice"><input type="radio" name="inspTopicalDecision" value="${value}"${inspectorChecked(lesion.topicalDecision, value)} onchange="handleInspectorTopicalDecisionChange()"${disabled}> ${label}</label>`;
                     }).join('')}
+                </div>
+                <div id="inspEfudixCoursePanel" class="hidden">
+                    <p class="insp-label" style="margin:0">Efudix course</p>
+                    <p class="insp-hint">Duration and frequency discussed for 5-fluorouracil (typically 2–4 weeks).</p>
+                    <div class="insp-grid">
+                        <div>
+                            <label class="insp-label" for="inspEfudixDuration">Duration</label>
+                            <select id="inspEfudixDuration" class="insp-select" onchange="syncCreamCourseUi(); updateOutput();"${disabled}>
+                                ${creamSelectOptionsHtml(typeof EFUDIX_DURATION_OPTIONS !== 'undefined' ? EFUDIX_DURATION_OPTIONS : [], lesion.efudixDuration)}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="insp-label" for="inspEfudixFrequency">Frequency</label>
+                            <select id="inspEfudixFrequency" class="insp-select"${disabled}>
+                                ${creamSelectOptionsHtml(typeof CREAM_FREQUENCY_OPTIONS !== 'undefined' ? CREAM_FREQUENCY_OPTIONS : [], lesion.efudixFrequency)}
+                            </select>
+                        </div>
+                    </div>
+                    <div id="inspEfudixDurationCustomWrap" class="${durationSelectValue(lesion.efudixDuration, typeof EFUDIX_DURATION_OPTIONS !== 'undefined' ? EFUDIX_DURATION_OPTIONS : []) === 'other' ? '' : 'hidden'}">
+                        <label class="insp-label" for="inspEfudixDurationCustom">Custom duration</label>
+                        <input type="text" id="inspEfudixDurationCustom" class="insp-input" value="${escapeHtml(durationSelectValue(lesion.efudixDuration, typeof EFUDIX_DURATION_OPTIONS !== 'undefined' ? EFUDIX_DURATION_OPTIONS : []) === 'other' ? (lesion.efudixDuration || '') : '')}" placeholder="e.g. 10 days, then review"${disabled}>
+                    </div>
+                </div>
+                <div id="inspComboCoursePanel" class="hidden">
+                    <p class="insp-label" style="margin:0">Efudix + Calcipotriol course</p>
+                    <p class="insp-hint">Short combination course discussed (often 4 consecutive days, twice daily).</p>
+                    <div class="insp-grid">
+                        <div>
+                            <label class="insp-label" for="inspComboDuration">Duration</label>
+                            <select id="inspComboDuration" class="insp-select" onchange="syncCreamCourseUi(); updateOutput();"${disabled}>
+                                ${creamSelectOptionsHtml(typeof COMBO_DURATION_OPTIONS !== 'undefined' ? COMBO_DURATION_OPTIONS : [], lesion.comboDuration)}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="insp-label" for="inspComboFrequency">Frequency</label>
+                            <select id="inspComboFrequency" class="insp-select"${disabled}>
+                                ${creamSelectOptionsHtml(typeof CREAM_FREQUENCY_OPTIONS !== 'undefined' ? CREAM_FREQUENCY_OPTIONS : [], lesion.comboFrequency)}
+                            </select>
+                        </div>
+                    </div>
+                    <div id="inspComboDurationCustomWrap" class="${durationSelectValue(lesion.comboDuration, typeof COMBO_DURATION_OPTIONS !== 'undefined' ? COMBO_DURATION_OPTIONS : []) === 'other' ? '' : 'hidden'}">
+                        <label class="insp-label" for="inspComboDurationCustom">Custom duration</label>
+                        <input type="text" id="inspComboDurationCustom" class="insp-input" value="${escapeHtml(durationSelectValue(lesion.comboDuration, typeof COMBO_DURATION_OPTIONS !== 'undefined' ? COMBO_DURATION_OPTIONS : []) === 'other' ? (lesion.comboDuration || '') : '')}" placeholder="e.g. 4 mornings only"${disabled}>
+                    </div>
+                </div>
+                <div id="inspPdtQuotePanel" class="hidden">
+                    <p class="insp-label" style="margin:0">Red Light PDT quote</p>
+                    <div class="insp-actions" style="margin:0">
+                        <button type="button" onclick="openClinicSettingsModal('pdt')"${disabled}>Edit clinic PDT prices</button>
+                    </div>
+                    <p class="insp-hint">Tick every region in this field. Fees come from clinic PDT prices, or record a quoted fee below.</p>
+                    <div id="inspPdtAreaChecklist" class="insp-choice-list"></div>
+                    <p id="inspPdtQuotePreview" class="insp-hint">Select one or more body areas for this field.</p>
+                    <div class="insp-grid">
+                        <div>
+                            <label class="insp-label" for="inspPdtCustomArea">Custom area</label>
+                            <input type="text" id="inspPdtCustomArea" class="insp-input" value="${escapeHtml(lesion.pdtCustomArea || '')}" placeholder="e.g. Neck" oninput="updatePdtQuotePreview()"${disabled}>
+                        </div>
+                        <div>
+                            <label class="insp-label" for="inspPdtCustomFee">Custom area fee $</label>
+                            <input type="number" id="inspPdtCustomFee" class="insp-input" min="0" step="1" value="${escapeHtml(lesion.pdtCustomFee || '')}" placeholder="0" oninput="updatePdtQuotePreview()"${disabled}>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="insp-label" for="inspPdtQuotedFee">Quoted fee for this field $</label>
+                        <input type="number" id="inspPdtQuotedFee" class="insp-input" min="0" step="1" value="${escapeHtml(lesion.pdtQuotedFeeOverride || '')}" placeholder="Leave blank to use clinic area prices" oninput="updatePdtQuotePreview()"${disabled}>
+                    </div>
                 </div>
                 <div>
                     <label class="insp-label" for="inspTopicalFollowUp">Follow-up</label>
@@ -1462,6 +1529,8 @@ function bindInspectorTypeaheads() {
 function onInspectorTopicalDiscussedChange() {
     if (typeof renderAkComparisonTable === 'function') renderAkComparisonTable();
     if (typeof updateAkComparisonControls === 'function') updateAkComparisonControls();
+    if (typeof updateTopicalFieldVisibility === 'function') updateTopicalFieldVisibility();
+    if (typeof renderPdtAreaSelect === 'function') renderPdtAreaSelect();
 }
 
 function handleInspectorPlanChange() {
@@ -1490,6 +1559,18 @@ function handleInspectorPlanChange() {
     } else if (typeof isTopicalPlan === 'function' && isTopicalPlan(plan)) {
         if (tFields) tFields.classList.remove('hidden');
         if (typeof updateAkComparisonControls === 'function') updateAkComparisonControls();
+        if (typeof renderPdtAreaSelect === 'function') {
+            const lesion = typeof inspectorFormLesion === 'function' ? inspectorFormLesion() : null;
+            const regionIds = (typeof normalizePdtRegions === 'function' && lesion)
+                ? normalizePdtRegions(lesion).map((row) => row.id).filter((id) => id && id !== 'pdt-custom')
+                : [];
+            renderPdtAreaSelect(regionIds);
+        }
+        if (typeof fillCreamCourseFields === 'function') {
+            const lesion = typeof inspectorFormLesion === 'function' ? inspectorFormLesion() : null;
+            fillCreamCourseFields(lesion || {});
+        }
+        if (typeof updateTopicalFieldVisibility === 'function') updateTopicalFieldVisibility();
     } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
         if (dFields) dFields.classList.remove('hidden');
         if (typeof syncDeclinePlanUi === 'function') syncDeclinePlanUi('insp');
@@ -1574,15 +1655,21 @@ function collectInspectorCopiedPriorHistology() {
 }
 
 function readInspectorTopicalFields(existing) {
+    if (typeof readTopicalFieldsFromForm === 'function') {
+        const fromForm = readTopicalFieldsFromForm();
+        const keep = existing || {};
+        const emptyCryo = typeof emptyCryoFields === 'function' ? emptyCryoFields() : {};
+        Object.keys(emptyCryo).forEach((key) => {
+            if (fromForm[key] == null || fromForm[key] === emptyCryo[key]) {
+                fromForm[key] = keep[key] != null ? keep[key] : emptyCryo[key];
+            }
+        });
+        return fromForm;
+    }
     const discussed = [];
     document.querySelectorAll('input[name="inspTopicalDiscussed"]:checked').forEach((el) => discussed.push(el.value));
     const decision = document.querySelector('input[name="inspTopicalDecision"]:checked')?.value || '';
     const keep = existing || {};
-    const emptyCryo = typeof emptyCryoFields === 'function' ? emptyCryoFields() : {};
-    const cryo = {};
-    Object.keys(emptyCryo).forEach((key) => {
-        cryo[key] = keep[key] != null ? keep[key] : emptyCryo[key];
-    });
     return {
         topicalDiscussed: discussed,
         topicalDecision: decision,
@@ -1591,8 +1678,7 @@ function readInspectorTopicalFields(existing) {
         pdtRegions: Array.isArray(keep.pdtRegions) ? keep.pdtRegions : [],
         pdtAreaId: keep.pdtAreaId || '',
         pdtAreaName: keep.pdtAreaName || '',
-        pdtQuotedPrice: keep.pdtQuotedPrice || 0,
-        ...cryo
+        pdtQuotedPrice: keep.pdtQuotedPrice || 0
     };
 }
 

@@ -835,6 +835,13 @@ function renderLesionProcedureBlock(lesion) {
             lesionCardRow('Treatment', 'Topical / field treatment'),
             lesionCardRow('Discussed', escapeHtml(topicalDiscussedLabels(lesion))),
             lesionCardRow('Decision', escapeHtml(decision)),
+            lesionCardRow('Efudix course', escapeHtml(typeof formatEfudixCourseText === 'function' ? formatEfudixCourseText(lesion) : '')),
+            lesionCardRow('Combination course', escapeHtml(typeof formatComboCourseText === 'function' ? formatComboCourseText(lesion) : '')),
+            lesionCardRow('PDT quote', escapeHtml(lesion?.pdtQuotedPrice || lesion?.pdtAreaName
+                ? ((lesion.pdtAreaName || 'Field') + (Number(lesion.pdtQuotedPrice) > 0
+                    ? ' · ' + (typeof formatPdtMoney === 'function' ? formatPdtMoney(lesion.pdtQuotedPrice) : ('$' + lesion.pdtQuotedPrice)) + ' OOP'
+                    : ''))
+                : '')),
             lesionCardRow('Follow-up', lesion?.topicalFollowUp && lesion.topicalFollowUp !== 'none'
                 ? escapeHtml(lesion.topicalFollowUp) : ''),
             lesionCardRow('Notes', escapeHtml(lesion?.topicalNotes || ''))
@@ -1016,6 +1023,13 @@ function renderInspectorTopicalPlanRows(lesion) {
         histoReportRow('Treatment', 'Topical / field treatment'),
         histoReportRow('Discussed', topicalDiscussedLabels(lesion)),
         histoReportRow('Decision', decision),
+        histoReportRow('Efudix course', typeof formatEfudixCourseText === 'function' ? formatEfudixCourseText(lesion) : ''),
+        histoReportRow('Combination course', typeof formatComboCourseText === 'function' ? formatComboCourseText(lesion) : ''),
+        histoReportRow('PDT quote', lesion?.pdtQuotedPrice || lesion?.pdtAreaName
+            ? ((lesion.pdtAreaName || 'Field') + (Number(lesion.pdtQuotedPrice) > 0
+                ? ' · ' + (typeof formatPdtMoney === 'function' ? formatPdtMoney(lesion.pdtQuotedPrice) : ('$' + lesion.pdtQuotedPrice)) + ' OOP'
+                : ''))
+            : ''),
         histoReportRow('Follow-up', lesion?.topicalFollowUp && lesion.topicalFollowUp !== 'none'
             ? lesion.topicalFollowUp : ''),
         histoReportRow('Notes', lesion?.topicalNotes || '')
@@ -1382,6 +1396,13 @@ function formatLesionPlanPlainLines(lesion) {
         push('Treatment', 'Topical / field treatment');
         push('Discussed', discussed);
         push('Decision', decision);
+        push('Efudix course', typeof formatEfudixCourseText === 'function' ? formatEfudixCourseText(lesion) : '');
+        push('Combination course', typeof formatComboCourseText === 'function' ? formatComboCourseText(lesion) : '');
+        if (lesion.pdtAreaName || Number(lesion.pdtQuotedPrice) > 0) {
+            push('PDT quote', (lesion.pdtAreaName || 'Field') + (Number(lesion.pdtQuotedPrice) > 0
+                ? ' · ' + (typeof formatPdtMoney === 'function' ? formatPdtMoney(lesion.pdtQuotedPrice) : ('$' + lesion.pdtQuotedPrice)) + ' OOP'
+                : ''));
+        }
         push('Follow-up', lesion.topicalFollowUp && lesion.topicalFollowUp !== 'none' ? lesion.topicalFollowUp : '');
         push('Notes', lesion.topicalNotes);
     } else if (proposed) {

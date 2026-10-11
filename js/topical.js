@@ -11,6 +11,28 @@ const TOPICAL_TREATMENT_OPTIONS = [
 const TOPICAL_DECISION_DECLINED = 'declined';
 const PDT_PRICE_STORAGE_KEY = 'dermRecordPdtPrices';
 
+const EFUDIX_DURATION_OPTIONS = [
+    { value: '', label: 'Duration not specified' },
+    { value: '1 week', label: '1 week' },
+    { value: '2 weeks', label: '2 weeks' },
+    { value: '3 weeks', label: '3 weeks' },
+    { value: '4 weeks', label: '4 weeks' },
+    { value: 'other', label: 'Other / custom' }
+];
+const COMBO_DURATION_OPTIONS = [
+    { value: '', label: 'Duration not specified' },
+    { value: '4 days', label: '4 days' },
+    { value: '5 days', label: '5 days' },
+    { value: '6 days', label: '6 days' },
+    { value: '7 days', label: '7 days' },
+    { value: 'other', label: 'Other / custom' }
+];
+const CREAM_FREQUENCY_OPTIONS = [
+    { value: '', label: 'Frequency not specified' },
+    { value: 'once daily', label: 'Once daily' },
+    { value: 'twice daily', label: 'Twice daily' }
+];
+
 /* RACGP AFP May 2017 — Optimising cryosurgery technique (Table 2), timed spot-freeze.
    Freeze time is held after ice ball encompasses lesion + margin. Clinician may modify. */
 const CRYOTHERAPY_PROTOCOLS = [
@@ -319,12 +341,12 @@ async function initTopicalModule() {
 }
 
 function getSelectedPdtAreaIds() {
-    return Array.from(document.querySelectorAll('input[name="pdtAreaPick"]:checked')).map((el) => el.value);
+    return Array.from(document.querySelectorAll('input[name="pdtAreaPick"]:checked, input[name="inspPdtAreaPick"]:checked'))
+        .map((el) => el.value)
+        .filter((id, idx, all) => all.indexOf(id) === idx);
 }
 
 function renderPdtAreaSelect(selectedIds) {
-    const host = document.getElementById('pdtAreaChecklist');
-    if (!host) return;
     let selected = Array.isArray(selectedIds)
         ? selectedIds.slice()
         : (selectedIds ? [selectedIds] : getSelectedPdtAreaIds());
@@ -332,19 +354,26 @@ function renderPdtAreaSelect(selectedIds) {
         const legacy = document.getElementById('pdtAreaSelect')?.value;
         if (legacy) selected = [legacy];
     }
-    if (pdtPriceList.length === 0) {
-        host.innerHTML = '<p class="text-[11px] text-teal-800 italic">No PDT areas in clinic settings yet. Add them under Clinic settings → PDT prices.</p>';
-        updatePdtQuotePreview();
-        return;
-    }
-    host.innerHTML = pdtPriceList.map((item) => {
-        const checked = selected.includes(item.id) ? ' checked' : '';
-        return `<label class="flex items-center gap-2 p-2 bg-teal-50/80 border border-teal-200 rounded-lg cursor-pointer">
-            <input type="checkbox" name="pdtAreaPick" value="${item.id}"${checked} onchange="updatePdtQuotePreview()" class="text-teal-600 rounded">
-            <span class="flex-1 text-xs font-semibold text-slate-800">${escapeHtml(item.area)}</span>
-            <span class="text-[11px] text-teal-900 font-medium">${formatPdtMoney(item.price)}</span>
-        </label>`;
-    }).join('');
+    const hosts = [
+        { id: 'pdtAreaChecklist', name: 'pdtAreaPick' },
+        { id: 'inspPdtAreaChecklist', name: 'inspPdtAreaPick' }
+    ];
+    hosts.forEach((spec) => {
+        const host = document.getElementById(spec.id);
+        if (!host) return;
+        if (pdtPriceList.length === 0) {
+            host.innerHTML = '<p class="insp-hint">No clinic PDT areas yet. Add them under Clinic settings → PDT prices, or record a custom area and fee below.</p>';
+            return;
+        }
+        host.innerHTML = pdtPriceList.map((item) => {
+            const checked = selected.includes(item.id) ? ' checked' : '';
+            return `<label class="insp-choice">
+                <input type="checkbox" name="${spec.name}" value="${item.id}"${checked} onchange="updatePdtQuotePreview()">
+                <span class="flex-1">${escapeHtml(item.area)}</span>
+                <span>${formatPdtMoney(item.price)}</span>
+            </label>`;
+        }).join('');
+    });
     updatePdtQuotePreview();
 }
 
@@ -412,14 +441,141 @@ async function addPdtPriceArea() {
     showToast('PDT area saved to clinic settings.');
 }
 
+function topicalUiIsInspector() {
+    return !!document.getElementById('inspPlanTopicalFields');
+}
+
+function topicalDecisionValue() {
+    const insp = document.querySelector('input[name="inspTopicalDecision"]:checked')?.value;
+    if (insp) return insp;
+    return document.querySelector('input[name="topicalDecision"]:checked')?.value || '';
+}
+
 function isPdtRelevant() {
-    const decision = document.querySelector('input[name="topicalDecision"]:checked')?.value || '';
-    return decision === 'pdt';
+    return topicalDecisionValue() === 'pdt' || getDiscussedTreatmentIds().includes('pdt');
 }
 
 function isCryoRelevant() {
-    const decision = document.querySelector('input[name="topicalDecision"]:checked')?.value || '';
-    return decision === 'cryotherapy';
+    return topicalDecisionValue() === 'cryotherapy';
+}
+
+function isEfudixCourseRelevant() {
+    return topicalDecisionValue() === 'efudix' || getDiscussedTreatmentIds().includes('efudix');
+}
+
+function isComboCourseRelevant() {
+    return topicalDecisionValue() === 'efudix-calcipotriol'
+        || getDiscussedTreatmentIds().includes('efudix-calcipotriol');
+}
+
+function topicalEl(modalId, inspId) {
+    return document.getElementById(inspId) || document.getElementById(modalId);
+}
+
+function topicalEls(modalId, inspId) {
+    return [document.getElementById(modalId), document.getElementById(inspId)].filter(Boolean);
+}
+
+function emptyCreamCourseFields() {
+    return {
+        efudixDuration: '',
+        efudixFrequency: '',
+        comboDuration: '',
+        comboFrequency: '',
+        pdtQuotedFeeOverride: '',
+        pdtCustomArea: '',
+        pdtCustomFee: ''
+    };
+}
+
+function durationSelectValue(stored, options) {
+    const raw = String(stored || '').trim();
+    if (!raw) return '';
+    if ((options || []).some((opt) => opt.value && opt.value === raw)) return raw;
+    return 'other';
+}
+
+function readDurationField(selectEl, customEl) {
+    const sel = selectEl?.value || '';
+    if (sel === 'other') return String(customEl?.value || '').trim();
+    return sel;
+}
+
+function formatCreamCourseText(duration, frequency) {
+    return [String(duration || '').trim(), String(frequency || '').trim()].filter(Boolean).join(', ');
+}
+
+function formatEfudixCourseText(lesion) {
+    return formatCreamCourseText(lesion?.efudixDuration, lesion?.efudixFrequency);
+}
+
+function formatComboCourseText(lesion) {
+    return formatCreamCourseText(lesion?.comboDuration, lesion?.comboFrequency);
+}
+
+function creamSelectOptionsHtml(options, current) {
+    const sel = durationSelectValue(current, options);
+    return (options || []).map((opt) => (
+        `<option value="${escapeHtml(opt.value)}"${opt.value === sel ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`
+    )).join('');
+}
+
+function syncCreamCourseUi() {
+    topicalEls('efudixDuration', 'inspEfudixDuration').forEach((el) => {
+        const wrap = document.getElementById(el.id === 'inspEfudixDuration' ? 'inspEfudixDurationCustomWrap' : 'efudixDurationCustomWrap');
+        wrap?.classList.toggle('hidden', el.value !== 'other');
+    });
+    topicalEls('comboDuration', 'inspComboDuration').forEach((el) => {
+        const wrap = document.getElementById(el.id === 'inspComboDuration' ? 'inspComboDurationCustomWrap' : 'comboDurationCustomWrap');
+        wrap?.classList.toggle('hidden', el.value !== 'other');
+    });
+}
+
+function readCreamCourseFromForm() {
+    const insp = topicalUiIsInspector();
+    return {
+        efudixDuration: readDurationField(
+            topicalEl('efudixDuration', insp ? 'inspEfudixDuration' : 'efudixDuration'),
+            topicalEl('efudixDurationCustom', insp ? 'inspEfudixDurationCustom' : 'efudixDurationCustom')
+        ),
+        efudixFrequency: (topicalEl('efudixFrequency', insp ? 'inspEfudixFrequency' : 'efudixFrequency')?.value || '').trim(),
+        comboDuration: readDurationField(
+            topicalEl('comboDuration', insp ? 'inspComboDuration' : 'comboDuration'),
+            topicalEl('comboDurationCustom', insp ? 'inspComboDurationCustom' : 'comboDurationCustom')
+        ),
+        comboFrequency: (topicalEl('comboFrequency', insp ? 'inspComboFrequency' : 'comboFrequency')?.value || '').trim(),
+        pdtQuotedFeeOverride: (topicalEl('pdtQuotedFee', insp ? 'inspPdtQuotedFee' : 'pdtQuotedFee')?.value || '').trim(),
+        pdtCustomArea: (topicalEl('pdtCustomArea', insp ? 'inspPdtCustomArea' : 'pdtCustomArea')?.value || '').trim(),
+        pdtCustomFee: (topicalEl('pdtCustomFee', insp ? 'inspPdtCustomFee' : 'pdtCustomFee')?.value || '').trim()
+    };
+}
+
+function fillCreamCourseFields(fields) {
+    const setDuration = (selectId, customId, wrapId, value, options) => {
+        const sel = document.getElementById(selectId);
+        const custom = document.getElementById(customId);
+        const wrap = document.getElementById(wrapId);
+        if (!sel) return;
+        const picked = durationSelectValue(value, options);
+        sel.value = picked;
+        if (custom) custom.value = picked === 'other' ? String(value || '') : '';
+        wrap?.classList.toggle('hidden', picked !== 'other');
+    };
+    const setVal = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value || '';
+    };
+    ['', 'insp'].forEach((prefix) => {
+        const p = (name) => prefix ? ('insp' + name.charAt(0).toUpperCase() + name.slice(1)) : name;
+        setDuration(p('efudixDuration'), p('efudixDurationCustom'), p('efudixDurationCustomWrap'), fields?.efudixDuration, EFUDIX_DURATION_OPTIONS);
+        setVal(p('efudixFrequency'), fields?.efudixFrequency);
+        setDuration(p('comboDuration'), p('comboDurationCustom'), p('comboDurationCustomWrap'), fields?.comboDuration, COMBO_DURATION_OPTIONS);
+        setVal(p('comboFrequency'), fields?.comboFrequency);
+        setVal(p('pdtQuotedFee'), fields?.pdtQuotedFeeOverride || (Number(fields?.pdtQuotedPrice) > 0 && !fields?.pdtRegions?.length ? fields.pdtQuotedPrice : ''));
+        setVal(p('pdtCustomArea'), fields?.pdtCustomArea);
+        setVal(p('pdtCustomFee'), fields?.pdtCustomFee);
+    });
+    syncCreamCourseUi();
 }
 
 function getDiscussedTreatmentIds() {
@@ -645,11 +801,19 @@ function updateCryoPlanPreview() {
 }
 
 function updateTopicalFieldVisibility() {
-    const pdtPanel = document.getElementById('pdtQuotePanel');
-    if (pdtPanel) {
-        if (isPdtRelevant()) pdtPanel.classList.remove('hidden');
-        else pdtPanel.classList.add('hidden');
-    }
+    const showPdt = isPdtRelevant();
+    ['pdtQuotePanel', 'inspPdtQuotePanel'].forEach((id) => {
+        document.getElementById(id)?.classList.toggle('hidden', !showPdt);
+    });
+    const showEfudix = isEfudixCourseRelevant();
+    ['efudixCoursePanel', 'inspEfudixCoursePanel'].forEach((id) => {
+        document.getElementById(id)?.classList.toggle('hidden', !showEfudix);
+    });
+    const showCombo = isComboCourseRelevant();
+    ['comboCoursePanel', 'inspComboCoursePanel'].forEach((id) => {
+        document.getElementById(id)?.classList.toggle('hidden', !showCombo);
+    });
+    syncCreamCourseUi();
     const cryoPanel = document.getElementById('cryoPlanPanel');
     if (cryoPanel) {
         if (isCryoRelevant()) {
@@ -669,38 +833,67 @@ function updateTopicalFieldVisibility() {
     }
 }
 
+function markDiscussedForDecision(decision, prefix) {
+    if (!decision || decision === 'declined') return;
+    const name = prefix === 'insp' ? 'inspTopicalDiscussed' : 'topicalDiscussed';
+    const box = document.querySelector(`input[name="${name}"][value="${decision}"]`);
+    if (box) box.checked = true;
+}
+
 function handleTopicalDecisionChange() {
     const decision = document.querySelector('input[name="topicalDecision"]:checked')?.value || '';
-    if (decision === 'pdt') {
-        const pdtDiscussed = document.querySelector('input[name="topicalDiscussed"][value="pdt"]');
-        if (pdtDiscussed) pdtDiscussed.checked = true;
-    }
-    if (decision === 'cryotherapy') {
-        const cryoDiscussed = document.querySelector('input[name="topicalDiscussed"][value="cryotherapy"]');
-        if (cryoDiscussed) cryoDiscussed.checked = true;
-        applyCryoRecommendationFromImpression({ force: true });
-    }
+    markDiscussedForDecision(decision, '');
+    if (decision === 'cryotherapy') applyCryoRecommendationFromImpression({ force: true });
     updateTopicalFieldVisibility();
 }
 
-function updatePdtQuotePreview() {
-    const preview = document.getElementById('pdtQuotePreview');
-    if (!preview) return;
+function handleInspectorTopicalDecisionChange() {
+    const decision = document.querySelector('input[name="inspTopicalDecision"]:checked')?.value || '';
+    markDiscussedForDecision(decision, 'insp');
+    updateTopicalFieldVisibility();
+    if (decision === 'pdt' || getDiscussedTreatmentIds().includes('pdt')) {
+        renderPdtAreaSelect(getSelectedPdtAreaIds());
+    }
+}
+
+function collectPdtRegionsFromForm() {
     const regions = pdtRegionsSnapshotFromIds(getSelectedPdtAreaIds());
-    if (!regions.length) {
-        preview.textContent = 'Select one or more body areas for this field (e.g. Scalp + Face). Fees come from clinic PDT prices.';
+    const cream = readCreamCourseFromForm();
+    if (cream.pdtCustomArea) {
+        regions.push({
+            id: 'pdt-custom',
+            area: cream.pdtCustomArea,
+            price: Math.max(0, Number(cream.pdtCustomFee) || 0)
+        });
+    }
+    const override = Math.max(0, Number(cream.pdtQuotedFeeOverride) || 0);
+    return { regions, override };
+}
+
+function updatePdtQuotePreview() {
+    const previews = topicalEls('pdtQuotePreview', 'inspPdtQuotePreview');
+    if (!previews.length) return;
+    const collected = collectPdtRegionsFromForm();
+    const regions = collected.regions;
+    if (!regions.length && !collected.override) {
+        previews.forEach((preview) => {
+            preview.textContent = 'Tick clinic PDT areas, or record a custom area and fee for this field.';
+        });
         return;
     }
     const summary = summarizePdtRegions(regions);
+    const total = collected.override || summary.total;
+    const names = summary.names || 'Recorded field';
     const lines = regions.map((row) => `${row.area}: ${formatPdtMoney(row.price)}`);
-    if (regions.length === 1) {
-        preview.textContent = summary.total > 0
-            ? `Quoted fee for ${summary.names}: ${formatPdtMoney(summary.total)} OOP`
-            : `${summary.names} is selected, but no PDT fee has been set yet in clinic settings.`;
-        return;
-    }
-    preview.innerHTML = lines.map((line) => escapeHtml(line)).join('<br>')
-        + `<br><strong>Combined quote: ${escapeHtml(formatPdtMoney(summary.total))} OOP</strong> for ${escapeHtml(summary.names)}`;
+    const text = (lines.length ? lines.join('\n') + '\n' : '')
+        + (collected.override
+            ? `Quoted fee recorded: ${formatPdtMoney(total)} OOP for ${names}`
+            : (total > 0
+                ? `Quoted fee for ${names}: ${formatPdtMoney(total)} OOP`
+                : `${names} selected — set a clinic fee or record a quoted fee below.`));
+    previews.forEach((preview) => {
+        preview.textContent = text;
+    });
 }
 
 function resetTopicalForm() {
@@ -714,6 +907,7 @@ function resetTopicalForm() {
     const select = document.getElementById('pdtAreaSelect');
     if (select) select.value = '';
     fillCryoFields(emptyCryoFields(), { syncFollowUp: false });
+    fillCreamCourseFields(emptyCreamCourseFields());
     const follow = document.getElementById('topicalFollowUp');
     if (follow) follow.value = 'none';
     updateTopicalFieldVisibility();
@@ -736,6 +930,7 @@ function populateTopicalForm(item) {
     if (follow) follow.value = item.topicalFollowUp || 'none';
     const regionIds = normalizePdtRegions(item).map((row) => row.id).filter(Boolean);
     renderPdtAreaSelect(regionIds);
+    fillCreamCourseFields(item);
     if (item.topicalDecision === 'cryotherapy' || (item.cryoFreezeSeconds > 0)) {
         fillCryoFields({
             cryoProtocolId: item.cryoProtocolId || inferCryoProtocolId(item.impression),
@@ -756,19 +951,30 @@ function populateTopicalForm(item) {
 
 function readTopicalFieldsFromForm() {
     const discussed = getDiscussedTreatmentIds();
-    const decision = document.querySelector('input[name="topicalDecision"]:checked')?.value || '';
-    const pdtRegions = pdtRegionsSnapshotFromIds(getSelectedPdtAreaIds());
+    const insp = topicalUiIsInspector();
+    const decision = topicalDecisionValue();
+    const cream = readCreamCourseFromForm();
+    const collected = collectPdtRegionsFromForm();
+    const pdtRegions = collected.regions;
     const summary = summarizePdtRegions(pdtRegions);
+    const quoted = collected.override || summary.total;
     const cryo = decision === 'cryotherapy' ? readCryoFieldsFromForm() : emptyCryoFields();
     return {
         topicalDiscussed: discussed,
         topicalDecision: decision,
-        topicalNotes: document.getElementById('topicalNotes')?.value.trim() || '',
-        topicalFollowUp: document.getElementById('topicalFollowUp')?.value || 'none',
+        topicalNotes: (document.getElementById(insp ? 'inspTopicalNotes' : 'topicalNotes')?.value || '').trim(),
+        topicalFollowUp: document.getElementById(insp ? 'inspTopicalFollowUp' : 'topicalFollowUp')?.value || 'none',
+        efudixDuration: cream.efudixDuration,
+        efudixFrequency: cream.efudixFrequency,
+        comboDuration: cream.comboDuration,
+        comboFrequency: cream.comboFrequency,
+        pdtQuotedFeeOverride: cream.pdtQuotedFeeOverride,
+        pdtCustomArea: cream.pdtCustomArea,
+        pdtCustomFee: cream.pdtCustomFee,
         pdtRegions,
         pdtAreaId: pdtRegions[0]?.id || '',
         pdtAreaName: summary.names,
-        pdtQuotedPrice: summary.total,
+        pdtQuotedPrice: quoted,
         ...cryo
     };
 }
@@ -779,6 +985,7 @@ function emptyTopicalFields() {
         topicalDecision: '',
         topicalNotes: '',
         topicalFollowUp: 'none',
+        ...emptyCreamCourseFields(),
         pdtRegions: [],
         pdtAreaId: '',
         pdtAreaName: '',
@@ -793,13 +1000,24 @@ function formatTopicalDecisionText(lesion) {
         return 'Declined treatment after discussion';
     }
     let text = topicalLabel(lesion.topicalDecision);
+    if (lesion.topicalDecision === 'efudix') {
+        const course = formatEfudixCourseText(lesion);
+        if (course) text += ` — ${course}`;
+    }
+    if (lesion.topicalDecision === 'efudix-calcipotriol') {
+        const course = formatComboCourseText(lesion);
+        if (course) text += ` — ${course}`;
+    }
     if (lesion.topicalDecision === 'pdt') {
         const summary = summarizePdtRegions(normalizePdtRegions(lesion));
+        const quoted = Number(lesion.pdtQuotedPrice) || summary.total;
         if (summary.names) {
             text += ` — ${summary.names}`;
-            if (summary.total > 0) {
-                text += ` (quoted ${formatPdtMoney(summary.total)} OOP)`;
+            if (quoted > 0) {
+                text += ` (quoted ${formatPdtMoney(quoted)} OOP)`;
             }
+        } else if (quoted > 0) {
+            text += ` (quoted ${formatPdtMoney(quoted)} OOP)`;
         }
     }
     if (lesion.topicalDecision === 'cryotherapy') {
@@ -822,12 +1040,25 @@ function formatTopicalEmrLines(lesion) {
     } else {
         lines += `    - Patient decision: Not yet recorded\n`;
     }
-    if (lesion.topicalDecision === 'pdt') {
+    const efudixCourse = formatEfudixCourseText(lesion);
+    if (efudixCourse && (lesion.topicalDecision === 'efudix' || (lesion.topicalDiscussed || []).includes('efudix'))) {
+        lines += `    - Efudix course discussed: ${efudixCourse}\n`;
+    }
+    const comboCourse = formatComboCourseText(lesion);
+    if (comboCourse && (lesion.topicalDecision === 'efudix-calcipotriol' || (lesion.topicalDiscussed || []).includes('efudix-calcipotriol'))) {
+        lines += `    - Combination Efudix + Calcipotriol course discussed: ${comboCourse}\n`;
+    }
+    if (lesion.topicalDecision === 'pdt' || (lesion.topicalDiscussed || []).includes('pdt')) {
         const regions = normalizePdtRegions(lesion);
-        if (regions.length > 1) {
+        if (regions.length) {
             regions.forEach((row) => {
-                lines += `    - PDT region: ${row.area || 'Area'} (${formatPdtMoney(row.price)} OOP)\n`;
+                lines += `    - PDT region quoted: ${row.area || 'Area'} (${formatPdtMoney(row.price)} OOP)\n`;
             });
+        }
+        const quoted = Number(lesion.pdtQuotedPrice) || summarizePdtRegions(regions).total;
+        if (quoted > 0) {
+            const names = summarizePdtRegions(regions).names || 'field treatment';
+            lines += `    - PDT quoted fee: ${formatPdtMoney(quoted)} OOP for ${names}.\n`;
         }
     }
     if (lesion.topicalDecision === 'cryotherapy' && Number(lesion.cryoFreezeSeconds) > 0) {
@@ -875,8 +1106,14 @@ function getTopicalReceptionBits() {
             }
             return bits.join(' · ');
         }
-        if (l.topicalDecision === 'efudix') return 'Efudix script';
-        if (l.topicalDecision === 'efudix-calcipotriol') return 'Efudix + Calcipotriol script';
+        if (l.topicalDecision === 'efudix') {
+            const course = formatEfudixCourseText(l);
+            return course ? `Efudix script (${course})` : 'Efudix script';
+        }
+        if (l.topicalDecision === 'efudix-calcipotriol') {
+            const course = formatComboCourseText(l);
+            return course ? `Efudix + Calcipotriol script (${course})` : 'Efudix + Calcipotriol script';
+        }
         if (l.topicalDecision === 'aldara') return 'Aldara script';
         return '';
     }).filter(Boolean);

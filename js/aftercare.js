@@ -438,9 +438,25 @@ function aftercareTreatmentBlocks(list) {
     };
 
     Object.keys(topicalBlocks).forEach((id) => {
-        if (list.some((l) => l.topicalDecision === id)) {
-            add(id, topicalBlocks[id].title, topicalBlocks[id].items);
+        const matches = list.filter((l) => l.topicalDecision === id);
+        if (!matches.length) return;
+        const items = topicalBlocks[id].items.slice();
+        const courseBits = matches.map((l) => {
+            if (id === 'efudix' && typeof formatEfudixCourseText === 'function') return formatEfudixCourseText(l);
+            if (id === 'efudix-calcipotriol' && typeof formatComboCourseText === 'function') return formatComboCourseText(l);
+            if (id === 'pdt') {
+                const names = l.pdtAreaName || '';
+                const fee = Number(l.pdtQuotedPrice) > 0
+                    ? (typeof formatPdtMoney === 'function' ? formatPdtMoney(l.pdtQuotedPrice) : ('$' + l.pdtQuotedPrice))
+                    : '';
+                return [names && ('Area: ' + names), fee && ('Quoted fee: ' + fee + ' OOP')].filter(Boolean).join('. ');
+            }
+            return '';
+        }).filter(Boolean);
+        if (courseBits.length) {
+            items.unshift('Prescribed / quoted today: ' + courseBits.join('; ') + '.');
         }
+        add(id, topicalBlocks[id].title, items);
     });
 
     const monitorOnly = list.filter((l) => {
