@@ -224,9 +224,11 @@ function letterHistoryLines(include) {
         });
     }
     const exam = typeof currentManagedChart === 'function' ? currentManagedChart()?.exam : null;
-    if (exam?.fitzpatrick) lines.push('- Fitzpatrick skin type: ' + exam.fitzpatrick);
-    if (exam?.lastSkinCheck) lines.push('- Last skin check: ' + exam.lastSkinCheck);
-    if (exam?.scope) lines.push('- Examination scope this episode: ' + exam.scope + (exam.regionalArea ? ' (' + exam.regionalArea + ')' : ''));
+    const examScope = typeof resolveExamScopeForNote === 'function' ? resolveExamScopeForNote() : null;
+    if (exam?.fitzpatrick || examScope?.fitz) lines.push('- Fitzpatrick skin type: ' + (exam?.fitzpatrick || examScope.fitz));
+    if (exam?.lastSkinCheck || examScope?.lastCheck) lines.push('- Last skin check: ' + (exam?.lastSkinCheck || examScope.lastCheck));
+    if (examScope?.performedLabel) lines.push('- ' + examScope.performedLabel);
+    else if (exam?.scope) lines.push('- Examination scope this episode: ' + exam.scope + (exam.regionalArea ? ' (' + exam.regionalArea + ')' : ''));
     return lines;
 }
 
@@ -309,9 +311,21 @@ function generateClinicalLetterPlainText(options) {
         lines.push('');
     }
 
+    const examScope = typeof resolveExamScopeForNote === 'function' ? resolveExamScopeForNote() : null;
+    if (examScope?.performedLabel) {
+        lines.push('EXAMINATION');
+        letterPushWrapped(lines, examScope.performedLabel + '.');
+        letterPushWrapped(lines, selected.length
+            ? 'Lesion(s) identified and documented below. Remainder of examined skin: no further dysplastic or suspicious lesions identified.'
+            : 'No dysplastic or suspicious lesions requiring biopsy or excision identified.');
+        lines.push('');
+    }
+
     lines.push('LESIONS');
     if (!selected.length) {
-        lines.push('(No lesions selected.)');
+        lines.push(examScope?.performedLabel
+            ? 'No individual lesions required separate documentation after this examination.'
+            : '(No lesions selected.)');
     } else {
         selected.forEach((lesion, idx) => {
             const n = idx + 1;

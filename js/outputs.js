@@ -1,8 +1,82 @@
 /* EMR note, pathology request, reception message, and action-card status */
 
+function examScopeKind(scopeVal) {
+    const s = String(scopeVal || '');
+    if (/full body|full skin check/i.test(s)) return 'full';
+    if (/regional/i.test(s)) return 'regional';
+    if (/spot check/i.test(s)) return 'spot';
+    return '';
+}
+
+function examPerformedLabel(scopeVal, regionalArea) {
+    const raw = String(scopeVal || '');
+    const kind = examScopeKind(raw);
+    const area = String(regionalArea || '').trim();
+    if (kind === 'full') {
+        if (/beneath undergarment/i.test(raw)) {
+            return 'Full skin check performed (including examination of areas beneath undergarments)';
+        }
+        if (/undergarment|underwear|covered areas/i.test(raw)) {
+            return 'Full skin check performed (undergarments remained in place; covered areas unexamined)';
+        }
+        return 'Full skin check performed';
+    }
+    if (kind === 'regional') {
+        const fromLabel = raw.match(/Regional skin check\s*\((.+)\)/i);
+        const region = area || (fromLabel ? fromLabel[1].trim() : '');
+        return region ? 'Regional skin check performed (' + region + ')' : 'Regional skin check performed';
+    }
+    if (kind === 'spot') return 'Spot check performed of specific patient-flagged lesion(s)';
+    return raw ? ('Examination performed: ' + raw) : '';
+}
+
+function resolveExamScopeForNote() {
+    let raw = document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
+    let regionalArea = document.getElementById('regionalAreaInput')?.value.trim() || '';
+    let fitz = document.getElementById('fitzpatrick')?.value || '';
+    let lastCheck = document.getElementById('lastSkinCheck')?.value || '';
+    if (!raw || !fitz || !lastCheck) {
+        const exam = (typeof currentManagedChart === 'function' ? currentManagedChart()?.exam : null) || {};
+        const sameVisit = !exam.visitDate
+            || (typeof todayVisitKey === 'function' && exam.visitDate === todayVisitKey());
+        if (sameVisit) {
+            if (!raw) raw = exam.scope || '';
+            if (!regionalArea) regionalArea = String(exam.regionalArea || '').trim();
+            if (!fitz) fitz = exam.fitzpatrick || '';
+            if (!lastCheck) lastCheck = exam.lastSkinCheck || '';
+        }
+    }
+    let consentedLabel = raw;
+    if (/regional area/i.test(raw)) {
+        consentedLabel = regionalArea ? ('Regional skin check (' + regionalArea + ')') : 'Regional skin check';
+    }
+    return {
+        raw,
+        regionalArea,
+        fitz,
+        lastCheck,
+        kind: examScopeKind(raw || consentedLabel),
+        consentedLabel,
+        performedLabel: examPerformedLabel(raw || consentedLabel, regionalArea)
+    };
+}
+
+function formatExamFindingsPlainText(scope, lesionCount) {
+    const performed = String(scope?.performedLabel || '').trim();
+    if (!performed) return '';
+    const n = Number(lesionCount) || 0;
+    const findings = n > 0
+        ? (n === 1
+            ? 'Findings: One lesion identified and documented below. Remainder of examined skin: no further dysplastic or suspicious lesions identified.'
+            : 'Findings: ' + n + ' lesions identified and documented below. Remainder of examined skin: no further dysplastic or suspicious lesions identified.')
+        : 'Findings: No dysplastic or suspicious lesions requiring biopsy or excision identified today.';
+    return '=== EXAMINATION PERFORMED ===\n\n- ' + performed + '.\n- ' + findings + '\n\n';
+}
+
 function generateRegionalClearanceSummary() {
-    const scopeVal = document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
-    if (!scopeVal.includes("Full body")) {
+    const scope = typeof resolveExamScopeForNote === 'function' ? resolveExamScopeForNote() : null;
+    const scopeVal = scope?.raw || document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
+    if (examScopeKind(scopeVal) !== 'full') {
         return "";
     }
 
@@ -17,8 +91,11 @@ function generateRegionalClearanceSummary() {
     let regionalFindings = {};
     regions.forEach(r => { regionalFindings[r.name] = []; });
 
-    lesions.forEach(l => {
-        const locLower = l.location.toLowerCase();
+    const examLesions = typeof visitNoteLesions === 'function'
+        ? visitNoteLesions()
+        : (typeof lesions !== 'undefined' && Array.isArray(lesions) ? lesions : []);
+    examLesions.forEach(l => {
+        const locLower = String(l.location || '').toLowerCase();
         let matched = false;
         regions.forEach(r => {
             if (r.keywords.some(k => locLower.includes(k))) {
@@ -93,14 +170,12 @@ function generateEMRNotePlainText(options) {
         || !consultLabel
     );
 
-    let scopeVal = document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
-    if (scopeVal.includes('Regional Area')) {
-        const regText = document.getElementById('regionalAreaInput')?.value.trim() || '';
-        scopeVal = regText ? `Regional skin check (${regText})` : '';
-    }
-
-    const fitz = document.getElementById('fitzpatrick')?.value || '';
-    const lastCheck = document.getElementById('lastSkinCheck')?.value || '';
+    const examScope = typeof resolveExamScopeForNote === 'function' ? resolveExamScopeForNote() : null;
+    const scopeVal = examScope?.consentedLabel
+        || document.querySelector('input[name="scopeConsent"]:checked')?.value
+        || '';
+    const fitz = examScope?.fitz || document.getElementById('fitzpatrick')?.value || '';
+    const lastCheck = examScope?.lastCheck || document.getElementById('lastSkinCheck')?.value || '';
     const smsLabel = typeof smsNormalResultsConsentLabel === 'function' ? smsNormalResultsConsentLabel() : '';
     const hasScopeBlock = !!(scopeVal || fitz || lastCheck || smsLabel);
 
@@ -145,11 +220,15 @@ function generateEMRNotePlainText(options) {
         });
     }
 
+    const noteLesions = typeof visitNoteLesions === 'function'
+        ? visitNoteLesions()
+        : (typeof lesions !== 'undefined' && Array.isArray(lesions) ? lesions : []);
+
     if (!remote) {
+        txt += formatExamFindingsPlainText(examScope, noteLesions.length);
         txt += generateRegionalClearanceSummary();
     }
 
-    const noteLesions = typeof visitNoteLesions === 'function' ? visitNoteLesions() : (lesions || []);
     if (noteLesions.length > 0) {
         txt += remote
             ? `=== LESIONS DISCUSSED / PLANNED ===\n\n`
@@ -204,13 +283,9 @@ function generateEMRNotePlainText(options) {
         });
     } else if (!remote) {
         txt += `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
-        if (scopeVal.includes('Full body')) {
-            txt += `- Full body skin examination performed. No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
-        } else if (scopeVal) {
-            txt += `- Examination performed (${scopeVal}). No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
-        } else {
-            txt += `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
-        }
+        txt += examScope?.performedLabel
+            ? `- No individual lesions required separate documentation after the ${examScope.kind === 'full' ? 'full skin check' : (examScope.kind === 'regional' ? 'regional skin check' : 'examination')}.\n\n`
+            : `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
     }
 
     if (procedureSession.started || procedureSession.completedAt || (typeof chartLesions === 'function' ? chartLesions() : []).some((item) => typeof lesionPerformedToday === 'function' && lesionPerformedToday(item))) {
