@@ -30,6 +30,30 @@ function examPerformedLabel(scopeVal, regionalArea) {
     return raw ? ('Examination performed: ' + raw) : '';
 }
 
+function examConsentedPerformedLabel(scopeVal, regionalArea) {
+    const raw = String(scopeVal || '');
+    const kind = examScopeKind(raw);
+    const area = String(regionalArea || '').trim();
+    if (kind === 'full') {
+        if (/beneath undergarment/i.test(raw)) {
+            return 'Full skin check performed as consented (including examination of areas beneath undergarments)';
+        }
+        if (/undergarment|underwear|covered areas/i.test(raw)) {
+            return 'Full skin check performed as consented (undergarments remained in place; covered areas unexamined)';
+        }
+        return 'Full skin check performed as consented';
+    }
+    if (kind === 'regional') {
+        const fromLabel = raw.match(/Regional skin check\s*\((.+)\)/i);
+        const region = area || (fromLabel ? fromLabel[1].trim() : '');
+        return region
+            ? 'Regional skin check of ' + region + ' performed as consented'
+            : 'Regional skin check performed as consented';
+    }
+    if (kind === 'spot') return 'Spot check of patient-flagged lesion(s) performed as consented';
+    return raw ? ('Examination performed as consented: ' + raw) : '';
+}
+
 function resolveExamScopeForNote() {
     let raw = document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
     let regionalArea = document.getElementById('regionalAreaInput')?.value.trim() || '';
@@ -57,20 +81,21 @@ function resolveExamScopeForNote() {
         lastCheck,
         kind: examScopeKind(raw || consentedLabel),
         consentedLabel,
-        performedLabel: examPerformedLabel(raw || consentedLabel, regionalArea)
+        performedLabel: examPerformedLabel(raw || consentedLabel, regionalArea),
+        consentedPerformedLabel: examConsentedPerformedLabel(raw || consentedLabel, regionalArea)
     };
 }
 
 function formatExamFindingsPlainText(scope, lesionCount) {
-    const performed = String(scope?.performedLabel || '').trim();
-    if (!performed) return '';
+    const hasExam = !!(scope?.consentedPerformedLabel || scope?.performedLabel || scope?.kind);
+    if (!hasExam) return '';
     const n = Number(lesionCount) || 0;
     const findings = n > 0
         ? (n === 1
             ? 'Findings: One lesion identified and documented below. Remainder of examined skin: no further dysplastic or suspicious lesions identified.'
             : 'Findings: ' + n + ' lesions identified and documented below. Remainder of examined skin: no further dysplastic or suspicious lesions identified.')
         : 'Findings: No dysplastic or suspicious lesions requiring biopsy or excision identified today.';
-    return '=== EXAMINATION PERFORMED ===\n\n- ' + performed + '.\n- ' + findings + '\n\n';
+    return '=== EXAMINATION PERFORMED ===\n\n- ' + findings + '\n\n';
 }
 
 function generateRegionalClearanceSummary() {
@@ -196,7 +221,11 @@ function generateEMRNotePlainText(options) {
 
     if (hasScopeBlock) {
         txt += `=== EXAMINATION SCOPE & PATIENT PHENOTYPE ===\n\n`;
-        if (scopeVal) txt += `- Consented Scope: ${scopeVal}\n`;
+        const examLine = !remote
+            ? String(examScope?.consentedPerformedLabel || '').trim()
+            : '';
+        if (examLine) txt += `- Examination: ${examLine}\n`;
+        else if (scopeVal) txt += `- Consented Scope: ${scopeVal}\n`;
         if (fitz) txt += `- Skin Phenotype: ${fitz}\n`;
         if (lastCheck) txt += `- Interval Since Last Skin Check: ${lastCheck}\n`;
         if (smsLabel) txt += `- Normal results by text: ${smsLabel}\n`;
@@ -281,11 +310,9 @@ function generateEMRNotePlainText(options) {
             if (typeof formatDeclineEmrLines === 'function') txt += formatDeclineEmrLines(l);
             txt += `\n`;
         });
-    } else if (!remote) {
+    } else if (!remote && !examScope?.consentedPerformedLabel && !examScope?.performedLabel) {
         txt += `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
-        txt += examScope?.performedLabel
-            ? `- No individual lesions required separate documentation after the ${examScope.kind === 'full' ? 'full skin check' : (examScope.kind === 'regional' ? 'regional skin check' : 'examination')}.\n\n`
-            : `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
+        txt += `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
     }
 
     if (procedureSession.started || procedureSession.completedAt || (typeof chartLesions === 'function' ? chartLesions() : []).some((item) => typeof lesionPerformedToday === 'function' && lesionPerformedToday(item))) {
