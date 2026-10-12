@@ -265,7 +265,7 @@ function generateEMRNotePlainText(options) {
         noteLesions.forEach((l, idx) => {
             txt += `Lesion #${idx + 1}: ${l.location}\n`;
             const episode = typeof formatLesionEpisodePlainText === 'function'
-                ? formatLesionEpisodePlainText(l, { indent: '    ' })
+                ? formatLesionEpisodePlainText(l, { indent: '    ', slimProcedureToday: true })
                 : '';
             if (episode) {
                 txt += episode + '\n';
@@ -274,12 +274,23 @@ function generateEMRNotePlainText(options) {
                 txt += `\n`;
                 return;
             }
+            const performedToday = typeof lesionPerformedToday === 'function' && lesionPerformedToday(l);
             const dx = typeof formatDiagnosisIemr === 'function'
                 ? formatDiagnosisIemr(l.impression)
                 : (l.impression || '');
             if (dx) txt += `    - Prov Dx: ${dx}\n`;
             if (l.macroscopic && !remote) txt += `    - Macroscopic: ${l.macroscopic}\n`;
             if (l.dermoscopy && !remote) txt += `    - Dermoscopic: ${l.dermoscopy}\n`;
+            if (performedToday) {
+                const pointer = typeof lesionProcedureTodayPointer === 'function'
+                    ? lesionProcedureTodayPointer(l)
+                    : ('Procedure today: ' + (l.biopsyType || l.plan || 'procedure') + ' — see operative note.');
+                txt += `    ${pointer}\n`;
+                const comms = typeof lesionIemrCommsLine === 'function' ? lesionIemrCommsLine(l) : '';
+                if (comms) txt += `    - ${comms}\n`;
+                txt += `\n`;
+                return;
+            }
             const planLabel = typeof formatLesionPlanIemr === 'function'
                 ? formatLesionPlanIemr(l)
                 : (isTopicalPlan(l.plan) ? 'Topical / Field Treatment' : (l.plan || ''));
@@ -315,22 +326,11 @@ function generateEMRNotePlainText(options) {
         txt += `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
     }
 
-    if (procedureSession.started || procedureSession.completedAt || (typeof chartLesions === 'function' ? chartLesions() : []).some((item) => typeof lesionPerformedToday === 'function' && lesionPerformedToday(item))) {
-        txt += `=== PROCEDURE SESSION ===\n\n`;
-        const allocated = typeof procedureOutputLesions === 'function'
-            ? procedureOutputLesions()
-            : (typeof procedureSelectedLesions === 'function' && procedureSession.started
-                ? procedureSelectedLesions()
-                : (typeof chartLesions === 'function' ? chartLesions() : []).filter((item) => typeof lesionPerformedToday === 'function' ? lesionPerformedToday(item) : item.procedureCompletedAt));
-        if (allocated.length) {
-            allocated.forEach((l, idx) => {
-                const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(l) : null;
-                const kind = detail?.procedure || l.biopsyType || l.plan || 'procedure';
-                txt += `- ${idx + 1}. ${l.location || 'Site'} (${detail?.pathology || l.impression || 'diagnosis'}) — ${kind}\n`;
-            });
-        }
+    const procedureWork = procedureSession.started || procedureSession.completedAt
+        || (typeof chartLesions === 'function' ? chartLesions() : []).some((item) => typeof lesionPerformedToday === 'function' && lesionPerformedToday(item));
+    if (procedureWork && !visitOperativeNoteText()) {
         const comp = typeof formatProcedureComplications === 'function' ? formatProcedureComplications() : '';
-        txt += `- Complications: ${comp || 'Not recorded.'}\n\n`;
+        if (comp) txt += `- Complications: ${comp}\n\n`;
     }
 
     txt += generateHistologyResultEmrSection();
@@ -447,17 +447,25 @@ function generateBiopsyFinancialEmrSection(biopsiesCount) {
     return txt;
 }
 
+function visitOperativeNoteText() {
+    if (typeof generateExEntryNote !== 'function') return '';
+    if (!Array.isArray(exLesions) || !exLesions.length) return '';
+    const op = generateExEntryNote();
+    if (!op || op.startsWith('Your')) return '';
+    return op;
+}
+
 function generateProcedureIemrAddendum() {
     if (typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
     const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
     let txt = `=== PROCEDURE ADDENDUM (${dateStr}) ===\n\n`;
     txt += `- Examination / screening already copied to IEMR. This addendum is for today’s procedure only.\n\n`;
-    if (typeof generateExEntryNote === 'function' && Array.isArray(exLesions) && exLesions.length) {
-        const op = generateExEntryNote();
-        if (op && !op.startsWith('Your')) txt += `=== OPERATIVE NOTE ===\n\n${op}\n`;
+    const op = visitOperativeNoteText();
+    if (op) txt += `=== OPERATIVE NOTE ===\n\n${op}\n`;
+    else {
+        const comp = typeof formatProcedureComplications === 'function' ? formatProcedureComplications() : '';
+        if (comp) txt += `- Complications: ${comp}\n`;
     }
-    const comp = typeof formatProcedureComplications === 'function' ? formatProcedureComplications() : '';
-    if (comp) txt += `- Complications: ${comp}\n`;
     const biopsiesCount = typeof sessionBiopsyCount === 'function' ? sessionBiopsyCount() : getBiopsyLesions().length;
     if (biopsiesCount > 0) txt += '\n' + generateBiopsyFinancialEmrSection(biopsiesCount);
     if (typeof generateAkComparisonEmrSection === 'function') txt += '\n' + generateAkComparisonEmrSection();
@@ -488,11 +496,9 @@ function generateCompleteInteractionNote() {
         includeFullScreening: includeScreening,
         forceFull: includeScreening
     }) || '';
-    if (procedureDone && typeof generateExEntryNote === 'function' && Array.isArray(exLesions) && exLesions.length) {
-        const op = generateExEntryNote();
-        if (op && !op.startsWith('Your')) {
-            txt += `\n=== OPERATIVE NOTE ===\n\n${op}\n`;
-        }
+    if (procedureDone) {
+        const op = visitOperativeNoteText();
+        if (op) txt += `\n=== OPERATIVE NOTE ===\n\n${op}\n`;
     }
     return txt.trim();
 }

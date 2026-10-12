@@ -913,7 +913,12 @@ function generateExEntryNote() {
         planItems.push('- For open wounds, advised to keep clean and apply antiseptic/dressing as needed.');
     }
 
-    return `OBJECTIVE:\n${procedureDetails}\n\nFollow up:\n${planItems.length > 0 ? planItems.join('\n') : '- General wound care advice given.'}\n- Discussed signs of infection (redness, swelling, discharge, increasing pain) and to seek review if these occur.\n- Follow-up for results and further management as required.`.trim().replace(/^\s+/gm, '');
+    const complications = typeof formatProcedureComplications === 'function'
+        ? String(formatProcedureComplications() || '').trim()
+        : '';
+    const complicationsBlock = `\n\nComplications:\n- ${complications || 'Not recorded.'}`;
+
+    return `OBJECTIVE:\n${procedureDetails}${complicationsBlock}\n\nFollow up:\n${planItems.length > 0 ? planItems.join('\n') : '- General wound care advice given.'}\n- Discussed signs of infection (redness, swelling, discharge, increasing pain) and to seek review if these occur.\n- Follow-up for results and further management as required.`.trim().replace(/^\s+/gm, '');
 }
 
 function updateExAllOutputs(options) {

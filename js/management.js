@@ -1423,8 +1423,21 @@ function formatLesionPlanPlainLines(lesion) {
     return lines.length > 1 ? lines : [];
 }
 
-function formatLesionEpisodePlainLines(lesion) {
+function lesionProcedureTodayPointer(lesion) {
+    const typeLabel = (typeof lesionProcedureTypeLabel === 'function'
+        ? lesionProcedureTypeLabel(lesion)
+        : '')
+        || lesion?.biopsyType
+        || lesion?.plan
+        || 'procedure';
+    return 'Procedure today: ' + typeLabel + ' — see operative note.';
+}
+
+function formatLesionEpisodePlainLines(lesion, options) {
     if (!lesion) return [];
+    const slimToday = !!(options && options.slimProcedureToday)
+        && typeof lesionPerformedToday === 'function'
+        && lesionPerformedToday(lesion);
     const ancestors = typeof collectLesionAncestors === 'function' ? collectLesionAncestors(lesion) : [];
     const examSource = ancestors[0] || lesion;
     const lines = [];
@@ -1446,6 +1459,10 @@ function formatLesionEpisodePlainLines(lesion) {
             specimenIndex += 1;
         }
     });
+    if (slimToday) {
+        lines.push(lesionProcedureTodayPointer(lesion));
+        return lines.filter(Boolean);
+    }
     const currentDone = typeof lesionProcedureDone === 'function'
         ? lesionProcedureDone(lesion)
         : !!(lesion.procedureCompletedAt || lesion.excisionFinalisedAt);
@@ -1462,8 +1479,8 @@ function formatLesionEpisodePlainLines(lesion) {
 function formatLesionEpisodePlainText(lesion, options) {
     const indent = options && options.indent != null ? String(options.indent) : '';
     const detailIndent = indent + '    ';
-    const headingRe = /^(Examination|Specimen\s+\d+|Plan)\b/;
-    return formatLesionEpisodePlainLines(lesion).map((line) => {
+    const headingRe = /^(Examination|Specimen\s+\d+|Plan|Procedure today)\b/;
+    return formatLesionEpisodePlainLines(lesion, options).map((line) => {
         const text = String(line || '').trim();
         if (!text) return '';
         return headingRe.test(text) ? indent + text : detailIndent + text;
