@@ -395,8 +395,16 @@ function copyTodaysClinicalNote() {
 function generateBiopsyFinancialEmrSection(biopsiesCount) {
     const count = Number(biopsiesCount);
     if (!count) return '';
-    const bBilling = typeof currentBiopsyBilling === 'function' ? currentBiopsyBilling() : (document.getElementById('modalBiopsyBilling')?.value || '$20 OOP per biopsy (Item 30071)');
-    const cBilling = typeof currentConsultBilling === 'function' ? currentConsultBilling() : (document.getElementById('modalConsultBilling')?.value || 'Private Bill');
+    const bBilling = typeof currentBiopsyBilling === 'function'
+        ? currentBiopsyBilling()
+        : (document.getElementById('billingModalBiopsy')?.value
+            || document.getElementById('modalBiopsyBilling')?.value
+            || '$20 OOP per biopsy (Item 30071)');
+    const cBilling = typeof currentConsultBilling === 'function'
+        ? currentConsultBilling()
+        : (document.getElementById('billingModalConsult')?.value
+            || document.getElementById('modalConsultBilling')?.value
+            || 'Private Bill');
     const oopUnit = typeof biopsyOopUnitAmount === 'function' ? biopsyOopUnitAmount(bBilling) : (bBilling.includes('$20') ? 20 : 0);
     const oopTotal = count * oopUnit;
     let txt = `=== PROCEDURAL CONSENT & INFORMED FINANCIAL DISCLOSURE ===\n\n`;
@@ -757,8 +765,16 @@ function printSupplementaryReportSheet(lesionList) {
 }
 
 function generateReceptionMessage() {
-    const cBilling = typeof currentConsultBilling === 'function' ? currentConsultBilling() : (document.getElementById('modalConsultBilling')?.value || 'Private Bill');
-    const bBilling = typeof currentBiopsyBilling === 'function' ? currentBiopsyBilling() : (document.getElementById('modalBiopsyBilling')?.value || '$20 OOP per biopsy (Item 30071)');
+    const cBilling = typeof currentConsultBilling === 'function'
+        ? currentConsultBilling()
+        : (document.getElementById('billingModalConsult')?.value
+            || document.getElementById('modalConsultBilling')?.value
+            || 'Private Bill');
+    const bBilling = typeof currentBiopsyBilling === 'function'
+        ? currentBiopsyBilling()
+        : (document.getElementById('billingModalBiopsy')?.value
+            || document.getElementById('modalBiopsyBilling')?.value
+            || '$20 OOP per biopsy (Item 30071)');
 
     const consultLesions = typeof lesions !== 'undefined' ? lesions : [];
     const biopsiesCount = typeof sessionBiopsyCount === 'function' ? sessionBiopsyCount() : getBiopsyLesions().length;

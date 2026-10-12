@@ -120,6 +120,12 @@ function syncPatientIdentifiers(source) {
 
 function openSanitationModal() {
     applyCurrentPatientToForms();
+    if (typeof applyPatientBillingToDom === 'function') {
+        applyPatientBillingToDom({
+            consultBilling: typeof currentConsultBilling === 'function' ? currentConsultBilling() : '',
+            biopsyBilling: typeof currentBiopsyBilling === 'function' ? currentBiopsyBilling() : ''
+        });
+    }
     const modal = document.getElementById('sanitationModal');
     if (modal) modal.classList.remove('hidden');
 }

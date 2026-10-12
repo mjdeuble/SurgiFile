@@ -5,14 +5,25 @@
 
 const DEFAULT_CONSULT_BILLING = 'Private Bill';
 const DEFAULT_BIOPSY_BILLING = '$20 OOP per biopsy (Item 30071)';
-const CONSULT_BILLING_VALUES = ['Private Bill', 'Bulk Bill', 'DVA'];
+const CONSULT_BILLING_OPTIONS = [
+    { id: 'Private Bill', label: 'Private Bill (Standard Consult Fee)' },
+    { id: 'Concession', label: 'Concession' },
+    { id: 'Bulk Bill', label: 'Bulk Bill' },
+    { id: 'DVA', label: 'DVA' }
+];
+const CONSULT_BILLING_VALUES = CONSULT_BILLING_OPTIONS.map((opt) => opt.id);
+const CONSULT_BILLING_SELECT_IDS = ['billingModalConsult', 'modalConsultBilling', 'chartPatientConsultBilling'];
+const LIVE_CONSULT_BILLING_SELECT_IDS = ['billingModalConsult', 'modalConsultBilling'];
 const BIOPSY_BILLING_OOP = '$20 OOP per biopsy (Item 30071)';
 const BIOPSY_BILLING_BULK = 'Bulk Billed ($0 OOP)';
+const BIOPSY_BILLING_SELECT_IDS = ['billingModalBiopsy', 'modalBiopsyBilling', 'chartPatientBiopsyBilling'];
+const LIVE_BIOPSY_BILLING_SELECT_IDS = ['billingModalBiopsy', 'modalBiopsyBilling'];
 
 function normalizeConsultBilling(value) {
     const raw = String(value || '').trim();
     if (CONSULT_BILLING_VALUES.includes(raw)) return raw;
     if (/dva/i.test(raw)) return 'DVA';
+    if (/concession/i.test(raw)) return 'Concession';
     if (/bulk/i.test(raw)) return 'Bulk Bill';
     if (/private/i.test(raw)) return 'Private Bill';
     return DEFAULT_CONSULT_BILLING;
@@ -28,16 +39,55 @@ function biopsyOopUnitAmount(biopsyBilling) {
     return normalizeBiopsyBilling(biopsyBilling) === BIOPSY_BILLING_OOP ? 20 : 0;
 }
 
+function readBillingSelectValue(ids, normalize, preferredId) {
+    const ordered = preferredId ? [preferredId, ...ids.filter((id) => id !== preferredId)] : ids.slice();
+    for (const id of ordered) {
+        const el = document.getElementById(id);
+        const raw = String(el?.value || '').trim();
+        if (raw) return normalize(raw);
+    }
+    return '';
+}
+
+function readConsultBillingFromDom(preferredId) {
+    return readBillingSelectValue(LIVE_CONSULT_BILLING_SELECT_IDS, normalizeConsultBilling, preferredId)
+        || DEFAULT_CONSULT_BILLING;
+}
+
+function readBiopsyBillingFromDom(preferredId) {
+    return readBillingSelectValue(LIVE_BIOPSY_BILLING_SELECT_IDS, normalizeBiopsyBilling, preferredId)
+        || DEFAULT_BIOPSY_BILLING;
+}
+
 function currentConsultBilling() {
+    const live = readBillingSelectValue(LIVE_CONSULT_BILLING_SELECT_IDS, normalizeConsultBilling, 'billingModalConsult');
+    if (live) return live;
     const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
     if (chart && chart.consultBilling) return normalizeConsultBilling(chart.consultBilling);
-    return normalizeConsultBilling(document.getElementById('modalConsultBilling')?.value);
+    return DEFAULT_CONSULT_BILLING;
 }
 
 function currentBiopsyBilling() {
+    const live = readBillingSelectValue(LIVE_BIOPSY_BILLING_SELECT_IDS, normalizeBiopsyBilling, 'billingModalBiopsy');
+    if (live) return live;
     const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
     if (chart && chart.biopsyBilling) return normalizeBiopsyBilling(chart.biopsyBilling);
-    return normalizeBiopsyBilling(document.getElementById('modalBiopsyBilling')?.value);
+    return DEFAULT_BIOPSY_BILLING;
+}
+
+function populateConsultBillingSelect(selectEl, selected) {
+    if (!selectEl) return;
+    const value = normalizeConsultBilling(selected != null ? selected : selectEl.value);
+    selectEl.innerHTML = CONSULT_BILLING_OPTIONS.map((opt) =>
+        '<option value="' + opt.id + '"' + (opt.id === value ? ' selected' : '') + '>' + opt.label + '</option>'
+    ).join('');
+    selectEl.value = value;
+}
+
+function populateConsultBillingSelects(selected) {
+    CONSULT_BILLING_SELECT_IDS.forEach((id) => {
+        populateConsultBillingSelect(document.getElementById(id), selected);
+    });
 }
 
 function sessionBiopsyCount() {
@@ -67,11 +117,10 @@ function sessionBiopsyCount() {
 function applyPatientBillingToDom(billing) {
     const consult = normalizeConsultBilling(billing?.consultBilling);
     const biopsy = normalizeBiopsyBilling(billing?.biopsyBilling);
-    ['modalConsultBilling', 'billingModalConsult'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.value = consult;
+    LIVE_CONSULT_BILLING_SELECT_IDS.forEach((id) => {
+        populateConsultBillingSelect(document.getElementById(id), consult);
     });
-    ['modalBiopsyBilling', 'billingModalBiopsy'].forEach((id) => {
+    LIVE_BIOPSY_BILLING_SELECT_IDS.forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = biopsy;
     });
@@ -81,10 +130,14 @@ function applyPatientBillingToDom(billing) {
 function persistPatientBilling(billing) {
     if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) return;
     const consult = normalizeConsultBilling(
-        billing?.consultBilling ?? document.getElementById('modalConsultBilling')?.value
+        billing && Object.prototype.hasOwnProperty.call(billing, 'consultBilling')
+            ? billing.consultBilling
+            : currentConsultBilling()
     );
     const biopsy = normalizeBiopsyBilling(
-        billing?.biopsyBilling ?? document.getElementById('modalBiopsyBilling')?.value
+        billing && Object.prototype.hasOwnProperty.call(billing, 'biopsyBilling')
+            ? billing.biopsyBilling
+            : currentBiopsyBilling()
     );
     applyPatientBillingToDom({ consultBilling: consult, biopsyBilling: biopsy });
     const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
@@ -96,8 +149,16 @@ function persistPatientBilling(billing) {
     if (typeof updateOutput === 'function') updateOutput();
 }
 
-function persistPatientBillingFromDom() {
-    persistPatientBilling();
+function persistPatientBillingFromDom(event) {
+    const target = event && event.target;
+    const payload = {};
+    if (target && CONSULT_BILLING_SELECT_IDS.includes(target.id)) {
+        payload.consultBilling = target.value;
+    }
+    if (target && BIOPSY_BILLING_SELECT_IDS.includes(target.id)) {
+        payload.biopsyBilling = target.value;
+    }
+    persistPatientBilling(Object.keys(payload).length ? payload : undefined);
 }
 
 function receptionBiopsyBillingBit(count, bBilling) {
@@ -942,6 +1003,7 @@ function billingSelectHtml(id, field, options, selected, extraClass) {
 
 function initBillingModule() {
     populateProcedureAreaSelect(document.getElementById('exBillingRegion'));
+    populateConsultBillingSelects();
 }
 
 function copySuggestedBillingItems(id) {

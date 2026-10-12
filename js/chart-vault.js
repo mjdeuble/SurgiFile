@@ -972,7 +972,7 @@ function refreshExamCopyStateFromChart(chart) {
 }
 
 async function saveCurrentChartFromDom(options) {
-    if (!hasCurrentPatient()) return null;
+    if (applyingChartRecord || !hasCurrentPatient()) return null;
     const chart = await ensureChartRecord(currentPatient);
     if (!chart) return null;
     const screening = collectChartScreeningFromDom();
@@ -1003,14 +1003,22 @@ async function saveCurrentChartFromDom(options) {
     if (collectedAkComparison?.explained || previousAkComparison.visitDate === todayVisitKey()) {
         chart.akComparison = collectedAkComparison || previousAkComparison;
     }
-    if (typeof normalizeConsultBilling === 'function') {
+    if (typeof currentConsultBilling === 'function') {
+        chart.consultBilling = currentConsultBilling();
+    } else if (typeof normalizeConsultBilling === 'function') {
         chart.consultBilling = normalizeConsultBilling(
-            document.getElementById('modalConsultBilling')?.value || chart.consultBilling
+            document.getElementById('billingModalConsult')?.value
+            || document.getElementById('modalConsultBilling')?.value
+            || chart.consultBilling
         );
     }
-    if (typeof normalizeBiopsyBilling === 'function') {
+    if (typeof currentBiopsyBilling === 'function') {
+        chart.biopsyBilling = currentBiopsyBilling();
+    } else if (typeof normalizeBiopsyBilling === 'function') {
         chart.biopsyBilling = normalizeBiopsyBilling(
-            document.getElementById('modalBiopsyBilling')?.value || chart.biopsyBilling
+            document.getElementById('billingModalBiopsy')?.value
+            || document.getElementById('modalBiopsyBilling')?.value
+            || chart.biopsyBilling
         );
     }
     if (typeof normalizeSmsNormalResultsConsent === 'function') {
@@ -1054,6 +1062,7 @@ function scheduleChartSave() {
     if (applyingChartRecord || !hasCurrentPatient()) return;
     clearTimeout(chartSaveTimer);
     chartSaveTimer = setTimeout(() => {
+        if (applyingChartRecord || !hasCurrentPatient()) return;
         saveCurrentChartFromDom().catch((err) => {
             console.warn('Could not save patient chart', err);
             if (typeof toastVaultWriteError === 'function') {
