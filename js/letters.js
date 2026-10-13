@@ -224,9 +224,11 @@ function letterHistoryLines(include) {
         });
     }
     const exam = typeof currentManagedChart === 'function' ? currentManagedChart()?.exam : null;
-    if (exam?.fitzpatrick) lines.push('- Fitzpatrick skin type: ' + exam.fitzpatrick);
-    if (exam?.lastSkinCheck) lines.push('- Last skin check: ' + exam.lastSkinCheck);
-    if (exam?.scope) lines.push('- Examination scope this episode: ' + exam.scope + (exam.regionalArea ? ' (' + exam.regionalArea + ')' : ''));
+    const examScope = typeof resolveExamScopeForNote === 'function' ? resolveExamScopeForNote() : null;
+    if (exam?.fitzpatrick || examScope?.fitz) lines.push('- Fitzpatrick skin type: ' + (exam?.fitzpatrick || examScope.fitz));
+    if (exam?.lastSkinCheck || examScope?.lastCheck) lines.push('- Last skin check: ' + (exam?.lastSkinCheck || examScope.lastCheck));
+    if (examScope?.performedLabel) lines.push('- ' + examScope.performedLabel);
+    else if (exam?.scope) lines.push('- Examination scope this episode: ' + exam.scope + (exam.regionalArea ? ' (' + exam.regionalArea + ')' : ''));
     return lines;
 }
 
@@ -309,20 +311,39 @@ function generateClinicalLetterPlainText(options) {
         lines.push('');
     }
 
+    const examScope = typeof resolveExamScopeForNote === 'function' ? resolveExamScopeForNote() : null;
+    if (examScope?.performedLabel) {
+        lines.push('EXAMINATION');
+        letterPushWrapped(lines, examScope.performedLabel + '.');
+        letterPushWrapped(lines, selected.length
+            ? 'Lesion(s) identified and documented below. Remainder of examined skin: no further dysplastic or suspicious lesions identified.'
+            : 'No dysplastic or suspicious lesions requiring biopsy or excision identified.');
+        lines.push('');
+    }
+
     lines.push('LESIONS');
     if (!selected.length) {
-        lines.push('(No lesions selected.)');
+        lines.push(examScope?.performedLabel
+            ? 'No individual lesions required separate documentation after this examination.'
+            : '(No lesions selected.)');
     } else {
         selected.forEach((lesion, idx) => {
             const n = idx + 1;
             const site = String(lesion.location || 'Unspecified site').trim();
+            lines.push('');
+            letterPushWrapped(lines, n + '. ' + site);
+            const episode = typeof formatLesionEpisodePlainText === 'function'
+                ? formatLesionEpisodePlainText(lesion, { indent: '   ' })
+                : '';
+            if (episode) {
+                episode.split('\n').forEach((row) => letterPushWrapped(lines, row));
+                return;
+            }
             const dx = letterDiagnosis(lesion) || 'Unspecified';
             const macro = String(lesion.macroscopic || '').trim();
             const derm = String(lesion.dermoscopy || '').trim();
             const histo = letterHistologyLine(lesion);
             const mgmt = letterManagementLine(lesion);
-            lines.push('');
-            letterPushWrapped(lines, n + '. ' + site);
             letterPushWrapped(lines, '   Clinical impression: ' + dx);
             if (macro && macro !== 'Unspecified') letterPushWrapped(lines, '   Macroscopic: ' + macro);
             if (derm && derm !== 'Unspecified') letterPushWrapped(lines, '   Dermoscopy: ' + derm);
@@ -390,12 +411,20 @@ function openLetterModal(options) {
     syncLetterModalFromDraft();
     renderLetterLesionChecklist();
     refreshLetterPreview();
+    if (typeof openInspectorToolPane === 'function' && typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        openInspectorToolPane('letter');
+        syncLetterModalFromDraft();
+        renderLetterLesionChecklist();
+        refreshLetterPreview();
+        return;
+    }
     modal.classList.remove('hidden');
 }
 
 function closeLetterModal() {
     const modal = document.getElementById('letterModal');
     if (modal) modal.classList.add('hidden');
+    if (typeof closeInspectorToolPane === 'function') closeInspectorToolPane('letter');
 }
 
 function syncLetterModalFromDraft() {

@@ -438,9 +438,25 @@ function aftercareTreatmentBlocks(list) {
     };
 
     Object.keys(topicalBlocks).forEach((id) => {
-        if (list.some((l) => l.topicalDecision === id)) {
-            add(id, topicalBlocks[id].title, topicalBlocks[id].items);
+        const matches = list.filter((l) => l.topicalDecision === id);
+        if (!matches.length) return;
+        const items = topicalBlocks[id].items.slice();
+        const courseBits = matches.map((l) => {
+            if (id === 'efudix' && typeof formatEfudixCourseText === 'function') return formatEfudixCourseText(l);
+            if (id === 'efudix-calcipotriol' && typeof formatComboCourseText === 'function') return formatComboCourseText(l);
+            if (id === 'pdt') {
+                const names = l.pdtAreaName || '';
+                const fee = Number(l.pdtQuotedPrice) > 0
+                    ? (typeof formatPdtMoney === 'function' ? formatPdtMoney(l.pdtQuotedPrice) : ('$' + l.pdtQuotedPrice))
+                    : '';
+                return [names && ('Area: ' + names), fee && ('Quoted fee: ' + fee + ' OOP')].filter(Boolean).join('. ');
+            }
+            return '';
+        }).filter(Boolean);
+        if (courseBits.length) {
+            items.unshift('Prescribed / quoted today: ' + courseBits.join('; ') + '.');
         }
+        add(id, topicalBlocks[id].title, items);
     });
 
     const monitorOnly = list.filter((l) => {
@@ -636,6 +652,47 @@ function generateAftercareHtml() {
 </html>`;
 }
 
+function aftercareVisitScopedLesions() {
+    const all = aftercareChartLesions();
+    if (!all.length) return [];
+    const visitIds = new Set();
+    if (typeof visitNoteLesions === 'function') {
+        visitNoteLesions().forEach((item) => visitIds.add(String(item.id)));
+    }
+    (Array.isArray(lesions) ? lesions : []).forEach((item) => visitIds.add(String(item.id)));
+    if (typeof procedureSession !== 'undefined') {
+        (procedureSession.selectedIds || []).forEach((id) => visitIds.add(String(id)));
+        (procedureSession.lockedIds || []).forEach((id) => visitIds.add(String(id)));
+    }
+    const chartVisitIds = (typeof currentManagedChart === 'function'
+        ? (currentManagedChart()?.visitSession?.visitLesionIds || [])
+        : []).map(String);
+    chartVisitIds.forEach((id) => visitIds.add(id));
+    return all.filter((lesion) => {
+        const id = String(lesion.id || '');
+        if (visitIds.has(id)) return true;
+        return aftercareProcedureDone(lesion)
+            && typeof lesionPerformedToday === 'function'
+            && lesionPerformedToday(lesion);
+    });
+}
+
+function aftercareSheetIsSavable(list) {
+    if (typeof aftercareWasGivenToday === 'function' && aftercareWasGivenToday()) return true;
+    const lesions = Array.isArray(list) ? list : aftercareVisitScopedLesions();
+    return lesions.length > 0;
+}
+
+function currentAftercareSheetBundle() {
+    if (!aftercareSheetIsSavable()) return null;
+    const list = aftercareAdviceLesions();
+    return {
+        html: generateAftercareHtml(),
+        topics: aftercareTopicsFromLesions(list),
+        lesionCount: list.length
+    };
+}
+
 function aftercareFilename() {
     const ident = aftercareIdentity();
     const slug = String(ident.name || 'patient').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
@@ -697,9 +754,23 @@ function openAftercarePreviewModal(options) {
     const html = generateAftercareHtml();
     const topics = aftercareTopicsFromLesions(list);
     aftercarePreviewPending = { html, topics, download: !!(options && options.download) };
+    if (typeof openInspectorToolPane === 'function' && typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        openInspectorToolPane('advice', { download: !!(options && options.download) });
+    }
     const modal = document.getElementById('aftercarePreviewModal');
     const summary = document.getElementById('aftercarePreviewSummary');
     const frame = document.getElementById('aftercarePreviewFrame');
+    const title = document.getElementById('aftercarePreviewTitle');
+    const subtitle = document.getElementById('aftercarePreviewSubtitle');
+    const confirmBtn = document.getElementById('btnConfirmAftercare');
+    const download = !!(options && options.download);
+    if (title) title.textContent = download ? 'Patient advice — save copy' : 'Patient advice — print';
+    if (subtitle) {
+        subtitle.textContent = download
+            ? 'Confirm to save a chart copy. IEMR records advice as given only after you confirm.'
+            : 'Confirm before print. IEMR records advice as given only after you confirm.';
+    }
+    if (confirmBtn) confirmBtn.textContent = download ? 'Confirm & save copy' : 'Confirm & print';
     if (summary) {
         const bits = aftercarePreviewSummaryLines(list);
         summary.innerHTML = bits.length
@@ -711,6 +782,10 @@ function openAftercarePreviewModal(options) {
     if (frame) {
         frame.srcdoc = html;
     }
+    if (typeof inspectorPaneMode !== 'undefined' && inspectorPaneMode === 'advice') {
+        if (modal) modal.classList.add('hidden');
+        return;
+    }
     if (modal) modal.classList.remove('hidden');
 }
 
@@ -720,6 +795,7 @@ function closeAftercarePreviewModal() {
     const frame = document.getElementById('aftercarePreviewFrame');
     if (frame) frame.srcdoc = '';
     aftercarePreviewPending = null;
+    if (typeof closeInspectorToolPane === 'function') closeInspectorToolPane('advice');
 }
 
 function confirmAftercareGive() {
@@ -731,14 +807,18 @@ function confirmAftercareGive() {
     if (download) {
         downloadAftercareCopy(html);
         markAftercareGiven(topics);
-        showToast('Patient advice downloaded. IEMR will record that written advice was given.');
+        showToast('Patient advice downloaded. Saved in generated documents.');
     } else {
         const opened = openAftercarePrintWindow(html);
         if (opened) {
             markAftercareGiven(topics);
-            showToast('Patient advice ready to print or save as PDF. IEMR will record that it was given.');
+            showToast('Patient advice ready to print or save as PDF. Saved in generated documents.');
+        } else {
+            closeAftercarePreviewModal();
+            return;
         }
     }
+    if (typeof persistVisitGeneratedDocuments === 'function') persistVisitGeneratedDocuments();
     closeAftercarePreviewModal();
 }
 

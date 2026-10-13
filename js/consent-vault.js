@@ -153,6 +153,9 @@ async function saveGeneratedConsentDoc(data, plainText, printHtml) {
     upsertConsentDocMemory(doc);
     if (isVaultLoggedIn()) await writeManagedConsentDoc(doc);
     if (mgmtActiveFilter === 'notes' && typeof renderManagedLesions === 'function') renderManagedLesions();
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && typeof renderChartTreeSavedDocs === 'function') {
+        renderChartTreeSavedDocs();
+    }
     return doc;
 }
 
@@ -202,8 +205,15 @@ function renderSavedConsentDocCard(doc) {
 
 function openSavedConsentDoc(id) {
     const doc = findConsentDoc(id);
+    if (!doc) {
+        showToast('Saved consent not found.');
+        return;
+    }
+    if (typeof openSavedDocumentInInspector === 'function' && openSavedDocumentInInspector('consent', doc.id)) {
+        return;
+    }
     const modal = document.getElementById('savedConsentModal');
-    if (!doc || !modal) {
+    if (!modal) {
         showToast('Saved consent not found.');
         return;
     }

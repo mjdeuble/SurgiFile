@@ -147,14 +147,20 @@ function inferBreslowBand(text, family) {
 }
 
 function lesionHasConfirmedHistology(lesion) {
-    return !!(lesion && String(lesion.histologyResult || '').trim());
+    return !!(lesion && (
+        String(lesion.histologyResult || '').trim()
+        || String(lesion.priorHistologyResult || '').trim()
+        || String(lesion.priorHistologyDiagnosis || '').trim()
+    ));
 }
 
 function collectMarginHistologyText(lesion, prior) {
     return [
         lesion?.histologyDiagnosis,
         lesion?.histologyResult,
+        lesion?.priorHistologyDiagnosis,
         lesion?.priorHistologyResult,
+        lesion?.priorBreslowMm ? ('Breslow ' + lesion.priorBreslowMm + ' mm') : '',
         prior?.histologyDiagnosis,
         prior?.histologyResult
     ].filter(Boolean).join('\n');
@@ -489,10 +495,19 @@ function marginSuggestFieldSpec(fieldId) {
             lengthId: 'examLesionLength',
             widthId: 'examLesionWidth'
         },
-        addConsentMargin: {
-            locationId: 'addConsentLoc',
-            diagnosisId: 'addConsentDx',
-            kindFn: () => document.getElementById('addConsentKind')?.value || 'excision'
+        inspExamLesionMargin: {
+            locationId: 'inspLesionLocation',
+            diagnosisFn: () => (typeof readInspectorImpression === 'function' ? readInspectorImpression() : ''),
+            lesionId: () => document.getElementById('inspEditLesionId')?.value,
+            kind: 'shave',
+            lengthId: 'inspExamLesionLength',
+            widthId: 'inspExamLesionWidth'
+        },
+        inspExcisionMargin: {
+            locationId: 'inspLesionLocation',
+            diagnosisFn: () => (typeof readInspectorImpression === 'function' ? readInspectorImpression() : ''),
+            lesionId: () => document.getElementById('inspEditLesionId')?.value,
+            kind: 'excision'
         }
     }[fieldId] || null;
 }

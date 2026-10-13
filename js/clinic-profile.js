@@ -1,6 +1,21 @@
 /* Clinic-wide settings: contact profile + procedure supplies. Stored in the clinic folder root. */
 
-let clinicProfile = emptyClinicProfile();
+const DEFAULT_HISTO_WAIT_GREEN_DAYS = 7;
+const DEFAULT_HISTO_WAIT_ORANGE_DAYS = 10;
+
+function normalizeHistoWaitDays(value, fallback) {
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n) || n < 1) return fallback;
+    return Math.min(90, n);
+}
+
+function clinicHistoWaitThresholds(src) {
+    const p = src || (typeof clinicProfile !== 'undefined' ? clinicProfile : null) || {};
+    let green = normalizeHistoWaitDays(p.histoWaitGreenDays, DEFAULT_HISTO_WAIT_GREEN_DAYS);
+    let orange = normalizeHistoWaitDays(p.histoWaitOrangeDays, DEFAULT_HISTO_WAIT_ORANGE_DAYS);
+    if (orange <= green) orange = green + 1;
+    return { green, orange };
+}
 
 function emptyClinicProfile() {
     return {
@@ -12,9 +27,13 @@ function emptyClinicProfile() {
         smsInfo: '',
         website: '',
         urgentAdvice: 'If you have heavy bleeding that will not stop, rapidly spreading infection, shortness of breath, or feel severely unwell, seek urgent care (this clinic if open, your GP, or a hospital emergency department). Take this sheet with you.',
+        histoWaitGreenDays: DEFAULT_HISTO_WAIT_GREEN_DAYS,
+        histoWaitOrangeDays: DEFAULT_HISTO_WAIT_ORANGE_DAYS,
         updatedAt: ''
     };
 }
+
+let clinicProfile = emptyClinicProfile();
 
 function clinicProfileFileName() {
     return 'clinic-profile.json';
@@ -71,6 +90,7 @@ async function loadClinicProfile() {
     try {
         const text = await readTextFile(vaultRootHandle, clinicProfileFileName());
         const data = JSON.parse(text);
+        const wait = clinicHistoWaitThresholds(data);
         clinicProfile = {
             ...emptyClinicProfile(),
             ...data,
@@ -81,7 +101,9 @@ async function loadClinicProfile() {
             email: String(data.email || '').trim(),
             smsInfo: String(data.smsInfo || '').trim(),
             website: String(data.website || '').trim(),
-            urgentAdvice: String(data.urgentAdvice || emptyClinicProfile().urgentAdvice).trim()
+            urgentAdvice: String(data.urgentAdvice || emptyClinicProfile().urgentAdvice).trim(),
+            histoWaitGreenDays: wait.green,
+            histoWaitOrangeDays: wait.orange
         };
     } catch (err) {
         /* File may not exist yet. */
@@ -105,6 +127,9 @@ async function saveClinicProfile(profile) {
     next.smsInfo = String(next.smsInfo || '').trim();
     next.website = String(next.website || '').trim();
     next.urgentAdvice = String(next.urgentAdvice || emptyClinicProfile().urgentAdvice).trim();
+    const wait = clinicHistoWaitThresholds(next);
+    next.histoWaitGreenDays = wait.green;
+    next.histoWaitOrangeDays = wait.orange;
     await writeTextFile(vaultRootHandle, clinicProfileFileName(), JSON.stringify(next, null, 2));
     clinicProfile = next;
     return clinicProfile;
@@ -300,6 +325,9 @@ function fillClinicProfileSettingsFields() {
     fill('clinicProfileSms', clinicProfile.smsInfo);
     fill('clinicProfileWebsite', clinicProfile.website);
     fill('clinicProfileUrgent', clinicProfile.urgentAdvice || emptyClinicProfile().urgentAdvice);
+    const wait = clinicHistoWaitThresholds();
+    fill('clinicHistoWaitGreenDays', String(wait.green));
+    fill('clinicHistoWaitOrangeDays', String(wait.orange));
 }
 
 function switchClinicSettingsTab(tab) {
@@ -364,21 +392,37 @@ function closeClinicProfileModal() {
 }
 
 async function saveClinicProfileFromModal() {
-    try {
-        await saveClinicProfile({
-            clinicName: document.getElementById('clinicProfileName')?.value,
-            address: document.getElementById('clinicProfileAddress')?.value,
-            phone: document.getElementById('clinicProfilePhone')?.value,
-            afterHoursPhone: document.getElementById('clinicProfileAfterHours')?.value,
-            email: document.getElementById('clinicProfileEmail')?.value,
-            smsInfo: document.getElementById('clinicProfileSms')?.value,
-            website: document.getElementById('clinicProfileWebsite')?.value,
-            urgentAdvice: document.getElementById('clinicProfileUrgent')?.value
+    const save = async ({ progress }) => {
+        if (progress) progress('Saving clinic details…', 0.3);
+        try {
+            await saveClinicProfile({
+                clinicName: document.getElementById('clinicProfileName')?.value,
+                address: document.getElementById('clinicProfileAddress')?.value,
+                phone: document.getElementById('clinicProfilePhone')?.value,
+                afterHoursPhone: document.getElementById('clinicProfileAfterHours')?.value,
+                email: document.getElementById('clinicProfileEmail')?.value,
+                smsInfo: document.getElementById('clinicProfileSms')?.value,
+                website: document.getElementById('clinicProfileWebsite')?.value,
+                urgentAdvice: document.getElementById('clinicProfileUrgent')?.value,
+                histoWaitGreenDays: document.getElementById('clinicHistoWaitGreenDays')?.value,
+                histoWaitOrangeDays: document.getElementById('clinicHistoWaitOrangeDays')?.value
+            });
+            if (typeof fillClinicProfileSettingsFields === 'function') fillClinicProfileSettingsFields();
+            if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+            if (typeof renderPracticeTree === 'function') renderPracticeTree();
+            if (progress) progress('Clinic details saved', 1);
+            showToast('Clinic settings saved.');
+        } catch (err) {
+            showToast(err.message || 'Could not save clinic profile.');
+        }
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving clinic details…', save, {
+            button: document.getElementById('clinicSettingsSaveClinicBtn'),
+            buttonText: 'Saving…'
         });
-        showToast('Clinic contact details saved for patient advice sheets.');
-    } catch (err) {
-        showToast(err.message || 'Could not save clinic profile.');
     }
+    return save({});
 }
 
 function clinicProfileContactLines() {

@@ -40,6 +40,7 @@ let procedureSession = {
 let isBedSanitised = false;
 let shaveConsentVerified = false;
 let pendingShaveConsentAction = '';
+let pendingLesionSaveSource = '';
 let patientConcerns = [];
 let noPatientConcerns = false;
 let screeningMarkedComplete = false;

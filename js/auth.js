@@ -68,6 +68,19 @@ async function saveVaultDisplayName(displayName) {
     return name;
 }
 
+function isClinicWorkspaceReady() {
+    return !!(typeof vaultRootHandle !== 'undefined' && vaultRootHandle && isVaultLoggedIn());
+}
+
+function updateAuthModalCloseButton() {
+    const closeBtn = document.getElementById('authModalCloseBtn');
+    if (!closeBtn) return;
+    const allow = isClinicWorkspaceReady() && !vaultAuthBusy;
+    closeBtn.disabled = !allow;
+    closeBtn.classList.toggle('hidden', !allow);
+    closeBtn.setAttribute('aria-hidden', allow ? 'false' : 'true');
+}
+
 function dismissAuthModal() {
     if (vaultAuthBusy) {
         if (typeof showToast === 'function') {
@@ -77,6 +90,16 @@ function dismissAuthModal() {
     }
     if (authCreateMode && authKnownUserCount > 0) {
         setAuthCreateMode(false);
+        return;
+    }
+    if (!isClinicWorkspaceReady()) {
+        const reason = vaultRootHandle
+            ? 'Sign in before opening the clinical area.'
+            : 'Connect a clinic folder first. The clinical area cannot save without it.';
+        if (typeof showToast === 'function') showToast(reason);
+        const modal = document.getElementById('authModal');
+        if (modal) modal.classList.remove('hidden');
+        updateAuthModalCloseButton();
         return;
     }
     closeAuthModal();
@@ -128,12 +151,7 @@ function setVaultAuthBusy(busy, message) {
         const el = document.getElementById(id);
         if (el) el.disabled = vaultAuthBusy;
     });
-    const closeBtn = document.getElementById('authModalCloseBtn');
-    if (closeBtn) {
-        closeBtn.disabled = vaultAuthBusy;
-        closeBtn.classList.toggle('hidden', vaultAuthBusy);
-        closeBtn.setAttribute('aria-hidden', vaultAuthBusy ? 'true' : 'false');
-    }
+    updateAuthModalCloseButton();
     const signIn = document.getElementById('authSignInBtn');
     if (signIn) signIn.textContent = vaultAuthBusy ? (message || 'Signing in…') : 'Sign in';
     const createBtn = document.getElementById('authCreateBtn');
@@ -690,6 +708,7 @@ function updateAuthHeader() {
         btn.setAttribute('aria-haspopup', signedIn ? 'menu' : 'false');
     }
     if (!signedIn) closeHeaderAuthMenu();
+    updateAuthModalCloseButton();
 }
 
 function openAuthModal() {
@@ -698,15 +717,23 @@ function openAuthModal() {
     authCreateMode = false;
     refreshAuthFolderStatus();
     populateAuthUserList();
+    updateAuthModalCloseButton();
 }
 
 function closeAuthModal() {
+    if (!isClinicWorkspaceReady()) {
+        const modal = document.getElementById('authModal');
+        if (modal) modal.classList.remove('hidden');
+        updateAuthModalCloseButton();
+        return;
+    }
     const modal = document.getElementById('authModal');
     if (modal) modal.classList.add('hidden');
     authCreateMode = false;
     if (typeof setAuthCreateMode === 'function' && authKnownUserCount > 0) {
         setAuthCreateMode(false, { force: true });
     }
+    updateAuthModalCloseButton();
 }
 
 let authCreateMode = false;
@@ -804,9 +831,11 @@ async function refreshAuthFolderStatus() {
     if (vaultRootHandle) {
         const name = vaultRootHandle.name || 'selected folder';
         setAuthFolderStatus('Clinic folder connected (' + name + '). Select your user and enter your password.', 'ok');
+        updateAuthModalCloseButton();
         return;
     }
-    setAuthFolderStatus('No clinic folder connected yet.', 'info');
+    setAuthFolderStatus('No clinic folder connected yet. Choose a folder to continue — charts cannot be saved without it.', 'info');
+    updateAuthModalCloseButton();
 }
 
 async function populateAuthUserList() {
@@ -850,9 +879,21 @@ async function handleConnectClinicFolder() {
         if (btn) btn.disabled = true;
         setAuthFolderStatus('Opening folder picker…', 'info');
         await pickClinicFolder();
-        await refreshAuthFolderStatus();
-        await populateAuthUserList();
-        showToast('Clinic folder connected.');
+        const finish = async ({ progress }) => {
+            if (progress) progress('Reading clinic folder…', 0.35);
+            await refreshAuthFolderStatus();
+            if (progress) progress('Loading users…', 0.75);
+            await populateAuthUserList();
+            showToast('Clinic folder connected.');
+        };
+        if (typeof runBusyAction === 'function') {
+            await runBusyAction('Connecting clinic folder…', finish, {
+                button: btn,
+                buttonText: 'Connecting…'
+            });
+        } else {
+            await finish({});
+        }
     } catch (err) {
         if (err && err.name === 'AbortError') {
             setAuthFolderStatus('No folder selected. Choose the clinic folder again.', 'warn');
@@ -972,6 +1013,11 @@ async function initAuthModule() {
     document.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;
         closeHeaderAuthMenu();
+        const authModal = document.getElementById('authModal');
+        if (authModal && !authModal.classList.contains('hidden') && !isClinicWorkspaceReady()) {
+            event.preventDefault();
+            return;
+        }
         const modal = document.getElementById('passwordUpgradeModal');
         if (modal && !modal.classList.contains('hidden') && passwordChangeMode === 'change') {
             dismissPasswordUpgrade();

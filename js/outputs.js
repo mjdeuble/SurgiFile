@@ -1,8 +1,107 @@
 /* EMR note, pathology request, reception message, and action-card status */
 
+function examScopeKind(scopeVal) {
+    const s = String(scopeVal || '');
+    if (/full body|full skin check/i.test(s)) return 'full';
+    if (/regional/i.test(s)) return 'regional';
+    if (/spot check/i.test(s)) return 'spot';
+    return '';
+}
+
+function examPerformedLabel(scopeVal, regionalArea) {
+    const raw = String(scopeVal || '');
+    const kind = examScopeKind(raw);
+    const area = String(regionalArea || '').trim();
+    if (kind === 'full') {
+        if (/beneath undergarment/i.test(raw)) {
+            return 'Full skin check performed (including examination of areas beneath undergarments)';
+        }
+        if (/undergarment|underwear|covered areas/i.test(raw)) {
+            return 'Full skin check performed (undergarments remained in place; covered areas unexamined)';
+        }
+        return 'Full skin check performed';
+    }
+    if (kind === 'regional') {
+        const fromLabel = raw.match(/Regional skin check\s*\((.+)\)/i);
+        const region = area || (fromLabel ? fromLabel[1].trim() : '');
+        return region ? 'Regional skin check performed (' + region + ')' : 'Regional skin check performed';
+    }
+    if (kind === 'spot') return 'Spot check performed of specific patient-flagged lesion(s)';
+    return raw ? ('Examination performed: ' + raw) : '';
+}
+
+function examConsentedPerformedLabel(scopeVal, regionalArea) {
+    const raw = String(scopeVal || '');
+    const kind = examScopeKind(raw);
+    const area = String(regionalArea || '').trim();
+    if (kind === 'full') {
+        if (/beneath undergarment/i.test(raw)) {
+            return 'Full skin check performed as consented (including examination of areas beneath undergarments)';
+        }
+        if (/undergarment|underwear|covered areas/i.test(raw)) {
+            return 'Full skin check performed as consented (undergarments remained in place; covered areas unexamined)';
+        }
+        return 'Full skin check performed as consented';
+    }
+    if (kind === 'regional') {
+        const fromLabel = raw.match(/Regional skin check\s*\((.+)\)/i);
+        const region = area || (fromLabel ? fromLabel[1].trim() : '');
+        return region
+            ? 'Regional skin check of ' + region + ' performed as consented'
+            : 'Regional skin check performed as consented';
+    }
+    if (kind === 'spot') return 'Spot check of patient-flagged lesion(s) performed as consented';
+    return raw ? ('Examination performed as consented: ' + raw) : '';
+}
+
+function resolveExamScopeForNote() {
+    let raw = document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
+    let regionalArea = document.getElementById('regionalAreaInput')?.value.trim() || '';
+    let fitz = document.getElementById('fitzpatrick')?.value || '';
+    let lastCheck = document.getElementById('lastSkinCheck')?.value || '';
+    if (!raw || !fitz || !lastCheck) {
+        const exam = (typeof currentManagedChart === 'function' ? currentManagedChart()?.exam : null) || {};
+        const sameVisit = !exam.visitDate
+            || (typeof todayVisitKey === 'function' && exam.visitDate === todayVisitKey());
+        if (sameVisit) {
+            if (!raw) raw = exam.scope || '';
+            if (!regionalArea) regionalArea = String(exam.regionalArea || '').trim();
+            if (!fitz) fitz = exam.fitzpatrick || '';
+            if (!lastCheck) lastCheck = exam.lastSkinCheck || '';
+        }
+    }
+    let consentedLabel = raw;
+    if (/regional area/i.test(raw)) {
+        consentedLabel = regionalArea ? ('Regional skin check (' + regionalArea + ')') : 'Regional skin check';
+    }
+    return {
+        raw,
+        regionalArea,
+        fitz,
+        lastCheck,
+        kind: examScopeKind(raw || consentedLabel),
+        consentedLabel,
+        performedLabel: examPerformedLabel(raw || consentedLabel, regionalArea),
+        consentedPerformedLabel: examConsentedPerformedLabel(raw || consentedLabel, regionalArea)
+    };
+}
+
+function formatExamFindingsPlainText(scope, lesionCount) {
+    const hasExam = !!(scope?.consentedPerformedLabel || scope?.performedLabel || scope?.kind);
+    if (!hasExam) return '';
+    const n = Number(lesionCount) || 0;
+    const findings = n > 0
+        ? (n === 1
+            ? 'Findings: One lesion identified and documented below. Remainder of examined skin: no further dysplastic or suspicious lesions identified.'
+            : 'Findings: ' + n + ' lesions identified and documented below. Remainder of examined skin: no further dysplastic or suspicious lesions identified.')
+        : 'Findings: No dysplastic or suspicious lesions requiring biopsy or excision identified today.';
+    return '=== EXAMINATION PERFORMED ===\n\n- ' + findings + '\n\n';
+}
+
 function generateRegionalClearanceSummary() {
-    const scopeVal = document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
-    if (!scopeVal.includes("Full body")) {
+    const scope = typeof resolveExamScopeForNote === 'function' ? resolveExamScopeForNote() : null;
+    const scopeVal = scope?.raw || document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
+    if (examScopeKind(scopeVal) !== 'full') {
         return "";
     }
 
@@ -17,8 +116,11 @@ function generateRegionalClearanceSummary() {
     let regionalFindings = {};
     regions.forEach(r => { regionalFindings[r.name] = []; });
 
-    lesions.forEach(l => {
-        const locLower = l.location.toLowerCase();
+    const examLesions = typeof visitNoteLesions === 'function'
+        ? visitNoteLesions()
+        : (typeof lesions !== 'undefined' && Array.isArray(lesions) ? lesions : []);
+    examLesions.forEach(l => {
+        const locLower = String(l.location || '').toLowerCase();
         let matched = false;
         regions.forEach(r => {
             if (r.keywords.some(k => locLower.includes(k))) {
@@ -55,10 +157,18 @@ function formatLesionPlanIemr(lesion) {
     if (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan)) {
         return 'Topical / Field Treatment';
     }
+    if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan)) {
+        return typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(lesion)
+            ? formatDeclinePlanSummary(lesion)
+            : 'Declines Treatment / Other';
+    }
     const biopsyPlan = typeof isPunchShaveBiopsyPlan === 'function'
         ? isPunchShaveBiopsyPlan(lesion.plan)
         : /Biopsy/i.test(String(lesion.plan || ''));
     if (lesion.priorLesionId) return 'Re-excision';
+    if (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(lesion.plan)) {
+        return 'Excision after prior histology';
+    }
     if (biopsyPlan) {
         const type = String(lesion.biopsyType || '').trim();
         if (/punch/i.test(type)) {
@@ -85,14 +195,12 @@ function generateEMRNotePlainText(options) {
         || !consultLabel
     );
 
-    let scopeVal = document.querySelector('input[name="scopeConsent"]:checked')?.value || '';
-    if (scopeVal.includes('Regional Area')) {
-        const regText = document.getElementById('regionalAreaInput')?.value.trim() || '';
-        scopeVal = regText ? `Regional skin check (${regText})` : '';
-    }
-
-    const fitz = document.getElementById('fitzpatrick')?.value || '';
-    const lastCheck = document.getElementById('lastSkinCheck')?.value || '';
+    const examScope = typeof resolveExamScopeForNote === 'function' ? resolveExamScopeForNote() : null;
+    const scopeVal = examScope?.consentedLabel
+        || document.querySelector('input[name="scopeConsent"]:checked')?.value
+        || '';
+    const fitz = examScope?.fitz || document.getElementById('fitzpatrick')?.value || '';
+    const lastCheck = examScope?.lastCheck || document.getElementById('lastSkinCheck')?.value || '';
     const smsLabel = typeof smsNormalResultsConsentLabel === 'function' ? smsNormalResultsConsentLabel() : '';
     const hasScopeBlock = !!(scopeVal || fitz || lastCheck || smsLabel);
 
@@ -113,7 +221,11 @@ function generateEMRNotePlainText(options) {
 
     if (hasScopeBlock) {
         txt += `=== EXAMINATION SCOPE & PATIENT PHENOTYPE ===\n\n`;
-        if (scopeVal) txt += `- Consented Scope: ${scopeVal}\n`;
+        const examLine = !remote
+            ? String(examScope?.consentedPerformedLabel || '').trim()
+            : '';
+        if (examLine) txt += `- Examination: ${examLine}\n`;
+        else if (scopeVal) txt += `- Consented Scope: ${scopeVal}\n`;
         if (fitz) txt += `- Skin Phenotype: ${fitz}\n`;
         if (lastCheck) txt += `- Interval Since Last Skin Check: ${lastCheck}\n`;
         if (smsLabel) txt += `- Normal results by text: ${smsLabel}\n`;
@@ -137,23 +249,48 @@ function generateEMRNotePlainText(options) {
         });
     }
 
+    const noteLesions = typeof visitNoteLesions === 'function'
+        ? visitNoteLesions()
+        : (typeof lesions !== 'undefined' && Array.isArray(lesions) ? lesions : []);
+
     if (!remote) {
+        txt += formatExamFindingsPlainText(examScope, noteLesions.length);
         txt += generateRegionalClearanceSummary();
     }
 
-    const noteLesions = typeof visitNoteLesions === 'function' ? visitNoteLesions() : (lesions || []);
     if (noteLesions.length > 0) {
         txt += remote
             ? `=== LESIONS DISCUSSED / PLANNED ===\n\n`
             : `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
         noteLesions.forEach((l, idx) => {
             txt += `Lesion #${idx + 1}: ${l.location}\n`;
+            const episode = typeof formatLesionEpisodePlainText === 'function'
+                ? formatLesionEpisodePlainText(l, { indent: '    ', slimProcedureToday: true })
+                : '';
+            if (episode) {
+                txt += episode + '\n';
+                const comms = typeof lesionIemrCommsLine === 'function' ? lesionIemrCommsLine(l) : '';
+                if (comms) txt += `    ${comms}\n`;
+                txt += `\n`;
+                return;
+            }
+            const performedToday = typeof lesionPerformedToday === 'function' && lesionPerformedToday(l);
             const dx = typeof formatDiagnosisIemr === 'function'
                 ? formatDiagnosisIemr(l.impression)
                 : (l.impression || '');
             if (dx) txt += `    - Prov Dx: ${dx}\n`;
             if (l.macroscopic && !remote) txt += `    - Macroscopic: ${l.macroscopic}\n`;
             if (l.dermoscopy && !remote) txt += `    - Dermoscopic: ${l.dermoscopy}\n`;
+            if (performedToday) {
+                const pointer = typeof lesionProcedureTodayPointer === 'function'
+                    ? lesionProcedureTodayPointer(l)
+                    : ('Procedure today: ' + (l.biopsyType || l.plan || 'procedure') + ' — see operative note.');
+                txt += `    ${pointer}\n`;
+                const comms = typeof lesionIemrCommsLine === 'function' ? lesionIemrCommsLine(l) : '';
+                if (comms) txt += `    - ${comms}\n`;
+                txt += `\n`;
+                return;
+            }
             const planLabel = typeof formatLesionPlanIemr === 'function'
                 ? formatLesionPlanIemr(l)
                 : (isTopicalPlan(l.plan) ? 'Topical / Field Treatment' : (l.plan || ''));
@@ -181,35 +318,19 @@ function generateEMRNotePlainText(options) {
                 }
             }
             txt += formatTopicalEmrLines(l);
+            if (typeof formatDeclineEmrLines === 'function') txt += formatDeclineEmrLines(l);
             txt += `\n`;
         });
-    } else if (!remote) {
+    } else if (!remote && !examScope?.consentedPerformedLabel && !examScope?.performedLabel) {
         txt += `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
-        if (scopeVal.includes('Full body')) {
-            txt += `- Full body skin examination performed. No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
-        } else if (scopeVal) {
-            txt += `- Examination performed (${scopeVal}). No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
-        } else {
-            txt += `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
-        }
+        txt += `- No dysplastic or suspicious lesions requiring biopsy or excision identified today.\n\n`;
     }
 
-    if (procedureSession.started || procedureSession.completedAt || (typeof chartLesions === 'function' ? chartLesions() : []).some((item) => typeof lesionPerformedToday === 'function' && lesionPerformedToday(item))) {
-        txt += `=== PROCEDURE SESSION ===\n\n`;
-        const allocated = typeof procedureOutputLesions === 'function'
-            ? procedureOutputLesions()
-            : (typeof procedureSelectedLesions === 'function' && procedureSession.started
-                ? procedureSelectedLesions()
-                : (typeof chartLesions === 'function' ? chartLesions() : []).filter((item) => typeof lesionPerformedToday === 'function' ? lesionPerformedToday(item) : item.procedureCompletedAt));
-        if (allocated.length) {
-            allocated.forEach((l, idx) => {
-                const detail = typeof procedureDetailForLesion === 'function' ? procedureDetailForLesion(l) : null;
-                const kind = detail?.procedure || l.biopsyType || l.plan || 'procedure';
-                txt += `- ${idx + 1}. ${l.location || 'Site'} (${detail?.pathology || l.impression || 'diagnosis'}) — ${kind}\n`;
-            });
-        }
+    const procedureWork = procedureSession.started || procedureSession.completedAt
+        || (typeof chartLesions === 'function' ? chartLesions() : []).some((item) => typeof lesionPerformedToday === 'function' && lesionPerformedToday(item));
+    if (procedureWork && !visitOperativeNoteText()) {
         const comp = typeof formatProcedureComplications === 'function' ? formatProcedureComplications() : '';
-        txt += `- Complications: ${comp || 'Not recorded.'}\n\n`;
+        if (comp) txt += `- Complications: ${comp}\n\n`;
     }
 
     txt += generateHistologyResultEmrSection();
@@ -293,15 +414,24 @@ function copyTodaysClinicalNote() {
     copyTextToClipboard(text, toast, () => {
         markOutputCopied('emr', text);
         if (typeof markChartIemrCopied === 'function') markChartIemrCopied(text);
-        if (typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
+        if (typeof persistCopiedIemrNote === 'function') persistCopiedIemrNote(text);
+        else if (typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
     });
 }
 
 function generateBiopsyFinancialEmrSection(biopsiesCount) {
     const count = Number(biopsiesCount);
     if (!count) return '';
-    const bBilling = typeof currentBiopsyBilling === 'function' ? currentBiopsyBilling() : (document.getElementById('modalBiopsyBilling')?.value || '$20 OOP per biopsy (Item 30071)');
-    const cBilling = typeof currentConsultBilling === 'function' ? currentConsultBilling() : (document.getElementById('modalConsultBilling')?.value || 'Private Bill');
+    const bBilling = typeof currentBiopsyBilling === 'function'
+        ? currentBiopsyBilling()
+        : (document.getElementById('billingModalBiopsy')?.value
+            || document.getElementById('modalBiopsyBilling')?.value
+            || '$20 OOP per biopsy (Item 30071)');
+    const cBilling = typeof currentConsultBilling === 'function'
+        ? currentConsultBilling()
+        : (document.getElementById('billingModalConsult')?.value
+            || document.getElementById('modalConsultBilling')?.value
+            || 'Private Bill');
     const oopUnit = typeof biopsyOopUnitAmount === 'function' ? biopsyOopUnitAmount(bBilling) : (bBilling.includes('$20') ? 20 : 0);
     const oopTotal = count * oopUnit;
     let txt = `=== PROCEDURAL CONSENT & INFORMED FINANCIAL DISCLOSURE ===\n\n`;
@@ -317,17 +447,25 @@ function generateBiopsyFinancialEmrSection(biopsiesCount) {
     return txt;
 }
 
+function visitOperativeNoteText() {
+    if (typeof generateExEntryNote !== 'function') return '';
+    if (!Array.isArray(exLesions) || !exLesions.length) return '';
+    const op = generateExEntryNote();
+    if (!op || op.startsWith('Your')) return '';
+    return op;
+}
+
 function generateProcedureIemrAddendum() {
     if (typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
     const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
     let txt = `=== PROCEDURE ADDENDUM (${dateStr}) ===\n\n`;
     txt += `- Examination / screening already copied to IEMR. This addendum is for today’s procedure only.\n\n`;
-    if (typeof generateExEntryNote === 'function' && Array.isArray(exLesions) && exLesions.length) {
-        const op = generateExEntryNote();
-        if (op && !op.startsWith('Your')) txt += `=== OPERATIVE NOTE ===\n\n${op}\n`;
+    const op = visitOperativeNoteText();
+    if (op) txt += `=== OPERATIVE NOTE ===\n\n${op}\n`;
+    else {
+        const comp = typeof formatProcedureComplications === 'function' ? formatProcedureComplications() : '';
+        if (comp) txt += `- Complications: ${comp}\n`;
     }
-    const comp = typeof formatProcedureComplications === 'function' ? formatProcedureComplications() : '';
-    if (comp) txt += `- Complications: ${comp}\n`;
     const biopsiesCount = typeof sessionBiopsyCount === 'function' ? sessionBiopsyCount() : getBiopsyLesions().length;
     if (biopsiesCount > 0) txt += '\n' + generateBiopsyFinancialEmrSection(biopsiesCount);
     if (typeof generateAkComparisonEmrSection === 'function') txt += '\n' + generateAkComparisonEmrSection();
@@ -335,19 +473,32 @@ function generateProcedureIemrAddendum() {
     return txt.trim();
 }
 
+function visitProcedureWorkDone() {
+    if (typeof procedureSession !== 'undefined' && (procedureSession.started || procedureSession.completedAt)) {
+        if (typeof procedureOutputLesions === 'function') return procedureOutputLesions().length > 0;
+        if (typeof procedureSelectedLesions === 'function') return procedureSelectedLesions().length > 0;
+        return true;
+    }
+    const rows = typeof chartLesions === 'function'
+        ? chartLesions()
+        : (typeof lesions !== 'undefined' ? lesions : []);
+    return (rows || []).some((item) => (typeof lesionPerformedToday === 'function'
+        ? lesionPerformedToday(item)
+        : !!item.procedureCompletedAt));
+}
+
 function generateCompleteInteractionNote() {
-    if (typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
+    const procedureDone = typeof visitProcedureWorkDone === 'function' && visitProcedureWorkDone();
+    if (procedureDone && typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
     // forceFull only when screening was completed this visit (avoids dumping prior-visit answers)
     const includeScreening = typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit();
     let txt = generateEMRNotePlainText({
         includeFullScreening: includeScreening,
         forceFull: includeScreening
     }) || '';
-    if (typeof generateExEntryNote === 'function' && Array.isArray(exLesions) && exLesions.length) {
-        const op = generateExEntryNote();
-        if (op && !op.startsWith('Your')) {
-            txt += `\n=== OPERATIVE NOTE ===\n\n${op}\n`;
-        }
+    if (procedureDone) {
+        const op = visitOperativeNoteText();
+        if (op) txt += `\n=== OPERATIVE NOTE ===\n\n${op}\n`;
     }
     return txt.trim();
 }
@@ -482,10 +633,31 @@ function generatePathologyOutputs(lesionList) {
     return { slipText, reportText, requiresAttachment };
 }
 
-function printSupplementaryReportSheet(lesionList) {
-    const biopsyLesions = Array.isArray(lesionList) ? lesionList : getBiopsyLesions();
-    if (biopsyLesions.length === 0) return;
+function currentHistologySpecimens() {
+    if (typeof visitProcedureWorkDone === 'function' && !visitProcedureWorkDone()) return [];
+    if (typeof procedureSession !== 'undefined' && (procedureSession.started || procedureSession.completedAt)
+        && typeof procedurePathologyLesions === 'function') {
+        const proc = procedurePathologyLesions();
+        if (Array.isArray(proc) && proc.length) return proc;
+    }
+    const rows = typeof getBiopsyLesions === 'function' ? getBiopsyLesions() : [];
+    return rows.filter((item) => (typeof lesionPerformedToday === 'function'
+        ? lesionPerformedToday(item)
+        : !!item.procedureCompletedAt));
+}
 
+function histologySlipIsSavable(slipText) {
+    const slip = String(slipText || '').trim();
+    if (!slip) return false;
+    if (/^No biopsies documented/i.test(slip)) return false;
+    if (/^Your (generated|clinical)/i.test(slip)) return false;
+    return true;
+}
+
+function buildSupplementaryPathologyHtml(lesionList, options) {
+    const biopsyLesions = Array.isArray(lesionList) ? lesionList : currentHistologySpecimens();
+    if (!biopsyLesions.length) return '';
+    options = options || {};
     const name = currentPatient?.name
         || document.getElementById('mainPatientName')?.value.trim()
         || document.getElementById('consentPatientName')?.value.trim()
@@ -498,11 +670,12 @@ function printSupplementaryReportSheet(lesionList) {
         || (typeof loggedInDoctorName === 'function' && loggedInDoctorName())
         || currentPatient?.clinician
         || "________________________";
-
     const esc = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value ?? '');
     const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-    const printHtml = `
+    const autoPrint = options.autoPrint
+        ? `\n            \x3Cscript>\n                window.onload = function() { window.print(); }\n            \x3C/script>`
+        : '';
+    return `
         <!DOCTYPE html>
         <html>
         <head>
@@ -555,7 +728,7 @@ function printSupplementaryReportSheet(lesionList) {
                 <tbody>
                     ${biopsyLesions.map((l, idx) => `
                         <tr>
-                            <td style="font-weight: bold; text-align: center;">${idx + 1}</td>
+                            <td style="font-weight: bold; text-align: center;">${esc(typeof histoSpecimenNo === 'function' ? histoSpecimenNo(l, idx) : String(idx + 1))}</td>
                             <td style="font-weight: bold; text-transform: uppercase;">${esc(l.location || 'Unspecified site')}</td>
                             <td>${esc(l.impression)}</td>
                             <td>${esc(l.biopsyType || l.procedure || 'Biopsy')}</td>
@@ -578,14 +751,38 @@ function printSupplementaryReportSheet(lesionList) {
                 <div><strong>Requesting Medical Practitioner Signature:</strong> ___________________________________</div>
                 <div><strong>Provider / Dr Name:</strong> ${esc(doctor)}</div>
             </div>
-
-            \x3Cscript>
-                window.onload = function() { window.print(); }
-            \x3C/script>
+            ${autoPrint}
         </body>
         </html>
     `;
+}
 
+function currentHistologyRequestBundle() {
+    const specimens = currentHistologySpecimens();
+    if (!specimens.length) return null;
+    const data = generatePathologyOutputs(specimens);
+    if (!histologySlipIsSavable(data.slipText)) return null;
+    return {
+        specimens,
+        slipText: String(data.slipText || '').trim(),
+        reportText: String(data.reportText || '').trim(),
+        printHtml: buildSupplementaryPathologyHtml(specimens, { autoPrint: false }),
+        requiresAttachment: !!data.requiresAttachment
+    };
+}
+
+function persistVisitGeneratedDocuments() {
+    if (typeof saveCurrentVisitNotes !== 'function') return;
+    saveCurrentVisitNotes().catch((err) => {
+        console.warn('Could not save generated visit documents', err);
+    });
+}
+
+function printSupplementaryReportSheet(lesionList) {
+    const biopsyLesions = Array.isArray(lesionList) ? lesionList : currentHistologySpecimens();
+    if (biopsyLesions.length === 0) return;
+
+    const printHtml = buildSupplementaryPathologyHtml(biopsyLesions, { autoPrint: true });
     const printWin = window.open('', '_blank', 'width=800,height=900');
     if (printWin) {
         printWin.document.open();
@@ -593,15 +790,24 @@ function printSupplementaryReportSheet(lesionList) {
         printWin.document.close();
         const suppText = document.getElementById('supplementaryReportText')?.value || '';
         markOutputCopied('supp', suppText);
-        showToast('Supplementary pathology report sent to printer.');
+        persistVisitGeneratedDocuments();
+        showToast('Supplementary pathology report sent to printer. Saved in generated documents.');
     } else {
         showToast('Unable to open print window. Please check popup permissions.');
     }
 }
 
 function generateReceptionMessage() {
-    const cBilling = typeof currentConsultBilling === 'function' ? currentConsultBilling() : (document.getElementById('modalConsultBilling')?.value || 'Private Bill');
-    const bBilling = typeof currentBiopsyBilling === 'function' ? currentBiopsyBilling() : (document.getElementById('modalBiopsyBilling')?.value || '$20 OOP per biopsy (Item 30071)');
+    const cBilling = typeof currentConsultBilling === 'function'
+        ? currentConsultBilling()
+        : (document.getElementById('billingModalConsult')?.value
+            || document.getElementById('modalConsultBilling')?.value
+            || 'Private Bill');
+    const bBilling = typeof currentBiopsyBilling === 'function'
+        ? currentBiopsyBilling()
+        : (document.getElementById('billingModalBiopsy')?.value
+            || document.getElementById('modalBiopsyBilling')?.value
+            || '$20 OOP per biopsy (Item 30071)');
 
     const consultLesions = typeof lesions !== 'undefined' ? lesions : [];
     const biopsiesCount = typeof sessionBiopsyCount === 'function' ? sessionBiopsyCount() : getBiopsyLesions().length;
@@ -650,12 +856,17 @@ function generateReceptionMessage() {
     const billingLesions = typeof visitProcedureLesionsForFinalise === 'function'
         ? visitProcedureLesionsForFinalise()
         : procedureLesions;
-    if (billingLesions.length) {
+    const unsentBilling = typeof visitUnsentBillingLesions === 'function'
+        ? visitUnsentBillingLesions(billingLesions)
+        : billingLesions;
+    if (unsentBilling.length) {
         const summary = typeof procedureSessionBillingSummary === 'function'
-            ? procedureSessionBillingSummary(billingLesions)
+            ? procedureSessionBillingSummary(unsentBilling)
             : null;
         const billingLine = typeof receptionBillingInstruction === 'function' ? receptionBillingInstruction(summary) : '';
         if (billingLine) parts.push(billingLine);
+    } else if (billingLesions.length) {
+        parts.push('Billing: billed today.');
     }
 
     let text = parts.filter(Boolean).join(' | ');
@@ -902,7 +1113,10 @@ function copyPathologyRequestAction() {
         showToast('No biopsy pathology request to copy yet.');
         return;
     }
-    copyTextToClipboard(text, 'Pathology request copied for BP Premier!', () => markOutputCopied('path', text));
+    copyTextToClipboard(text, 'Pathology request copied for BP Premier!', () => {
+        markOutputCopied('path', text);
+        persistVisitGeneratedDocuments();
+    });
 }
 
 function copySupplementaryAction() {
@@ -911,7 +1125,10 @@ function copySupplementaryAction() {
         showToast('No attached pathology report to copy yet.');
         return;
     }
-    copyTextToClipboard(text, 'Attached Pathology Report copied!', () => markOutputCopied('supp', text));
+    copyTextToClipboard(text, 'Attached Pathology Report copied!', () => {
+        markOutputCopied('supp', text);
+        persistVisitGeneratedDocuments();
+    });
 }
 
 function copyReceptionAction() {

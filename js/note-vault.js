@@ -27,7 +27,7 @@ function consultNoteIsSavable(text) {
     const t = String(text || '').trim();
     if (t.length < 40) return false;
     if (/^Your (generated|clinical)/i.test(t)) return false;
-    return t.includes('SKIN EXAMINATION CLINICAL NOTE') || t.includes('PRE-PROCEDURAL') || t.includes('DOCUMENTED SKIN LESIONS');
+    return /CLINICAL NOTE|PRE-PROCEDURAL|DOCUMENTED SKIN LESIONS|LESIONS DISCUSSED|OPERATIVE NOTE/i.test(t);
 }
 
 function procedureNoteIsSavable(text) {
@@ -38,6 +38,7 @@ function procedureNoteIsSavable(text) {
 }
 
 function currentProcedureNoteText() {
+    if (typeof visitProcedureWorkDone === 'function' && !visitProcedureWorkDone()) return '';
     if (typeof generateExEntryNote !== 'function') return '';
     const note = generateExEntryNote();
     if (!procedureNoteIsSavable(note)) return '';
@@ -50,6 +51,9 @@ function currentProcedureNoteText() {
 }
 
 function currentConsultNoteText() {
+    if (typeof generateCompleteInteractionNote === 'function') {
+        return generateCompleteInteractionNote();
+    }
     if (typeof generateEMRNotePlainText !== 'function') return '';
     const includeScreening = typeof screeningAskedThisVisit === 'function' && screeningAskedThisVisit();
     return generateEMRNotePlainText({
@@ -160,22 +164,61 @@ async function loadManagedVisitNotesFromVault() {
     managedVisitNotes.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
-async function saveCurrentVisitNotes() {
+function visitNoteHasHistology(note) {
+    return !!(String(note?.histologySlipText || '').trim() || String(note?.histologyPrintHtml || '').trim());
+}
+
+function visitNoteHasAdvice(note) {
+    return !!String(note?.aftercareHtml || '').trim();
+}
+
+function collectVisitHistologyArtefact() {
+    if (typeof currentHistologyRequestBundle !== 'function') return null;
+    return currentHistologyRequestBundle();
+}
+
+function collectVisitAftercareArtefact() {
+    if (typeof currentAftercareSheetBundle !== 'function') return null;
+    const bundle = currentAftercareSheetBundle();
+    if (!bundle || !String(bundle.html || '').trim()) return null;
+    return bundle;
+}
+
+async function saveCurrentVisitNotes(options) {
     if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) return null;
     if (!hasCurrentPatient()) return null;
     const patient = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : currentPatient;
     const chartId = patient.chartId || currentPatient.chartId;
     if (!chartId) return null;
 
-    const consult = currentConsultNoteText();
+    let consult = options && options.consultText != null ? String(options.consultText) : '';
+    if (!consult) {
+        const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
+        const copied = String(chart?.iemr?.examHash || '').trim();
+        if (copied
+            && typeof chartExamCopyIsCurrent === 'function'
+            && chartExamCopyIsCurrent(chart)
+            && consultNoteIsSavable(copied)) {
+            consult = copied;
+        } else {
+            consult = currentConsultNoteText();
+        }
+    }
     const procedure = currentProcedureNoteText();
     const consultOk = consultNoteIsSavable(consult);
     const procedureOk = procedureNoteIsSavable(procedure);
-    if (!consultOk && !procedureOk) return null;
-
+    const histology = collectVisitHistologyArtefact();
+    const advice = collectVisitAftercareArtefact();
+    const procedureDone = typeof visitProcedureWorkDone === 'function' && visitProcedureWorkDone();
     const visitDate = typeof todayVisitKey === 'function' ? todayVisitKey() : new Date().toISOString().slice(0, 10);
     const now = new Date().toISOString();
     let note = findVisitNoteForDay(chartId, visitDate);
+    const staleProcedureDocs = !!(note && !procedureDone && (
+        String(note.procedureText || '').trim()
+        || String(note.histologySlipText || '').trim()
+        || String(note.histologyPrintHtml || '').trim()
+    ));
+    if (!consultOk && !procedureOk && !histology && !advice && !staleProcedureDocs) return null;
     if (!note) {
         note = {
             id: (typeof newOpaqueRecordId === 'function' ? newOpaqueRecordId('visit') : 'visit-' + Date.now()),
@@ -189,12 +232,31 @@ async function saveCurrentVisitNotes() {
             expiresAt: visitNoteExpiresAt(now),
             consultText: '',
             procedureText: '',
+            histologySlipText: '',
+            histologyReportText: '',
+            histologyPrintHtml: '',
+            aftercareHtml: '',
+            aftercareTopics: [],
             fileName: visitNoteFileName(),
             owner: (typeof vaultAuth !== 'undefined' && vaultAuth.username) || ''
         };
     }
     if (consultOk) note.consultText = consult;
     if (procedureOk) note.procedureText = procedure;
+    else if (!procedureDone) note.procedureText = '';
+    if (histology) {
+        note.histologySlipText = histology.slipText || '';
+        note.histologyReportText = histology.reportText || '';
+        note.histologyPrintHtml = histology.printHtml || '';
+    } else if (!procedureDone) {
+        note.histologySlipText = '';
+        note.histologyReportText = '';
+        note.histologyPrintHtml = '';
+    }
+    if (advice) {
+        note.aftercareHtml = advice.html || '';
+        note.aftercareTopics = Array.isArray(advice.topics) ? advice.topics.slice() : [];
+    }
     note.patientName = patient.patientName || currentPatient.name || note.patientName;
     note.patientDob = patient.patientDob || currentPatient.dob || note.patientDob;
     note.clinician = patient.clinician || currentPatient.clinician || note.clinician;
@@ -202,7 +264,12 @@ async function saveCurrentVisitNotes() {
     if (!note.expiresAt) note.expiresAt = visitNoteExpiresAt(note.createdAt || now);
     upsertVisitNoteMemory(note);
     if (isVaultLoggedIn()) await writeManagedVisitNote(note);
-    if (mgmtActiveFilter === 'notes' && typeof renderManagedLesions === 'function') renderManagedLesions();
+    if (typeof mgmtActiveFilter !== 'undefined' && mgmtActiveFilter === 'notes' && typeof renderManagedLesions === 'function') {
+        renderManagedLesions();
+    }
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && typeof renderChartTreeSavedDocs === 'function') {
+        renderChartTreeSavedDocs();
+    }
     return note;
 }
 
@@ -222,6 +289,24 @@ function scheduleVisitNoteSave() {
     }, 1200);
 }
 
+function persistCopiedIemrNote(text) {
+    const copied = String(text || '').trim();
+    if (!copied) {
+        scheduleVisitNoteSave();
+        return;
+    }
+    if (visitNoteSaveTimer) {
+        clearTimeout(visitNoteSaveTimer);
+        visitNoteSaveTimer = null;
+    }
+    saveCurrentVisitNotes({ consultText: copied }).catch((err) => {
+        console.warn('Could not save copied IEMR as visit note', err);
+        if (typeof toastVaultWriteError === 'function') {
+            toastVaultWriteError('Visit notes could not be saved to the clinic folder. Check folder access.');
+        }
+    });
+}
+
 function visitNoteDaysLeft(note) {
     const expiry = Date.parse(note?.expiresAt || visitNoteExpiresAt(note?.createdAt));
     if (Number.isNaN(expiry)) return 7;
@@ -235,7 +320,7 @@ function renderSavedVisitNotesQueue(notes) {
             <header class="px-4 py-3 bg-sky-50 border-b border-sky-200 flex flex-wrap justify-between items-center gap-2">
                 <div>
                     <h3 class="text-sm font-bold text-slate-800">Saved notes</h3>
-                    <p class="text-[11px] text-slate-500 mt-0.5">Autosaved consult and procedure notes, labelled by patient and time. Kept for 7 days, then deleted.</p>
+                    <p class="text-[11px] text-slate-500 mt-0.5">Autosaved consult notes, histology requests, and patient advice. Kept for 7 days, then deleted.</p>
                 </div>
                 <span class="text-[11px] font-semibold text-slate-500">${items.length}</span>
             </header>
@@ -265,20 +350,36 @@ function renderSavedVisitNoteCard(note) {
                 <div class="flex flex-wrap gap-1 shrink-0">
                     ${hasConsult ? '<span class="inline-flex items-center px-2 py-0.5 rounded bg-sky-100 text-sky-900 text-[10px] font-bold">Consult</span>' : ''}
                     ${hasProc ? '<span class="inline-flex items-center px-2 py-0.5 rounded bg-violet-100 text-violet-900 text-[10px] font-bold">Procedure</span>' : ''}
+                    ${visitNoteHasHistology(note) ? '<span class="inline-flex items-center px-2 py-0.5 rounded bg-rose-100 text-rose-900 text-[10px] font-bold">Histology</span>' : ''}
+                    ${visitNoteHasAdvice(note) ? '<span class="inline-flex items-center px-2 py-0.5 rounded bg-teal-100 text-teal-900 text-[10px] font-bold">Advice</span>' : ''}
                 </div>
             </div>
             <div class="flex flex-wrap gap-1.5">
-                <button type="button" data-note-action="open" data-note-id="${idAttr}" class="mgmt-action-btn">View</button>
+                ${(hasConsult || hasProc) ? `<button type="button" data-note-action="open" data-note-id="${idAttr}" class="mgmt-action-btn">View</button>` : ''}
                 ${hasConsult ? `<button type="button" data-note-action="copy-consult" data-note-id="${idAttr}" class="mgmt-action-btn mgmt-action-btn-primary">Copy consult</button>` : ''}
                 ${hasProc ? `<button type="button" data-note-action="copy-procedure" data-note-id="${idAttr}" class="mgmt-action-btn">Copy procedure</button>` : ''}
+                ${visitNoteHasHistology(note) ? `<button type="button" data-note-action="open-histology" data-note-id="${idAttr}" class="mgmt-action-btn">Histology request</button>` : ''}
+                ${visitNoteHasAdvice(note) ? `<button type="button" data-note-action="open-advice" data-note-id="${idAttr}" class="mgmt-action-btn">Patient advice</button>` : ''}
             </div>
         </article>`;
 }
 
 function openSavedVisitNote(id) {
     const note = findVisitNote(id);
+    if (!note) {
+        showToast('Saved note not found.');
+        return;
+    }
+    const kind = (typeof consultNoteIsSavable === 'function' && consultNoteIsSavable(note.consultText))
+        ? 'consult'
+        : ((typeof procedureNoteIsSavable === 'function' && procedureNoteIsSavable(note.procedureText))
+            ? 'procedure'
+            : '');
+    if (kind && typeof openSavedDocumentInInspector === 'function' && openSavedDocumentInInspector(kind, note.id)) {
+        return;
+    }
     const modal = document.getElementById('savedNoteModal');
-    if (!note || !modal) {
+    if (!modal) {
         showToast('Saved note not found.');
         return;
     }
@@ -326,4 +427,157 @@ function copySavedVisitNote(id, kind) {
 
 function copySavedVisitNoteFromModal(kind) {
     copySavedVisitNote(document.getElementById('savedNoteModal')?.dataset.noteId, kind);
+}
+
+function visitArtefactPlainText(note, artefact) {
+    if (artefact === 'histology') {
+        const slip = String(note?.histologySlipText || '').trim();
+        const report = String(note?.histologyReportText || '').trim();
+        if (slip && report && slip !== report) return slip + '\n\n' + report;
+        return slip || report;
+    }
+    return '';
+}
+
+function visitArtefactHtml(note, artefact) {
+    if (artefact === 'histology') return String(note?.histologyPrintHtml || '').trim();
+    if (artefact === 'advice') return String(note?.aftercareHtml || '').trim();
+    return '';
+}
+
+function visitArtefactFilename(note, artefact) {
+    const slug = String(note?.patientName || 'patient').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+    const day = note?.visitDate || (typeof todayVisitKey === 'function' ? todayVisitKey() : 'visit');
+    if (artefact === 'histology') return 'Histology-request-' + slug + '-' + day + '.html';
+    return 'Patient-advice-' + slug + '-' + day + '.html';
+}
+
+function openSavedVisitArtefact(id, artefact) {
+    const note = findVisitNote(id);
+    const kind = artefact === 'advice' ? 'advice' : 'histology';
+    if (!note) {
+        showToast('Saved document not found.');
+        return;
+    }
+    if (typeof openSavedDocumentInInspector === 'function' && openSavedDocumentInInspector(kind, note.id)) {
+        return;
+    }
+    const modal = document.getElementById('savedHtmlDocModal');
+    if (!modal) {
+        showToast('Saved document not found.');
+        return;
+    }
+    const html = visitArtefactHtml(note, kind);
+    const text = visitArtefactPlainText(note, kind);
+    if (!html && !text) {
+        showToast(kind === 'advice' ? 'No patient advice was saved for this visit.' : 'No histology request was saved for this visit.');
+        return;
+    }
+    const title = document.getElementById('savedHtmlDocTitle');
+    const meta = document.getElementById('savedHtmlDocMeta');
+    const textWrap = document.getElementById('savedHtmlDocTextWrap');
+    const textEl = document.getElementById('savedHtmlDocText');
+    const frame = document.getElementById('savedHtmlDocFrame');
+    const copyBtn = document.getElementById('btnSavedHtmlDocCopy');
+    if (title) title.textContent = kind === 'advice' ? 'Patient advice' : 'Histology request';
+    if (meta) {
+        const when = typeof formatLesionWhen === 'function' ? formatLesionWhen(note.updatedAt) : note.updatedAt;
+        meta.textContent = [note.patientName, note.patientDob, when ? 'Saved ' + when : ''].filter(Boolean).join(' · ');
+    }
+    if (textEl) textEl.value = text;
+    if (textWrap) textWrap.classList.toggle('hidden', !text);
+    if (copyBtn) copyBtn.classList.toggle('hidden', !text);
+    if (frame) frame.srcdoc = html || '<p style="padding:16px;font-family:system-ui">No printable copy was saved.</p>';
+    modal.dataset.noteId = note.id;
+    modal.dataset.artefact = kind;
+    modal.classList.remove('hidden');
+}
+
+function closeSavedHtmlDoc() {
+    const modal = document.getElementById('savedHtmlDocModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        delete modal.dataset.noteId;
+        delete modal.dataset.artefact;
+    }
+    const frame = document.getElementById('savedHtmlDocFrame');
+    if (frame) frame.srcdoc = '';
+}
+
+function savedHtmlDocContext() {
+    const modal = document.getElementById('savedHtmlDocModal');
+    const note = findVisitNote(modal?.dataset.noteId);
+    const artefact = modal?.dataset.artefact || 'histology';
+    return { note, artefact };
+}
+
+function copySavedHtmlDoc() {
+    const { note, artefact } = savedHtmlDocContext();
+    if (!note) {
+        showToast('Saved document not found.');
+        return;
+    }
+    const text = visitArtefactPlainText(note, artefact);
+    if (!text) {
+        showToast('No text to copy. Use Print for the PDF copy.');
+        return;
+    }
+    copyTextToClipboard(text, artefact === 'histology' ? 'Histology request copied.' : 'Patient advice copied.');
+}
+
+function printSavedHtmlDoc() {
+    const { note, artefact } = savedHtmlDocContext();
+    if (!note) {
+        showToast('Saved document not found.');
+        return;
+    }
+    const html = visitArtefactHtml(note, artefact);
+    const text = visitArtefactPlainText(note, artefact);
+    const payload = html || ('<pre style="white-space:pre-wrap;font-family:system-ui,sans-serif;font-size:12px;padding:16px;">'
+        + String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        + '</pre><script>window.onload=function(){window.print();}</script>');
+    if (!html && !text) {
+        showToast('No document content was saved.');
+        return;
+    }
+    const printWin = window.open('', '_blank', 'width=850,height=950');
+    if (!printWin) {
+        showToast('Unable to open print window. Please check popup permissions.');
+        return;
+    }
+    printWin.document.open();
+    printWin.document.write(html ? html : payload);
+    if (html) {
+        printWin.document.close();
+        printWin.focus();
+        printWin.print();
+        return;
+    }
+    printWin.document.close();
+}
+
+function downloadSavedHtmlDoc() {
+    const { note, artefact } = savedHtmlDocContext();
+    if (!note) {
+        showToast('Saved document not found.');
+        return;
+    }
+    const html = visitArtefactHtml(note, artefact);
+    const text = visitArtefactPlainText(note, artefact);
+    const body = html || ('<!DOCTYPE html><pre style="white-space:pre-wrap;font-family:system-ui,sans-serif;font-size:12px;padding:16px;">'
+        + String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        + '</pre>');
+    if (!html && !text) {
+        showToast('No document content was saved.');
+        return;
+    }
+    const blob = new Blob([body], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = visitArtefactFilename(note, artefact);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
