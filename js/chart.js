@@ -2105,6 +2105,299 @@ function inspectorLesionSlot() {
     return document.getElementById('inspLesionSlot') || document.getElementById('chartLesionInspector');
 }
 
+function inspectorPrintPatient() {
+    const identityFrom = (source) => {
+        if (!source) return null;
+        const ident = typeof patientIdentityFromRecord === 'function'
+            ? patientIdentityFromRecord(source)
+            : {
+                name: source.name || source.patientName || '',
+                dob: source.dob || source.patientDob || '',
+                phone: source.phone || source.patientPhone || '',
+                clinician: source.clinician || '',
+                chartId: source.chartId || ''
+            };
+        const storedName = String(source.name || source.patientName || '').trim();
+        if (storedName) ident.name = storedName;
+        if (!ident.name && !ident.dob && !ident.phone) return null;
+        return ident;
+    };
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && typeof currentPatient !== 'undefined') {
+        const open = identityFrom(currentPatient);
+        if (open) {
+            open.clinician = (typeof loggedInDoctorName === 'function' && loggedInDoctorName())
+                || open.clinician
+                || currentPatient.clinician
+                || '';
+            return open;
+        }
+    }
+    const lesionId = String(selectedChartLesionId || inspectorFormLesionId || '');
+    const lesion = (lesionId && typeof findLesionRecordById === 'function')
+        ? findLesionRecordById(lesionId)
+        : null;
+    const fromLesion = identityFrom(lesion);
+    if (fromLesion) return fromLesion;
+    const docKey = selectedPracticeDoc || selectedChartSavedDoc;
+    if (docKey && typeof practiceSavedDocItems === 'function') {
+        const docs = practiceSavedDocItems();
+        const doc = docs.find((item) => String(item.kind) === String(docKey.kind) && String(item.id) === String(docKey.id));
+        const fromDoc = identityFrom(doc);
+        if (fromDoc) return fromDoc;
+    }
+    const headerName = String(document.getElementById('headerPatientName')?.textContent || '').trim();
+    if (headerName && headerName !== 'No chart open') {
+        const fromHeader = identityFrom({
+            name: headerName,
+            dob: '',
+            phone: '',
+            clinician: ''
+        });
+        if (fromHeader) return fromHeader;
+    }
+    return { name: '', dob: '', phone: '', clinician: '', chartId: '' };
+}
+
+function visibleRightPaneSource() {
+    const pane = document.getElementById('chartLesionInspector');
+    if (pane && !pane.classList.contains('hidden')) {
+        const ids = ['inspLesionSlot', 'inspLetterSlot', 'inspBillingSlot', 'inspAdviceSlot'];
+        for (const id of ids) {
+            const el = document.getElementById(id);
+            if (el && !el.classList.contains('hidden')) return el;
+        }
+        return pane;
+    }
+    const views = ['view-skin-check', 'view-excision-generator', 'view-consent', 'view-management'];
+    for (const id of views) {
+        const el = document.getElementById(id);
+        if (el && !el.classList.contains('hidden')) return el;
+    }
+    return null;
+}
+
+function iframePrintHtml(frame) {
+    const srcdoc = String(frame?.srcdoc || '');
+    if (srcdoc) {
+        const body = srcdoc.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        return body ? body[1] : srcdoc;
+    }
+    try {
+        return frame?.contentDocument?.body?.innerHTML || '';
+    } catch (err) {
+        return '';
+    }
+}
+
+function snapshotNodeForPrint(root) {
+    if (!root) return null;
+    const clone = root.cloneNode(true);
+    const srcFields = root.querySelectorAll('input, textarea, select');
+    const dstFields = clone.querySelectorAll('input, textarea, select');
+    srcFields.forEach((src, i) => {
+        const dst = dstFields[i];
+        if (!dst) return;
+        const type = String(src.type || '').toLowerCase();
+        if (type === 'checkbox' || type === 'radio') {
+            if (src.checked) dst.setAttribute('checked', '');
+            else dst.removeAttribute('checked');
+        } else if (src.tagName === 'SELECT') {
+            [...dst.options].forEach((opt, j) => {
+                if (src.options[j] && src.options[j].selected) opt.setAttribute('selected', '');
+                else opt.removeAttribute('selected');
+            });
+        } else {
+            dst.setAttribute('value', src.value);
+            if (src.tagName === 'TEXTAREA') dst.textContent = src.value;
+        }
+    });
+    const srcFrames = root.querySelectorAll('iframe');
+    clone.querySelectorAll('iframe').forEach((frame, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'inspector-print-embed';
+        wrap.innerHTML = iframePrintHtml(srcFrames[i]);
+        frame.replaceWith(wrap);
+    });
+    clone.querySelectorAll('.chart-inspector-printbar, .insp-caption-close, .insp-tool-footer, .chart-inspector-toolbar, button, script, .no-print, .sr-only').forEach((el) => el.remove());
+    clone.querySelectorAll('.hidden').forEach((el) => el.remove());
+    return clone;
+}
+
+function inspectorPrintStylesheetTags() {
+    return [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => {
+        const href = link.href || link.getAttribute('href') || '';
+        return href ? `<link rel="stylesheet" href="${escapeHtml(href)}">` : '';
+    }).filter(Boolean).join('\n');
+}
+
+function inspectorPrintPageCss() {
+    return `
+        @page { size: A4; margin: 12mm; }
+        html, body.inspector-print {
+            background: #fff !important;
+            color: #111;
+            margin: 0;
+            height: auto !important;
+            overflow: visible !important;
+        }
+        body.inspector-print { font-family: "Segoe UI", Calibri, Arial, sans-serif; }
+        .inspector-print-patient {
+            border: 2px solid #111;
+            padding: 10px 12px;
+            margin: 0 0 12px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 4px 16px;
+        }
+        .inspector-print-kicker {
+            font-size: 8.5pt;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #444;
+            grid-column: 1 / -1;
+        }
+        .inspector-print-name {
+            font-size: 16pt;
+            font-weight: 800;
+            line-height: 1.15;
+        }
+        .inspector-print-when {
+            font-size: 9pt;
+            color: #333;
+            text-align: right;
+        }
+        .inspector-print-meta {
+            font-size: 10pt;
+            grid-column: 1 / -1;
+        }
+        .inspector-print-pane .chart-inspector,
+        .inspector-print-pane .insp-slot,
+        .inspector-print-pane .insp-tool-card,
+        .inspector-print-pane .insp-docked,
+        .inspector-print-pane .chart-inspector-body {
+            display: block !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            flex: none !important;
+            border: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+        }
+        .inspector-print-pane .insp-tool-preview-frame,
+        .inspector-print-pane iframe {
+            height: auto !important;
+            min-height: 0 !important;
+        }
+        .inspector-print-embed {
+            border: 1px solid #bbb;
+            padding: 8px;
+            margin: 8px 0;
+        }
+        .inspector-print-pane button,
+        .inspector-print-pane .chart-inspector-printbar,
+        .inspector-print-pane .insp-tool-footer,
+        .inspector-print-pane .insp-caption-close {
+            display: none !important;
+        }
+        @media print {
+            .no-print { display: none !important; }
+            a { color: inherit; text-decoration: none; }
+        }
+    `;
+}
+
+function buildInspectorPrintHtml(patient, paneHtml, extras) {
+    const esc = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value ?? '');
+    const printed = new Date().toLocaleString('en-AU', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    const clinic = (typeof clinicProfile !== 'undefined' && clinicProfile?.clinicName) ? clinicProfile.clinicName : '';
+    const doctor = patient.clinician
+        || (typeof loggedInDoctorName === 'function' && loggedInDoctorName())
+        || '';
+    const bits = [
+        patient.dob ? 'DOB ' + patient.dob : '',
+        patient.phone || '',
+        doctor ? 'Dr ' + doctor : '',
+        clinic
+    ].filter(Boolean);
+    const titleBits = [patient.name || 'Patient', patient.dob, extras?.caption].filter(Boolean);
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>${esc(titleBits.join(' · '))} — DermRecord</title>
+    ${inspectorPrintStylesheetTags()}
+    <style>${inspectorPrintPageCss()}</style>
+</head>
+<body class="inspector-print">
+    <header class="inspector-print-patient">
+        <div class="inspector-print-kicker">DermRecord · handover / discussion copy${extras?.queue ? ' · ' + esc(extras.queue) : ''}</div>
+        <div class="inspector-print-name">${esc(patient.name || 'Unnamed patient')}</div>
+        <div class="inspector-print-when">Printed ${esc(printed)}</div>
+        <div class="inspector-print-meta">${esc(bits.join(' · ') || 'No further patient details on file')}</div>
+    </header>
+    <main class="inspector-print-pane">${paneHtml}</main>
+    <p class="no-print" style="margin-top:12px;"><button type="button" onclick="window.print()">Print</button></p>
+    <script>window.onload = function () { window.print(); };<\/script>
+</body>
+</html>`;
+}
+
+function openInspectorPrintWindow(html) {
+    const printWin = window.open('', '_blank', 'width=900,height=1100');
+    if (!printWin) {
+        if (typeof showToast === 'function') showToast('Unable to open print window. Please allow pop-ups for this app.');
+        return false;
+    }
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+    return true;
+}
+
+function printInspectorPane() {
+    const source = visibleRightPaneSource();
+    if (!source) {
+        if (typeof showToast === 'function') showToast('Nothing in the right pane to print.');
+        return;
+    }
+    const snap = snapshotNodeForPrint(source);
+    if (!snap) {
+        if (typeof showToast === 'function') showToast('Nothing in the right pane to print.');
+        return;
+    }
+    const patient = inspectorPrintPatient() || {};
+    const caption = source.querySelector('.chart-inspector-caption h2')?.textContent?.trim()
+        || source.querySelector('h2')?.textContent?.trim()
+        || '';
+    const queue = (typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive()
+        && typeof practiceFilterLabel === 'function')
+        ? practiceFilterLabel()
+        : '';
+    const text = String(snap.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text && !patient.name) {
+        if (typeof showToast === 'function') showToast('Nothing in the right pane to print.');
+        return;
+    }
+    const html = buildInspectorPrintHtml(patient, snap.innerHTML, { caption, queue });
+    openInspectorPrintWindow(html);
+}
+
+function syncInspectorPrintButton() {
+    const inspectorOn = typeof chartLesionInspectorVisible === 'function' && chartLesionInspectorVisible();
+    const chartOn = typeof hasCurrentPatient === 'function' && hasCurrentPatient();
+    const btn = document.getElementById('btnPrintRightPane');
+    if (btn) btn.classList.toggle('hidden', !(chartOn && !inspectorOn));
+}
+
 function inspectorToolMode() {
     return inspectorPaneMode === 'letter' || inspectorPaneMode === 'billing' || inspectorPaneMode === 'advice';
 }
@@ -2208,6 +2501,7 @@ function renderChartLesionInspector(options) {
     const unlocked = typeof visitClinicalUnlocked === 'function' ? visitClinicalUnlocked() : true;
     showInspectorToolSlot(inspectorPaneMode);
     syncInspectorActionTreeSelection();
+    syncInspectorPrintButton();
     if (inspectorToolMode()) {
         dockInspectorTool(inspectorPaneMode);
         inspectorRenderedMode = inspectorPaneMode;
@@ -2345,6 +2639,7 @@ function syncChartLesionWorkspace() {
     });
     renderChartLesionTree();
     renderChartLesionInspector();
+    syncInspectorPrintButton();
     applyVisitSectionVisibility();
     syncChartVisitTreeStatus();
     const viewMgmt = document.getElementById('view-management');
