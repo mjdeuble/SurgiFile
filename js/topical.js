@@ -1094,17 +1094,7 @@ function getTopicalReceptionBits() {
             return `Book PDT ${summary.names || 'area TBC'}${quote}`.trim();
         }
         if (l.topicalDecision === 'cryotherapy') {
-            const bits = ['Cryotherapy'];
-            if (Number(l.cryoFreezeSeconds) > 0) {
-                bits.push(`${l.cryoFreezeSeconds}s×${l.cryoFreezeThawCycles || 1}FTC`);
-            }
-            if (l.cryoProtocolLabel) bits.push(l.cryoProtocolLabel);
-            if (l.cryoRecallRepeat) {
-                bits.push(`BOOK CRYO RECALL${l.cryoSessionInterval ? ' in ' + l.cryoSessionInterval : ''}`);
-            } else if (l.topicalFollowUp && l.topicalFollowUp !== 'none') {
-                bits.push(`FU ${l.topicalFollowUp}`);
-            }
-            return bits.join(' · ');
+            return '';
         }
         if (l.topicalDecision === 'efudix') {
             const course = formatEfudixCourseText(l);
