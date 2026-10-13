@@ -1,7 +1,5 @@
 /* Clinic-wide settings: contact profile + procedure supplies. Stored in the clinic folder root. */
 
-let clinicProfile = emptyClinicProfile();
-
 const DEFAULT_HISTO_WAIT_GREEN_DAYS = 7;
 const DEFAULT_HISTO_WAIT_ORANGE_DAYS = 10;
 
@@ -34,6 +32,8 @@ function emptyClinicProfile() {
         updatedAt: ''
     };
 }
+
+let clinicProfile = emptyClinicProfile();
 
 function clinicProfileFileName() {
     return 'clinic-profile.json';
