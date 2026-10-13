@@ -1479,8 +1479,70 @@ function formatLesionEpisodePlainLines(lesion, options) {
 function formatLesionEpisodePlainText(lesion, options) {
     const indent = options && options.indent != null ? String(options.indent) : '';
     const detailIndent = indent + '    ';
-    const headingRe = /^(Examination|Specimen\s+\d+|Plan|Procedure today)\b/;
+    const headingRe = /^(Examination|Specimen\s+\d+|Plan|Procedure today|Notes|Lesion)\b/;
     return formatLesionEpisodePlainLines(lesion, options).map((line) => {
+        const text = String(line || '').trim();
+        if (!text) return '';
+        return headingRe.test(text) ? indent + text : detailIndent + text;
+    }).filter(Boolean).join('\n');
+}
+
+function formatLesionNoteEventPlainLine(event) {
+    if (!event) return '';
+    const when = typeof formatLesionCardDate === 'function'
+        ? formatLesionCardDate(event.at)
+        : (typeof formatLesionWhen === 'function' ? formatLesionWhen(event.at) : '');
+    const typeLabel = {
+        call_attempt: 'Call',
+        voicemail: 'Voicemail',
+        sms: 'SMS',
+        spoke: 'Spoke',
+        result_advised: 'Result advised',
+        appointment_requested: 'Appointment',
+        plan: 'Plan',
+        note: 'Note'
+    }[event.type] || (event.type === 'note' ? 'Note' : '');
+    const bits = [];
+    if (when) bits.push(when);
+    if (typeLabel && typeLabel !== 'Note') bits.push(typeLabel);
+    if (event.outcome && String(event.outcome).toLowerCase() !== String(typeLabel).toLowerCase()) {
+        bits.push(event.outcome);
+    }
+    const head = bits.join(' · ');
+    const note = String(event.note || '').trim();
+    const plan = String(event.planAfter || '').trim();
+    const body = [note, plan && plan !== note ? 'Plan: ' + plan : ''].filter(Boolean).join(' — ');
+    if (!body && !head) return '';
+    if (!body) return head;
+    return head ? head + ': ' + body : body;
+}
+
+function formatLesionNotesPlainLines(lesion, extraNote) {
+    const events = (typeof lesionNoteEvents === 'function' ? lesionNoteEvents(lesion) : [])
+        .slice()
+        .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    const lines = events.map(formatLesionNoteEventPlainLine).filter(Boolean);
+    const extra = String(extraNote || '').trim();
+    if (extra) lines.push(extra);
+    if (!lines.length) return [];
+    return ['Notes'].concat(lines);
+}
+
+function buildLesionUpdatePlainText(lesion, options) {
+    if (!lesion) return '';
+    const extraNote = options && options.extraNote != null ? options.extraNote : '';
+    const site = String(lesion.location || '').trim() || 'No site';
+    const lines = ['Lesion: ' + site];
+    const episode = typeof formatLesionEpisodePlainLines === 'function'
+        ? formatLesionEpisodePlainLines(lesion)
+        : [];
+    if (episode.length) lines.push(...episode);
+    const notes = formatLesionNotesPlainLines(lesion, extraNote);
+    if (notes.length) lines.push(...notes);
+    const indent = options && options.indent != null ? String(options.indent) : '';
+    const detailIndent = indent + '    ';
+    const headingRe = /^(Examination|Specimen\s+\d+|Plan|Procedure today|Notes|Lesion)\b/;
+    return lines.map((line) => {
         const text = String(line || '').trim();
         if (!text) return '';
         return headingRe.test(text) ? indent + text : detailIndent + text;
