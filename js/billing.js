@@ -127,6 +127,26 @@ function applyPatientBillingToDom(billing) {
     updateChartBillingButtonStatus(consult, biopsy);
 }
 
+function sourceHasBillingField(source, field) {
+    return !!(source && Object.prototype.hasOwnProperty.call(source, field));
+}
+
+function seedPatientBillingFromSource(source) {
+    if (!sourceHasBillingField(source, 'consultBilling') && !sourceHasBillingField(source, 'biopsyBilling')) {
+        return null;
+    }
+    const billing = {
+        consultBilling: sourceHasBillingField(source, 'consultBilling')
+            ? normalizeConsultBilling(source.consultBilling)
+            : currentConsultBilling(),
+        biopsyBilling: sourceHasBillingField(source, 'biopsyBilling')
+            ? normalizeBiopsyBilling(source.biopsyBilling)
+            : currentBiopsyBilling()
+    };
+    applyPatientBillingToDom(billing);
+    return billing;
+}
+
 function persistPatientBilling(billing) {
     if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) return;
     const consult = normalizeConsultBilling(
