@@ -2391,11 +2391,98 @@ function printInspectorPane() {
     openInspectorPrintWindow(html);
 }
 
+function currentLesionForUpdateCopy() {
+    if (typeof inspectorToolMode === 'function' && inspectorToolMode()) return null;
+    if (typeof practiceNotesActive === 'function' && practiceNotesActive()) return null;
+    if (typeof practiceBillingActive === 'function' && practiceBillingActive()) return null;
+    if (typeof selectedChartSavedDoc !== 'undefined' && selectedChartSavedDoc) return null;
+    if (typeof inspectorPaneMode !== 'undefined' && inspectorPaneMode === 'form') {
+        const fromForm = typeof inspectorFormLesion === 'function' ? inspectorFormLesion() : null;
+        if (fromForm && (fromForm.id || fromForm.location)) return fromForm;
+    }
+    const id = String(
+        (typeof inspectorFormLesionId !== 'undefined' && inspectorPaneMode === 'form' && inspectorFormLesionId)
+            || (typeof selectedChartLesionId !== 'undefined' ? selectedChartLesionId : '')
+            || (typeof inspectorFormLesionId !== 'undefined' ? inspectorFormLesionId : '')
+            || ''
+    );
+    if (!id) return null;
+    const items = typeof chartLesions === 'function' ? chartLesions() : [];
+    const fromChart = items.find((item) => String(item.id) === id);
+    if (fromChart) return fromChart;
+    return (typeof findLesionRecordById === 'function' ? findLesionRecordById(id) : null) || null;
+}
+
+function overlayLesionDraftFromInspector(lesion) {
+    const draft = { ...(lesion || {}) };
+    const loc = document.getElementById('inspLesionLocation');
+    if (loc) draft.location = loc.value.trim() || draft.location;
+    if (typeof readInspectorImpression === 'function' && document.getElementById('inspLesionImpression')) {
+        const impression = readInspectorImpression();
+        if (impression) draft.impression = impression;
+    }
+    const macro = document.getElementById('inspLesionMacroscopic');
+    if (macro) draft.macroscopic = macro.value.trim() || draft.macroscopic;
+    const dermoscopy = document.getElementById('inspLesionDermoscopy');
+    if (dermoscopy) draft.dermoscopy = dermoscopy.value.trim() || draft.dermoscopy;
+    const plan = document.getElementById('inspLesionPlan');
+    if (plan && plan.value) draft.plan = plan.value;
+    const histoDx = typeof readDiagnosisTypeahead === 'function' && document.getElementById('inspHistologyDiagnosis')
+        ? readDiagnosisTypeahead('inspHistologyDiagnosis')
+        : (document.getElementById('inspHistologyDiagnosis')?.value || '');
+    if (String(histoDx).trim()) draft.histologyDiagnosis = String(histoDx).trim();
+    const histoResult = document.getElementById('inspHistologyResultText');
+    if (histoResult && histoResult.value.trim()) draft.histologyResult = histoResult.value.trim();
+    const proposedNote = document.getElementById('inspHistologyProposedPlanNote');
+    if (proposedNote && Object.prototype.hasOwnProperty.call(proposedNote, 'value')) {
+        draft.proposedPlanNote = proposedNote.value.trim();
+    }
+    const proposed = document.querySelector('input[name="inspHistologyProposedPlan"]:checked');
+    if (proposed) draft.proposedPlan = proposed.value || '';
+    if (typeof readInspectorTopicalFields === 'function' && document.getElementById('inspTopicalNotes')) {
+        Object.assign(draft, readInspectorTopicalFields(draft));
+    }
+    return draft;
+}
+
+function unsavedLesionUpdateNote() {
+    return String(document.getElementById('inspLesionNote')?.value || '').trim();
+}
+
+function lesionUpdateCopyAvailable() {
+    return !!currentLesionForUpdateCopy();
+}
+
+function copyLesionUpdateForBp() {
+    const lesion = currentLesionForUpdateCopy();
+    if (!lesion) {
+        if (typeof showToast === 'function') showToast('Open a lesion to copy its details.');
+        return '';
+    }
+    const draft = overlayLesionDraftFromInspector(lesion);
+    const text = typeof buildLesionUpdatePlainText === 'function'
+        ? buildLesionUpdatePlainText(draft, { extraNote: unsavedLesionUpdateNote() })
+        : '';
+    if (!String(text).trim()) {
+        if (typeof showToast === 'function') showToast('Nothing on this lesion to copy yet.');
+        return '';
+    }
+    if (typeof copyTextToClipboard === 'function') {
+        copyTextToClipboard(text, 'Lesion details copied for Best Practice update.');
+    }
+    return text;
+}
+
 function syncInspectorPrintButton() {
     const inspectorOn = typeof chartLesionInspectorVisible === 'function' && chartLesionInspectorVisible();
     const chartOn = typeof hasCurrentPatient === 'function' && hasCurrentPatient();
-    const btn = document.getElementById('btnPrintRightPane');
-    if (btn) btn.classList.toggle('hidden', !(chartOn && !inspectorOn));
+    const printToolbar = document.getElementById('btnPrintRightPane');
+    if (printToolbar) printToolbar.classList.toggle('hidden', !(chartOn && !inspectorOn));
+    const copyOn = lesionUpdateCopyAvailable();
+    const copyInspector = document.getElementById('btnCopyLesionUpdate');
+    if (copyInspector) copyInspector.classList.toggle('hidden', !(inspectorOn && copyOn));
+    const copyToolbar = document.getElementById('btnCopyLesionUpdateToolbar');
+    if (copyToolbar) copyToolbar.classList.toggle('hidden', !(chartOn && !inspectorOn && copyOn));
 }
 
 function inspectorToolMode() {

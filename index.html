@@ -12,8 +12,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="stylesheet" href="css/tailwind.css?v=193">
-    <link rel="stylesheet" href="css/app.css?v=193">
+    <link rel="stylesheet" href="css/tailwind.css?v=194">
+    <link rel="stylesheet" href="css/app.css?v=194">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -164,7 +164,10 @@
                         <button type="button" onclick="expandAllAccordions()" class="chart-toolbar-btn" aria-label="Expand all sections">Expand all</button>
                         <button type="button" onclick="collapseAllAccordions()" class="chart-toolbar-btn" aria-label="Collapse all sections">Collapse all</button>
                     </div>
-                    <button type="button" id="btnPrintRightPane" onclick="printInspectorPane()" class="chart-toolbar-btn hidden" title="Print this pane and patient details for reception or another doctor" aria-label="Print pane with patient details">Print</button>
+                    <div id="toolbarPaneActions" class="chart-toolbar-pane-actions">
+                        <button type="button" id="btnCopyLesionUpdateToolbar" onclick="copyLesionUpdateForBp()" class="chart-toolbar-btn hidden" title="Copy this lesion's details and notes for a Best Practice update" aria-label="Copy lesion details and notes">Copy</button>
+                        <button type="button" id="btnPrintRightPane" onclick="printInspectorPane()" class="chart-toolbar-btn hidden" title="Print this pane and patient details for reception or another doctor" aria-label="Print pane with patient details">Print</button>
+                    </div>
                 </div>
             </div>
             <div id="practiceFilterBar" class="practice-tabs hidden" role="tablist" aria-label="Practice queues">
@@ -178,6 +181,7 @@
             </div>
             <section id="chartLesionInspector" class="chart-inspector hidden" aria-live="polite">
                 <div class="chart-inspector-printbar">
+                    <button type="button" id="btnCopyLesionUpdate" onclick="copyLesionUpdateForBp()" class="hidden" title="Copy this lesion's details and notes for a Best Practice update" aria-label="Copy lesion details and notes">Copy</button>
                     <button type="button" id="btnPrintInspectorPane" onclick="printInspectorPane()" title="Print this pane and patient details for reception or another doctor" aria-label="Print pane with patient details">Print</button>
                 </div>
                 <div id="inspLesionSlot" class="insp-slot"></div>
@@ -2616,31 +2620,31 @@
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=193"></script>
-    <script src="js/diagnosis-catalogue.js?v=193"></script>
-    <script src="js/crypto.js?v=193"></script>
-    <script src="js/vault.js?v=193"></script>
-    <script src="js/ui.js?v=193"></script>
-    <script src="js/topical.js?v=193"></script>
-    <script src="js/decline-plan.js?v=193"></script>
-    <script src="js/billing.js?v=193"></script>
-    <script src="js/margin-guide.js?v=193"></script>
-    <script src="js/skin-check.js?v=193"></script>
-    <script src="js/consent.js?v=193"></script>
-    <script src="js/clinic-profile.js?v=193"></script>
-    <script src="js/aftercare.js?v=193"></script>
-    <script src="js/letters.js?v=193"></script>
-    <script src="js/outputs.js?v=193"></script>
-    <script src="js/excision.js?v=193"></script>
-    <script src="js/lesion-vault.js?v=193"></script>
-    <script src="js/billing-vault.js?v=193"></script>
-    <script src="js/chart-vault.js?v=193"></script>
-    <script src="js/note-vault.js?v=193"></script>
-    <script src="js/consent-vault.js?v=193"></script>
-    <script src="js/auth.js?v=193"></script>
-    <script src="js/management.js?v=193"></script>
-    <script src="js/chart.js?v=193"></script>
-    <script src="js/procedure-session.js?v=193"></script>
-    <script src="js/app.js?v=193"></script>
+    <script src="js/state.js?v=194"></script>
+    <script src="js/diagnosis-catalogue.js?v=194"></script>
+    <script src="js/crypto.js?v=194"></script>
+    <script src="js/vault.js?v=194"></script>
+    <script src="js/ui.js?v=194"></script>
+    <script src="js/topical.js?v=194"></script>
+    <script src="js/decline-plan.js?v=194"></script>
+    <script src="js/billing.js?v=194"></script>
+    <script src="js/margin-guide.js?v=194"></script>
+    <script src="js/skin-check.js?v=194"></script>
+    <script src="js/consent.js?v=194"></script>
+    <script src="js/clinic-profile.js?v=194"></script>
+    <script src="js/aftercare.js?v=194"></script>
+    <script src="js/letters.js?v=194"></script>
+    <script src="js/outputs.js?v=194"></script>
+    <script src="js/excision.js?v=194"></script>
+    <script src="js/lesion-vault.js?v=194"></script>
+    <script src="js/billing-vault.js?v=194"></script>
+    <script src="js/chart-vault.js?v=194"></script>
+    <script src="js/note-vault.js?v=194"></script>
+    <script src="js/consent-vault.js?v=194"></script>
+    <script src="js/auth.js?v=194"></script>
+    <script src="js/management.js?v=194"></script>
+    <script src="js/chart.js?v=194"></script>
+    <script src="js/procedure-session.js?v=194"></script>
+    <script src="js/app.js?v=194"></script>
 </body>
 </html>
