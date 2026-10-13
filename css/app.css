@@ -1062,6 +1062,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             opacity: 0.88;
             margin-top: 0.05rem;
         }
+        .chart-tree-node.is-histo-wait-ok {
+            color: #15803d;
+        }
+        .chart-tree-node.is-histo-wait-soon {
+            color: #c2410c;
+        }
+        .chart-tree-node.is-histo-wait-overdue {
+            color: #b91c1c;
+        }
+        .chart-tree-node.is-histo-wait-ok .chart-tree-node-meta,
+        .chart-tree-node.is-histo-wait-soon .chart-tree-node-meta,
+        .chart-tree-node.is-histo-wait-overdue .chart-tree-node-meta {
+            opacity: 1;
+        }
+        .chart-tree-node.is-selected.is-histo-wait-ok,
+        .chart-tree-node.is-selected.is-histo-wait-soon,
+        .chart-tree-node.is-selected.is-histo-wait-overdue {
+            color: #fff;
+        }
         .chart-tree-empty {
             padding: 0.35rem 0.55rem 0.55rem 1.4rem;
             color: #666;

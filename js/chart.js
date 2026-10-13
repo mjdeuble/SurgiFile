@@ -599,7 +599,8 @@ function renderPracticeTree() {
                 : (item.location || 'No site'));
             const label = typeof chartTreeNodeLabel === 'function' ? chartTreeNodeLabel(item) : { meta: '' };
             const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(item);
-            const cls = ['chart-tree-node', selected ? 'is-selected' : '', done ? 'is-done' : ''].filter(Boolean).join(' ');
+            const waitCls = label.waitTone ? 'is-histo-wait-' + label.waitTone : '';
+            const cls = ['chart-tree-node', selected ? 'is-selected' : '', done ? 'is-done' : '', waitCls].filter(Boolean).join(' ');
             return `<button type="button" role="treeitem" aria-selected="${selected ? 'true' : 'false'}" class="${cls}" style="--depth:1" onclick="selectPracticeLesion('${id}')">
                 <span class="chart-tree-node-site">${escapeHtml(site)}</span>
                 <span class="chart-tree-node-meta">${escapeHtml(label.meta || '')}</span>
@@ -815,6 +816,50 @@ function lesionListSiteLabel(lesion) {
     return site;
 }
 
+function lesionAwaitsHistologyResult(lesion) {
+    if (!lesion) return false;
+    const status = typeof lesionLifecycleStatus === 'function'
+        ? lesionLifecycleStatus(lesion)
+        : lesion.managementStatus;
+    if (status !== 'awaiting_histology') return false;
+    if (typeof lesionHasSavedHistology === 'function' && lesionHasSavedHistology(lesion)) return false;
+    return true;
+}
+
+function lesionBiopsyAt(lesion) {
+    if (typeof lesionProcedureAt === 'function') return lesionProcedureAt(lesion) || '';
+    return lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt || '';
+}
+
+function calendarDaysSinceIso(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((today.getTime() - start.getTime()) / 86400000);
+}
+
+function lesionHistoWaitTone(days) {
+    if (days == null || days < 0) return '';
+    const t = typeof clinicHistoWaitThresholds === 'function'
+        ? clinicHistoWaitThresholds()
+        : { green: 7, orange: 10 };
+    if (days < t.green) return 'ok';
+    if (days < t.orange) return 'soon';
+    return 'overdue';
+}
+
+function lesionHistoWaitSummary(lesion) {
+    if (!lesionAwaitsHistologyResult(lesion)) return { dateLabel: '', tone: '' };
+    const at = lesionBiopsyAt(lesion);
+    if (!at) return { dateLabel: '', tone: '' };
+    const days = calendarDaysSinceIso(at);
+    const date = typeof formatLesionCardDate === 'function' ? formatLesionCardDate(at) : '';
+    const dateLabel = date ? ('Bx ' + date) : '';
+    return { dateLabel, tone: lesionHistoWaitTone(days), days };
+}
+
 function chartTreeNodeLabel(lesion) {
     const site = lesionListSiteLabel(lesion);
     const dx = typeof formatDiagnosisDisplay === 'function'
@@ -822,9 +867,10 @@ function chartTreeNodeLabel(lesion) {
         : (lesion?.impression || '');
     const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
     const status = done ? '' : (typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion?.managementStatus || ''));
+    const wait = lesionHistoWaitSummary(lesion);
     const today = typeof isVisitLesion === 'function' && isVisitLesion(lesion.id) ? 'Today' : '';
-    const meta = [dx, status, today].filter(Boolean).join(' · ');
-    return { site, meta };
+    const meta = [dx, status, wait.dateLabel, today].filter(Boolean).join(' · ');
+    return { site, meta, waitTone: wait.tone };
 }
 
 function lesionTreeHighlightsActive() {
@@ -845,7 +891,8 @@ function renderChartTreeNode(lesion, depth, childrenMap) {
     const done = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion);
     const label = chartTreeNodeLabel(lesion);
     const kids = childrenMap.get(id) || [];
-    const cls = ['chart-tree-node', selected ? 'is-selected' : '', done ? 'is-done' : ''].filter(Boolean).join(' ');
+    const waitCls = label.waitTone ? 'is-histo-wait-' + label.waitTone : '';
+    const cls = ['chart-tree-node', selected ? 'is-selected' : '', done ? 'is-done' : '', waitCls].filter(Boolean).join(' ');
     const self = `<button type="button" role="treeitem" aria-selected="${selected ? 'true' : 'false'}" class="${cls}" style="--depth:${depth}" onclick="selectChartLesion('${id.replace(/'/g, '')}', { fromTree: true })">
         <span class="chart-tree-node-site">${escapeHtml(label.site)}</span>
         <span class="chart-tree-node-meta">${escapeHtml(label.meta)}</span>
