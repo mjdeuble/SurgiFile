@@ -292,6 +292,45 @@ function practiceLesionOrderKey(lesion) {
     return String(lesion?.createdAt || lesion?.examinedAt || lesion?.updatedAt || '') + '|' + String(lesion?.id || '');
 }
 
+function practiceLesionPotNumber(lesion) {
+    const raw = typeof normalizeHistologyPot === 'function'
+        ? normalizeHistologyPot(lesion?.histologyPot)
+        : String(lesion?.histologyPot || '').trim();
+    return raw;
+}
+
+function practiceLesionDayKey(lesion) {
+    const iso = lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt || lesion?.histologyAt || '';
+    if (iso) {
+        const d = new Date(iso);
+        if (!Number.isNaN(d.getTime())) {
+            return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+        }
+        return String(iso).slice(0, 10);
+    }
+    return String(lesion?.createdAt || lesion?.examinedAt || '').slice(0, 10);
+}
+
+function comparePracticeLesions(a, b) {
+    const dayCmp = String(practiceLesionDayKey(a)).localeCompare(String(practiceLesionDayKey(b)));
+    if (dayCmp) return dayCmp;
+    const batchCmp = String(a?.histologyBatchId || '').localeCompare(String(b?.histologyBatchId || ''));
+    if (batchCmp) return batchCmp;
+    const pa = practiceLesionPotNumber(a);
+    const pb = practiceLesionPotNumber(b);
+    if (pa && pb) {
+        const potCmp = pa.localeCompare(pb, 'en', { numeric: true, sensitivity: 'base' });
+        if (potCmp) return potCmp;
+    } else if (pa !== pb) {
+        return pa ? -1 : 1;
+    }
+    return practiceLesionOrderKey(a).localeCompare(practiceLesionOrderKey(b));
+}
+
+function practiceLesionTreeNumber(lesion, idx) {
+    return practiceLesionPotNumber(lesion) || String(Number(idx) + 1);
+}
+
 function practiceVisibleLesions() {
     const items = (typeof managedLesions !== 'undefined' ? managedLesions : [])
         .filter((item) => typeof isClinicalLesionTile !== 'function' || isClinicalLesionTile(item));
@@ -317,7 +356,7 @@ function groupPracticePatients(items) {
     return Array.from(groups.values())
         .sort((a, b) => a.sortName.localeCompare(b.sortName, 'en', { sensitivity: 'base' }))
         .map((group) => {
-            group.items.sort((a, b) => practiceLesionOrderKey(a).localeCompare(practiceLesionOrderKey(b)));
+            group.items.sort(comparePracticeLesions);
             return group;
         });
 }
@@ -594,7 +633,7 @@ function renderPracticeTree() {
         const kids = group.items.map((item, idx) => {
             const id = String(item.id || '').replace(/'/g, '');
             const selected = id && id === String(selectedChartLesionId);
-            const site = (idx + 1) + '. ' + (typeof lesionListSiteLabel === 'function'
+            const site = practiceLesionTreeNumber(item, idx) + '. ' + (typeof lesionListSiteLabel === 'function'
                 ? lesionListSiteLabel(item)
                 : (item.location || 'No site'));
             const label = typeof chartTreeNodeLabel === 'function' ? chartTreeNodeLabel(item) : { meta: '' };
