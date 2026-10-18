@@ -1,4 +1,4 @@
-const CACHE_VERSION = '192';
+const CACHE_VERSION = '194';
 const CACHE_NAME = 'dermrecord-v' + CACHE_VERSION;
 const CACHE_QUERY = '?v=' + CACHE_VERSION;
 
@@ -16,6 +16,7 @@ const APP_SHELL = [
     './js/topical.js' + CACHE_QUERY,
     './js/decline-plan.js' + CACHE_QUERY,
     './js/billing.js' + CACHE_QUERY,
+    './js/location-catalogue.js' + CACHE_QUERY,
     './js/margin-guide.js' + CACHE_QUERY,
     './js/skin-check.js' + CACHE_QUERY,
     './js/consent.js' + CACHE_QUERY,
