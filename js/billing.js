@@ -797,6 +797,11 @@ function closureNeedsGraftType(closure) {
     return closure === 'Graft' || closure === 'Graft + Flap';
 }
 
+function resolvedGraftType(closure, graftType) {
+    if (!closureNeedsGraftType(closure)) return '';
+    return String(graftType || '').trim();
+}
+
 function usesFlap(recon) {
     return recon === 'flap' || recon === 'flap_graft';
 }
