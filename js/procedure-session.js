@@ -430,7 +430,7 @@ function procedureDetailForLesion(lesion) {
             ? parseMarginMm(saved.margin || fromEx?.margin || lesion?.margin || (procedure === 'Excision' ? (lesion?.excisionMarginMm || lesion?.excisionMargin) : '') || '')
             : (saved.margin || fromEx?.margin || lesion?.margin || (procedure === 'Excision' ? (lesion?.excisionMarginMm || firstSingleMm(lesion?.excisionMargin)) : '') || '')),
         punchSize: saved.punchSize || fromEx?.punchSize || lesion?.punchSize || '',
-        billingRegion: saved.billingRegion || fromEx?.billingRegion || lesion?.billingRegion || '',
+        billingRegion: saved.billingRegion || fromEx?.billingRegion || lesion?.billingRegion || (typeof locationZoneFields === 'function' ? locationZoneFields(saved.location || fromEx?.location || lesion?.location || '').billingRegion : '') || '',
         anesthetic: saved.anesthetic || fromEx?.anesthetic || '',
         prep: saved.prep || fromEx?.prep || '',
         excludeNMSC: !!(saved.excludeNMSC || fromEx?.excludeNMSC),
@@ -530,7 +530,7 @@ function collectProcedureDetailFromForm() {
         width: (procedure === 'Punch' && getVal('exPunchType') !== 'Punch Excision') ? '' : getVal('exLesionWidth'),
         margin: (procedure === 'Punch' && getVal('exPunchType') !== 'Punch Excision') ? '' : getVal('exMargin'),
         punchSize: (procedure === 'Punch' && getVal('exPunchType') !== 'Punch Excision') ? getVal('exPunchSize') : '',
-        billingRegion: getVal('exBillingRegion'),
+        billingRegion: getVal('exBillingRegion') || (typeof locationZoneFields === 'function' ? locationZoneFields(getVal('exLesionLocation')).billingRegion : '') || '',
         anesthetic: getVal('exLocalAnesthetic'),
         prep: getVal('exSkinPrep'),
         excludeNMSC: getChk('exExcludeNMSC'),
@@ -753,6 +753,7 @@ function loadProcedureLesionIntoForm(lesion) {
             if (el && val !== undefined && val !== null && val !== '') el.value = String(val);
         };
         setVal('exLesionLocation', detail.location);
+        if (typeof refreshLocationZoneField === 'function') refreshLocationZoneField('exLesionLocation');
         const pathology = typeof normalizePathologyString === 'function' ? normalizePathologyString(detail.pathology) : detail.pathology;
         if (typeof setProcedurePathologyDisplay === 'function') setProcedurePathologyDisplay(pathology);
         else setVal('exProvisionalDiagnoses', pathology);
@@ -869,6 +870,10 @@ function syncProcedureFormToChart(id) {
     lesion.margin = detail.procedure === 'Punch' && detail.punchType !== 'Punch Excision' ? '' : (detail.margin || '');
     lesion.punchSize = detail.punchSize || '';
     lesion.prep = detail.prep || '';
+    if (detail.location && typeof locationZoneFields === 'function') {
+        const zone = locationZoneFields(detail.location);
+        if (zone.billingRegion) Object.assign(lesion, zone);
+    }
     if (detail.billingRegion) lesion.billingRegion = Number(detail.billingRegion);
     const graft = typeof resolvedGraftType === 'function'
         ? resolvedGraftType(detail.excisionClosureType, detail.graftType)
@@ -963,7 +968,9 @@ function upsertExLesionFromChart(lesion) {
         patientDob: lesion.patientDob || currentPatient?.dob || '',
         chartId: lesion.chartId || currentPatient?.chartId || '',
         billingRegion: detail.billingRegion || '',
-        bodyAreaLabel: typeof procedureAreaLabel === 'function' ? procedureAreaLabel(detail.billingRegion) : '',
+        bodyAreaId: (typeof locationZoneFields === 'function' ? locationZoneFields(detail.location).bodyAreaId : '') || existing?.bodyAreaId || '',
+        bodyAreaLabel: (typeof locationZoneFields === 'function' ? locationZoneFields(detail.location).bodyAreaLabel : '')
+            || (typeof procedureAreaLabel === 'function' ? procedureAreaLabel(detail.billingRegion) : ''),
         anesthetic: detail.anesthetic || existing?.anesthetic || '',
         prep: detail.prep || existing?.prep || '',
         pathology: detail.pathology || '',

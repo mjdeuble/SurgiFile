@@ -1149,7 +1149,11 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
             <div class="insp-grid">
                 <div>
                     <label class="insp-label" for="inspLesionLocation">Anatomical location</label>
-                    <input type="text" id="inspLesionLocation" class="insp-input" value="${escapeHtml(lesion.location || '')}" placeholder="e.g. Right cheek"${disabled}>
+                    <div class="loc-zone">
+                        <input type="text" id="inspLesionLocation" class="insp-input loc-zone-input" value="${escapeHtml(lesion.location || '')}" placeholder="e.g. Right cheek"${disabled} autocomplete="off">
+                        <p class="loc-zone-note" id="inspLesionLocationZoneNote"></p>
+                        <div class="dx-suggest loc-suggest hidden" role="listbox"></div>
+                    </div>
                 </div>
                 <div>
                     <label class="insp-label" for="inspLesionImpression">Provisional diagnosis</label>
@@ -1550,6 +1554,9 @@ function bindInspectorHistologyEntry(lesion) {
 
 function bindInspectorTypeaheads() {
     if (typeof bindDiagnosisTypeahead !== 'function') return;
+    if (typeof bindLocationZoneField === 'function') {
+        bindLocationZoneField('inspLesionLocation', { noteId: 'inspLesionLocationZoneNote' });
+    }
     bindDiagnosisTypeahead('inspLesionImpression', {
         multi: true,
         hiddenId: 'inspLesionImpressionCodes',
@@ -1748,10 +1755,8 @@ function saveInspectorLesionDocumentation() {
     }
     if (typeof requireCurrentPatient === 'function' && !requireCurrentPatient('Select a patient so this lesion is saved to their chart.')) return;
     const loc = document.getElementById('inspLesionLocation')?.value.trim() || '';
-    if (!loc) {
-        showToast('Please enter an anatomical location for the lesion.');
-        return;
-    }
+    const locZone = typeof requireMatchedLocation === 'function' ? requireMatchedLocation(loc) : (loc ? { region: '' } : null);
+    if (!locZone) return;
     const editId = document.getElementById('inspEditLesionId')?.value || '';
     const plan = document.getElementById('inspLesionPlan')?.value || '';
     let impression = readInspectorImpression();
@@ -1875,7 +1880,8 @@ function saveInspectorLesionDocumentation() {
         ...topicalFields,
         ...declineFields,
         ...(copiedPrior || {}),
-        ...(patientSnap || {})
+        ...(patientSnap || {}),
+        ...(typeof locationZoneFields === 'function' ? locationZoneFields(loc) : {})
     };
     if (typeof applyInferredBillingLesionType === 'function') applyInferredBillingLesionType(lesionRecord);
     else if (typeof inferBillingLesionType === 'function') lesionRecord.billingLesionType = inferBillingLesionType(lesionRecord);

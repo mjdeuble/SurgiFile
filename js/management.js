@@ -3497,6 +3497,7 @@ function fillExcisionProcedureForm(lesion) {
     updateExcisionProcedureClosureUI();
     updateAssignExcisionReexcisionBanner(lesion);
     fillAssignExcisionPriorHistoFields(lesion);
+    if (typeof refreshLocationZoneField === 'function') refreshLocationZoneField('assignExcisionLocation');
 }
 
 function resolveExcisionAssignTarget(source) {
@@ -3687,8 +3688,13 @@ async function submitAssignExcisionModal() {
         return;
     }
     const location = document.getElementById('assignExcisionLocation')?.value.trim() || '';
-    if (!location) {
-        showToast('Enter the site for this excision.');
+    const locZone = typeof requireMatchedLocation === 'function'
+        ? requireMatchedLocation(location, 'Enter the site for this excision.')
+        : (location ? { region: '' } : null);
+    if (!locZone) {
+        if (typeof requireMatchedLocation !== 'function' && !location) {
+            showToast('Enter the site for this excision.');
+        }
         return;
     }
     const selectedId = document.getElementById('assignExcisionLesionSelect')?.value
@@ -3742,6 +3748,7 @@ async function submitAssignExcisionModal() {
 
     const applyPlanning = (lesion) => {
         lesion.location = location;
+        if (typeof locationZoneFields === 'function') Object.assign(lesion, locationZoneFields(location));
         lesion.impression = diagnosis || lesion.impression || '';
         lesion.excisionMargin = marginMeta.excisionMargin;
         lesion.excisionMarginMm = marginMeta.excisionMarginMm;

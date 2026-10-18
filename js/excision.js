@@ -492,8 +492,9 @@ function collectExLesionFromForm(id, sourceLesionId) {
         patientName: (typeof currentPatient !== 'undefined' && currentPatient?.name) || '',
         patientDob: (typeof currentPatient !== 'undefined' && currentPatient?.dob) || '',
         chartId: (typeof currentPatient !== 'undefined' && currentPatient?.chartId) || '',
-        billingRegion: getVal('exBillingRegion'),
-        bodyAreaLabel: typeof procedureAreaLabel === 'function' ? procedureAreaLabel(getVal('exBillingRegion')) : '',
+        billingRegion: getVal('exBillingRegion') || (typeof locationZoneFields === 'function' ? locationZoneFields(getVal('exLesionLocation')).billingRegion : '') || '',
+        bodyAreaId: (typeof locationZoneFields === 'function' ? locationZoneFields(getVal('exLesionLocation')).bodyAreaId : '') || '',
+        bodyAreaLabel: typeof procedureAreaLabel === 'function' ? procedureAreaLabel(getVal('exBillingRegion') || (typeof locationZoneFields === 'function' ? locationZoneFields(getVal('exLesionLocation')).billingRegion : '')) : '',
         anesthetic: getVal('exLocalAnesthetic'),
         prep: getVal('exSkinPrep'),
         pathology: getVal('exProvisionalDiagnoses'),
@@ -612,6 +613,7 @@ function startEditExLesion(id) {
     }
 
     setVal('exLesionLocation', lesion.location);
+    if (typeof refreshLocationZoneField === 'function') refreshLocationZoneField('exLesionLocation');
     populateProcSupplySelects(lesion);
     setVal('exLocalAnesthetic', lesion.anesthetic);
     setVal('exSkinPrep', lesion.prep);
@@ -682,6 +684,7 @@ function resetExLesionForm(resetProcType = true) {
 
     updateExOrientationButtons();
     updateExFormUI();
+    if (typeof refreshLocationZoneField === 'function') refreshLocationZoneField('exLesionLocation');
 }
 
 function resetExAll() {
