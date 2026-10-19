@@ -166,6 +166,12 @@ function formatLesionPlanIemr(lesion) {
         ? isPunchShaveBiopsyPlan(lesion.plan)
         : /Biopsy/i.test(String(lesion.plan || ''));
     if (lesion.priorLesionId) return 'Re-excision';
+    const copiedPrior = typeof lesionUsesCopiedPriorHistology === 'function'
+        ? lesionUsesCopiedPriorHistology(lesion)
+        : (typeof lesionHasCopiedPriorHistology === 'function' && !lesion.priorLesionId && lesionHasCopiedPriorHistology(lesion));
+    if (copiedPrior && typeof isExcisionBookingPlan === 'function' && isExcisionBookingPlan(lesion.plan)) {
+        return 'Excision after prior histology';
+    }
     if (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(lesion.plan)) {
         return 'Excision after prior histology';
     }

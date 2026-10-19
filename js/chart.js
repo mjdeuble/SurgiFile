@@ -1116,18 +1116,19 @@ function inspectorDocPlanValue(lesion) {
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(planElValue)) {
         return typeof DECLINE_TREATMENT_PLAN === 'string' ? DECLINE_TREATMENT_PLAN : 'Declines Treatment / Other';
     }
-    if (typeof isConfirmedHistologyExcisionPlan === 'function'
-        && (isConfirmedHistologyExcisionPlan(planElValue)
-            || (!lesion?.priorLesionId && typeof lesionHasCopiedPriorHistology === 'function' && lesionHasCopiedPriorHistology(lesion)))) {
-        return typeof CONFIRMED_HISTOLOGY_EXCISION_PLAN === 'string'
-            ? CONFIRMED_HISTOLOGY_EXCISION_PLAN
-            : 'Histology already confirmed — book excision';
+    if (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(planElValue)) {
+        return typeof FORMAL_EXCISION_PLAN === 'string'
+            ? FORMAL_EXCISION_PLAN
+            : 'Formally Book Excision Procedure';
     }
     return planElValue || 'Awaiting Assessment';
 }
 
 function renderInspectorDocumentationForm(lesion, unlocked) {
     const plan = inspectorDocPlanValue(lesion);
+    const priorOn = typeof lesionUsesCopiedPriorHistology === 'function'
+        ? lesionUsesCopiedPriorHistology(lesion)
+        : !!(!lesion?.priorLesionId && (lesion?.priorHistologyDiagnosis || lesion?.priorHistologyResult || lesion?.priorHistologyCaseNumber));
     const biopsyType = lesion.biopsyType || 'Shave / Deep Saucerisation Biopsy';
     const punch = /punch/i.test(biopsyType);
     const closure = (typeof normalizeExcisionClosure === 'function' ? normalizeExcisionClosure(lesion) : '') || lesion.excisionClosureType || 'Ellipse';
@@ -1180,11 +1181,15 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                     <option value="Monitor / Reassure (Benign)"${inspectorOpt(plan, 'Monitor / Reassure (Benign)')}>Monitor / Reassure (Benign)</option>
                     <option value="Punch / Shave Biopsy"${inspectorOpt(plan, 'Punch / Shave Biopsy')}>Punch / Shave Biopsy</option>
                     <option value="Formally Book Excision Procedure"${inspectorOpt(plan, 'Formally Book Excision Procedure')}>Formally Book Excision Procedure</option>
-                    <option value="Histology already confirmed — book excision"${inspectorOpt(plan, 'Histology already confirmed — book excision')}>Histology already confirmed — book excision</option>
                     <option value="Topical / Field Treatment"${inspectorOpt(plan, 'Topical / Field Treatment')}>Topical / Field Treatment</option>
                     <option value="Refer / Specialist"${inspectorOpt(plan, 'Refer / Specialist')}>Refer / Specialist</option>
                     <option value="Declines Treatment / Other"${inspectorOpt(plan, 'Declines Treatment / Other')}>Declines Treatment / Other</option>
                 </select>
+                <label class="insp-choice" style="margin-top:0.35rem">
+                    <input type="checkbox" id="inspPriorHistologyEnabled" onchange="syncInspectorPriorHistologyFieldsUi()"${priorOn ? ' checked' : ''}${disabled}>
+                    Previous biopsy / histology on file
+                </label>
+                <p class="insp-hint">Use with any plan. Copied prior results are not billed here.</p>
             </div>
             <div id="inspPlanBiopsyFields" class="insp-sub hidden">
                 <p class="insp-label" style="margin:0">Biopsy technique</p>
@@ -1204,56 +1209,6 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                 <div id="inspExamPunchMeasureFields" class="${punch ? '' : 'hidden'}">
                     <label class="insp-label" for="inspExamPunchSize">Punch size</label>
                     ${mm('inspExamPunchSize', lesion.punchSize, 'e.g. 3')}
-                </div>
-            </div>
-            <div id="inspPlanConfirmedHistoFields" class="insp-sub is-histo hidden">
-                <p class="insp-label" style="margin:0">Previous biopsy / histology</p>
-                <p class="insp-hint">Copy a prior result — old chart or a colleague’s biopsy. This is not billed here.</p>
-                <div class="insp-grid">
-                    <div>
-                        <label class="insp-label" for="inspPriorHistologyDiagnosis">Confirmed diagnosis</label>
-                        <div class="dx-typeahead">
-                            <input type="text" id="inspPriorHistologyDiagnosis" class="insp-input" value="${escapeHtml(lesion.priorHistologyDiagnosis || '')}" placeholder="e.g. BCC"${disabled} autocomplete="off">
-                            <div class="dx-suggest hidden" role="listbox"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="insp-label" for="inspPriorProcedureKind">Prior procedure</label>
-                        <select id="inspPriorProcedureKind" class="insp-select"${disabled}>
-                            <option value="">Unknown</option>
-                            <option value="punch"${inspectorOpt(lesion.priorProcedureKind, 'punch')}>Punch biopsy</option>
-                            <option value="shave"${inspectorOpt(lesion.priorProcedureKind, 'shave')}>Shave / saucerisation</option>
-                            <option value="excision"${inspectorOpt(lesion.priorProcedureKind, 'excision')}>Excision</option>
-                            <option value="incisional"${inspectorOpt(lesion.priorProcedureKind, 'incisional')}>Incisional biopsy</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="insp-label" for="inspPriorProcedureDate">Date of biopsy</label>
-                        <input type="date" id="inspPriorProcedureDate" class="insp-input" value="${escapeHtml(String(lesion.priorProcedureAt || '').slice(0, 10))}"${disabled}>
-                    </div>
-                    <div>
-                        <label class="insp-label" for="inspPriorHistologySource">Source</label>
-                        <select id="inspPriorHistologySource" class="insp-select" onchange="syncInspectorPriorHistoSource()"${disabled}>
-                            <option value="own_notes"${inspectorOpt(lesion.priorHistologySource || 'own_notes', 'own_notes')}>Own previous notes / old chart</option>
-                            <option value="colleague"${inspectorOpt(lesion.priorHistologySource, 'colleague')}>Colleague / another clinic</option>
-                        </select>
-                    </div>
-                    <div id="inspPriorHistologySourceNameWrap" class="${lesion.priorHistologySource === 'colleague' ? '' : 'hidden'}" style="grid-column:1 / -1">
-                        <label class="insp-label" for="inspPriorHistologySourceName">Colleague / clinic</label>
-                        <input type="text" id="inspPriorHistologySourceName" class="insp-input" value="${escapeHtml(lesion.priorHistologySourceName || '')}"${disabled}>
-                    </div>
-                    <div>
-                        <label class="insp-label" for="inspPriorHistologyCaseNumber">Lab case number</label>
-                        <input type="text" id="inspPriorHistologyCaseNumber" class="insp-input" value="${escapeHtml(lesion.priorHistologyCaseNumber || '')}"${disabled}>
-                    </div>
-                    <div>
-                        <label class="insp-label" for="inspPriorHistologyPot">Pot / specimen</label>
-                        <input type="text" id="inspPriorHistologyPot" class="insp-input" value="${escapeHtml(lesion.priorHistologyPot || '')}"${disabled}>
-                    </div>
-                </div>
-                <div>
-                    <label class="insp-label" for="inspPriorHistologyResult">Result / report</label>
-                    <textarea id="inspPriorHistologyResult" rows="3" class="insp-textarea"${disabled}>${escapeHtml(lesion.priorHistologyResult || '')}</textarea>
                 </div>
             </div>
             <div id="inspPlanExcisionFields" class="insp-sub is-excision hidden">
@@ -1392,6 +1347,56 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                 ${typeof renderDeclinePlanFieldsHtml === 'function'
                     ? renderDeclinePlanFieldsHtml('insp', lesion, !unlocked)
                     : ''}
+            </div>
+            <div id="inspPlanConfirmedHistoFields" class="insp-sub is-histo${priorOn ? '' : ' hidden'}">
+                <p class="insp-label" style="margin:0">Previous biopsy / histology</p>
+                <p class="insp-hint">Copy a prior result — old chart or a colleague’s biopsy. This is not billed here. Choose any management plan above.</p>
+                <div class="insp-grid">
+                    <div>
+                        <label class="insp-label" for="inspPriorHistologyDiagnosis">Confirmed diagnosis</label>
+                        <div class="dx-typeahead">
+                            <input type="text" id="inspPriorHistologyDiagnosis" class="insp-input" value="${escapeHtml(lesion.priorHistologyDiagnosis || '')}" placeholder="e.g. BCC"${disabled} autocomplete="off">
+                            <div class="dx-suggest hidden" role="listbox"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="insp-label" for="inspPriorProcedureKind">Prior procedure</label>
+                        <select id="inspPriorProcedureKind" class="insp-select"${disabled}>
+                            <option value="">Unknown</option>
+                            <option value="punch"${inspectorOpt(lesion.priorProcedureKind, 'punch')}>Punch biopsy</option>
+                            <option value="shave"${inspectorOpt(lesion.priorProcedureKind, 'shave')}>Shave / saucerisation</option>
+                            <option value="excision"${inspectorOpt(lesion.priorProcedureKind, 'excision')}>Excision</option>
+                            <option value="incisional"${inspectorOpt(lesion.priorProcedureKind, 'incisional')}>Incisional biopsy</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="insp-label" for="inspPriorProcedureDate">Date of biopsy</label>
+                        <input type="date" id="inspPriorProcedureDate" class="insp-input" value="${escapeHtml(String(lesion.priorProcedureAt || '').slice(0, 10))}"${disabled}>
+                    </div>
+                    <div>
+                        <label class="insp-label" for="inspPriorHistologySource">Source</label>
+                        <select id="inspPriorHistologySource" class="insp-select" onchange="syncInspectorPriorHistoSource()"${disabled}>
+                            <option value="own_notes"${inspectorOpt(lesion.priorHistologySource || 'own_notes', 'own_notes')}>Own previous notes / old chart</option>
+                            <option value="colleague"${inspectorOpt(lesion.priorHistologySource, 'colleague')}>Colleague / another clinic</option>
+                        </select>
+                    </div>
+                    <div id="inspPriorHistologySourceNameWrap" class="${lesion.priorHistologySource === 'colleague' ? '' : 'hidden'}" style="grid-column:1 / -1">
+                        <label class="insp-label" for="inspPriorHistologySourceName">Colleague / clinic</label>
+                        <input type="text" id="inspPriorHistologySourceName" class="insp-input" value="${escapeHtml(lesion.priorHistologySourceName || '')}"${disabled}>
+                    </div>
+                    <div>
+                        <label class="insp-label" for="inspPriorHistologyCaseNumber">Lab case number</label>
+                        <input type="text" id="inspPriorHistologyCaseNumber" class="insp-input" value="${escapeHtml(lesion.priorHistologyCaseNumber || '')}"${disabled}>
+                    </div>
+                    <div>
+                        <label class="insp-label" for="inspPriorHistologyPot">Pot / specimen</label>
+                        <input type="text" id="inspPriorHistologyPot" class="insp-input" value="${escapeHtml(lesion.priorHistologyPot || '')}"${disabled}>
+                    </div>
+                </div>
+                <div>
+                    <label class="insp-label" for="inspPriorHistologyResult">Result / report</label>
+                    <textarea id="inspPriorHistologyResult" rows="3" class="insp-textarea"${disabled}>${escapeHtml(lesion.priorHistologyResult || '')}</textarea>
+                </div>
             </div>
             <div class="insp-actions">
                 <button type="button" onclick="cancelInspectorLesionForm()">Cancel</button>
@@ -1591,21 +1596,14 @@ function handleInspectorPlanChange() {
     const bFields = document.getElementById('inspPlanBiopsyFields');
     const eFields = document.getElementById('inspPlanExcisionFields');
     const tFields = document.getElementById('inspPlanTopicalFields');
-    const hFields = document.getElementById('inspPlanConfirmedHistoFields');
     const dFields = document.getElementById('inspPlanDeclineFields');
     if (bFields) bFields.classList.add('hidden');
     if (eFields) eFields.classList.add('hidden');
     if (tFields) tFields.classList.add('hidden');
-    if (hFields) hFields.classList.add('hidden');
     if (dFields) dFields.classList.add('hidden');
     if (typeof isPunchShaveBiopsyPlan === 'function' && isPunchShaveBiopsyPlan(plan)) {
         if (bFields) bFields.classList.remove('hidden');
         handleInspectorBiopsyTypeChange();
-    } else if (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(plan)) {
-        if (hFields) hFields.classList.remove('hidden');
-        if (eFields) eFields.classList.remove('hidden');
-        syncInspectorPriorHistoSource();
-        handleInspectorClosureChange();
     } else if (typeof isExcisionBookingPlan === 'function' && isExcisionBookingPlan(plan)) {
         if (eFields) eFields.classList.remove('hidden');
         handleInspectorClosureChange();
@@ -1628,6 +1626,7 @@ function handleInspectorPlanChange() {
         if (dFields) dFields.classList.remove('hidden');
         if (typeof syncDeclinePlanUi === 'function') syncDeclinePlanUi('insp');
     }
+    syncInspectorPriorHistologyFieldsUi();
 }
 
 function handleInspectorBiopsyTypeChange() {
@@ -1647,6 +1646,16 @@ function handleInspectorClosureChange() {
 function syncInspectorPriorHistoSource() {
     const source = document.getElementById('inspPriorHistologySource')?.value || '';
     document.getElementById('inspPriorHistologySourceNameWrap')?.classList.toggle('hidden', source !== 'colleague');
+}
+
+function inspectorPriorHistologyEnabled() {
+    return !!document.getElementById('inspPriorHistologyEnabled')?.checked;
+}
+
+function syncInspectorPriorHistologyFieldsUi() {
+    const on = inspectorPriorHistologyEnabled();
+    document.getElementById('inspPlanConfirmedHistoFields')?.classList.toggle('hidden', !on);
+    if (on) syncInspectorPriorHistoSource();
 }
 
 function syncInspectorFollowUpUi() {
@@ -1683,7 +1692,7 @@ function readInspectorImpression() {
     return document.getElementById('inspLesionImpression')?.value.trim() || '';
 }
 
-function collectInspectorCopiedPriorHistology() {
+function collectInspectorCopiedPriorHistology(existing) {
     const diagnosis = typeof readDiagnosisTypeahead === 'function'
         ? readDiagnosisTypeahead('inspPriorHistologyDiagnosis')
         : (document.getElementById('inspPriorHistologyDiagnosis')?.value.trim() || '');
@@ -1703,7 +1712,7 @@ function collectInspectorCopiedPriorHistology() {
         priorProcedureAt: document.getElementById('inspPriorProcedureDate')?.value || '',
         priorHistologySource: document.getElementById('inspPriorHistologySource')?.value || 'own_notes',
         priorHistologySourceName: document.getElementById('inspPriorHistologySourceName')?.value.trim() || '',
-        priorBreslowMm: ''
+        priorBreslowMm: existing?.priorBreslowMm || ''
     };
 }
 
@@ -1759,15 +1768,26 @@ function saveInspectorLesionDocumentation() {
     const editId = document.getElementById('inspEditLesionId')?.value || '';
     const plan = document.getElementById('inspLesionPlan')?.value || '';
     let impression = readInspectorImpression();
-    let copiedPrior = null;
-    if (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(plan)) {
-        copiedPrior = collectInspectorCopiedPriorHistology();
+    const existingLesion = editId
+        ? ((typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(editId))
+            || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId))
+            || (typeof managedLesions !== 'undefined' ? managedLesions.find((item) => String(item.id) === String(editId)) : null))
+        : null;
+    const copiedPrior = typeof copiedPriorHistologyForSave === 'function'
+        ? copiedPriorHistologyForSave(
+            inspectorPriorHistologyEnabled(),
+            collectInspectorCopiedPriorHistology(existingLesion),
+            { keepInherited: !!existingLesion?.priorLesionId }
+        )
+        : (inspectorPriorHistologyEnabled() ? collectInspectorCopiedPriorHistology(existingLesion) : null);
+    if (copiedPrior && inspectorPriorHistologyEnabled()) {
         if (!copiedPrior.priorHistologyDiagnosis && !copiedPrior.priorHistologyResult) {
             showToast('Enter the confirmed diagnosis or the prior histology result.');
             return;
         }
         if (!impression) impression = copiedPrior.priorHistologyDiagnosis || copiedPrior.priorHistologyResult;
-    } else if (!impression) {
+    }
+    if (!impression) {
         showToast('Please choose or enter a diagnosis.');
         return;
     }
@@ -1800,10 +1820,6 @@ function saveInspectorLesionDocumentation() {
                 : (document.getElementById('inspExamLesionMargin')?.value.trim() || '');
         }
         if (typeof isVerbalConsentBiopsyType === 'function' ? isVerbalConsentBiopsyType(biopsyType) : biopsyType.includes('Shave')) {
-            const existingLesion = editId
-                ? ((typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(editId))
-                    || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId)))
-                : null;
             const existingConsent = typeof lesionConsentStatus === 'function' ? lesionConsentStatus(existingLesion) : '';
             const alreadyConsented = existingConsent === 'verbal' || existingConsent === 'written';
             if (!alreadyConsented && pendingShaveConsentAction !== 'verbal' && pendingShaveConsentAction !== 'skip') {
@@ -1827,11 +1843,6 @@ function saveInspectorLesionDocumentation() {
         graftType = document.getElementById('inspConsultExcisionGraftType')?.value || '';
         if (typeof closureNeedsGraftType === 'function' && !closureNeedsGraftType(excisionClosureType)) graftType = '';
     } else if (typeof isTopicalPlan === 'function' && isTopicalPlan(plan)) {
-        const existingLesion = editId
-            ? ((typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(editId))
-                || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId))
-                || (typeof managedLesions !== 'undefined' ? managedLesions.find((item) => String(item.id) === String(editId)) : null))
-            : null;
         topicalFields = readInspectorTopicalFields(existingLesion);
         if (!topicalFields.topicalDiscussed.length) {
             showToast('Select at least one treatment that was discussed.');
@@ -1909,7 +1920,6 @@ function saveInspectorLesionDocumentation() {
     } else if (typeof isExcisionBookingPlan === 'function' && isExcisionBookingPlan(plan)) {
         lesionRecord.type = 'excision';
         lesionRecord.managementStatus = 'planned_procedure';
-        if (copiedPrior) lesionRecord.currentPlan = 'Excision planned after prior histology';
     } else if (typeof isTopicalPlan === 'function' && isTopicalPlan(plan)) {
         lesionRecord.type = 'topical';
     } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
@@ -1920,6 +1930,19 @@ function saveInspectorLesionDocumentation() {
             : 'Declined recommended treatment';
     } else {
         lesionRecord.type = 'none';
+    }
+    if (typeof currentPlanAfterCopiedPrior === 'function') {
+        const nextCurrentPlan = currentPlanAfterCopiedPrior(
+            plan,
+            typeof copiedPriorHistologyHasData === 'function'
+                ? copiedPriorHistologyHasData(copiedPrior)
+                : !!(copiedPrior && (copiedPrior.priorHistologyDiagnosis || copiedPrior.priorHistologyResult)),
+            existingLesion?.currentPlan || lesionRecord.currentPlan
+        );
+        if (nextCurrentPlan !== undefined
+            && !(typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan))) {
+            lesionRecord.currentPlan = nextCurrentPlan;
+        }
     }
     if (typeof commitLesionRecordToSession === 'function') {
         return commitLesionRecordToSession(editId, lesionRecord, {
