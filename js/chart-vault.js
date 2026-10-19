@@ -1003,22 +1003,26 @@ async function saveCurrentChartFromDom(options) {
     if (collectedAkComparison?.explained || previousAkComparison.visitDate === todayVisitKey()) {
         chart.akComparison = collectedAkComparison || previousAkComparison;
     }
-    if (typeof currentConsultBilling === 'function') {
+    if (typeof storedConsultBilling === 'function' && storedConsultBilling(chart)) {
+        chart.consultBilling = storedConsultBilling(chart);
+    } else if (typeof currentConsultBilling === 'function') {
         chart.consultBilling = currentConsultBilling();
     } else if (typeof normalizeConsultBilling === 'function') {
         chart.consultBilling = normalizeConsultBilling(
-            document.getElementById('billingModalConsult')?.value
+            chart.consultBilling
+            || document.getElementById('billingModalConsult')?.value
             || document.getElementById('modalConsultBilling')?.value
-            || chart.consultBilling
         );
     }
-    if (typeof currentBiopsyBilling === 'function') {
+    if (typeof storedBiopsyBilling === 'function' && storedBiopsyBilling(chart)) {
+        chart.biopsyBilling = storedBiopsyBilling(chart);
+    } else if (typeof currentBiopsyBilling === 'function') {
         chart.biopsyBilling = currentBiopsyBilling();
     } else if (typeof normalizeBiopsyBilling === 'function') {
         chart.biopsyBilling = normalizeBiopsyBilling(
-            document.getElementById('billingModalBiopsy')?.value
+            chart.biopsyBilling
+            || document.getElementById('billingModalBiopsy')?.value
             || document.getElementById('modalBiopsyBilling')?.value
-            || chart.biopsyBilling
         );
     }
     if (typeof normalizeSmsNormalResultsConsent === 'function') {

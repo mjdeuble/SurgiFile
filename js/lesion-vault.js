@@ -308,6 +308,13 @@ function isExcisionLesion(lesion) {
     return lesionType(lesion) === 'excision';
 }
 
+function isVerbalConsentBiopsyType(biopsyType) {
+    const raw = String(biopsyType || '');
+    if (/shave/i.test(raw)) return true;
+    if (/punch/i.test(raw) && !/excision/i.test(raw)) return true;
+    return false;
+}
+
 function isDiagnosticBiopsyType(lesion) {
     const t = lesionType(lesion);
     return t === 'punch' || t === 'shave';
@@ -330,7 +337,7 @@ function lesionConsentLabel(lesion) {
 function lesionConsentRequirement(lesion) {
     const t = typeof lesionType === 'function' ? lesionType(lesion) : String(lesion?.type || '');
     if (t === 'excision') return 'written';
-    if (t === 'shave' || t === 'punch') return 'any';
+    if (t === 'shave' || t === 'punch') return 'verbal';
     const plan = String(lesion?.plan || '');
     const procedure = String(lesion?.procedureDetail?.procedure || lesion?.procedure || '');
     if (plan.includes('Excision') || /^excision$/i.test(procedure)) return 'written';
@@ -345,6 +352,7 @@ function lesionHasProcedureConsent(lesion) {
     const status = lesionConsentStatus(lesion);
     if (!status) return false;
     if (need === 'written') return status === 'written';
+    if (need === 'verbal') return status === 'verbal' || status === 'written';
     return status === 'verbal' || status === 'written';
 }
 
@@ -354,7 +362,10 @@ function lesionConsentNeededLabel(lesion) {
     if (lesion?.priorLesionId && lesionConsentRequirement(lesion) === 'written') {
         return 'Written consent needed (re-excision)';
     }
-    return lesionConsentRequirement(lesion) === 'written' ? 'Written consent needed' : 'Consent needed';
+    const need = lesionConsentRequirement(lesion);
+    if (need === 'written') return 'Written consent needed';
+    if (need === 'verbal') return 'Verbal consent needed';
+    return 'Consent needed';
 }
 
 function lesionOwnProcedureKind(lesion) {
@@ -2976,4 +2987,13 @@ async function markBillingProcessed(ids) {
     for (const id of ids) {
         if (typeof confirmBillingCodes === 'function') await confirmBillingCodes(id);
     }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        isVerbalConsentBiopsyType,
+        lesionConsentRequirement,
+        lesionHasProcedureConsent,
+        lesionConsentStatus
+    };
 }

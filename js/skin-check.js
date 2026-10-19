@@ -860,7 +860,7 @@ function saveLesion() {
                 : (document.getElementById('examLesionMargin')?.value.trim() || '');
         }
 
-        if (biopsyType.includes('Shave')) {
+        if (typeof isVerbalConsentBiopsyType === 'function' ? isVerbalConsentBiopsyType(biopsyType) : biopsyType.includes('Shave')) {
             const existingLesion = editId
                 ? ((lesions || []).find((item) => String(item.id) === String(editId))
                     || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId)))
@@ -868,7 +868,7 @@ function saveLesion() {
             const existingConsent = typeof lesionConsentStatus === 'function' ? lesionConsentStatus(existingLesion) : '';
             const alreadyConsented = existingConsent === 'verbal' || existingConsent === 'written';
             if (!alreadyConsented && pendingShaveConsentAction !== 'verbal' && pendingShaveConsentAction !== 'skip') {
-                openShaveConsentModal();
+                openShaveConsentModal(biopsyType);
                 return;
             }
         }
@@ -956,7 +956,8 @@ function saveLesion() {
         lesionRecord.marginSuggestionReason = suggestMeta.reason || '';
     }
 
-    if (biopsyType.includes('Shave') && pendingShaveConsentAction === 'verbal') {
+    if ((typeof isVerbalConsentBiopsyType === 'function' ? isVerbalConsentBiopsyType(biopsyType) : biopsyType.includes('Shave'))
+        && pendingShaveConsentAction === 'verbal') {
         const existingConsent = editId && typeof lesionConsentStatus === 'function'
             ? lesionConsentStatus((lesions || []).find((item) => String(item.id) === String(editId))
                 || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId)))
@@ -1104,9 +1105,23 @@ function renderLesionsTable() {
     }).join('');
 }
 
-function openShaveConsentModal() {
+function openShaveConsentModal(biopsyType) {
     const modal = document.getElementById('shaveConsentModal');
-    if (modal) modal.classList.remove('hidden');
+    if (!modal) return;
+    const punch = typeof isVerbalConsentBiopsyType === 'function'
+        ? (/punch/i.test(String(biopsyType || '')) && !/shave/i.test(String(biopsyType || '')))
+        : /punch/i.test(String(biopsyType || ''));
+    const title = modal.querySelector('h3');
+    const kicker = modal.querySelector('p.text-xs');
+    const skip = document.getElementById('btnSkipShaveVerbalConsent');
+    if (title) title.textContent = 'Verbal Consent Checklist';
+    if (kicker) {
+        kicker.textContent = punch
+            ? 'Punch biopsy — verbal consent (not the written consent form)'
+            : 'Shave / Saucerisation Procedure Consent';
+    }
+    if (skip) skip.classList.toggle('hidden', !!punch);
+    modal.classList.remove('hidden');
 }
 
 function closeShaveConsentModal() {

@@ -2702,14 +2702,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         }
         .loc-zone-note.is-unmatched { color: #b91c1c; font-weight: 600; }
         .loc-zone-note.is-matched { color: #15803d; font-weight: 600; }
-        .loc-zone .loc-suggest {
-            position: absolute;
-            z-index: 40;
-            left: 0;
-            right: 0;
-            max-height: 14rem;
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
-        }
         #ex-billing-region-container.is-auto-region select:disabled {
             background: #f0fdf4;
             border-color: #86efac;

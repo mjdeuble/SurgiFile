@@ -1,9 +1,7 @@
 /* Node checks for live MBS location → region matching. */
 const {
     matchLocationToMbsRegion,
-    searchLocationSites,
     locationZoneFields,
-    locationSuggestionValue,
     locationZoneNoteText,
     requireMatchedLocation
 } = require('../js/location-catalogue.js');
@@ -71,18 +69,9 @@ eq(zone.bodyAreaId, 'cheek', 'locationZoneFields id');
 eq(!!zone.bodyAreaLabel, true, 'locationZoneFields label present');
 eq(locationZoneFields('arm').billingRegion, '', 'unmatched zone fields empty');
 
-eq(locationSuggestionValue('left cheek', { label: 'Cheek' }), 'Left Cheek', 'keeps left laterality');
-eq(locationSuggestionValue('RT nose', { label: 'Nose' }), 'Right Nose', 'keeps right laterality');
-eq(locationSuggestionValue('cheek', { label: 'Cheek' }), 'Cheek', 'no laterality when none typed');
-
 eq(locationZoneNoteText(null, { empty: true }), '', 'empty note is blank');
 eq(locationZoneNoteText(null, { empty: false }).includes('maps to MBS'), true, 'unmatched note asks for a site');
 eq(locationZoneNoteText({ region: 2, label: 'Cheek' }), 'Allocated to Region 2 — Cheek', 'matched note names the zone');
-
-const cheekHits = searchLocationSites('chee');
-eq(cheekHits.some((row) => row.id === 'cheek'), true, 'typeahead finds cheek');
-eq(searchLocationSites('n').length === 0, true, 'one letter is not enough');
-eq(searchLocationSites('nose')[0].region, 1, 'nose suggestion is region 1');
 
 eq(requireMatchedLocation(''), null, 'require empty fails');
 eq(requireMatchedLocation('arm'), null, 'require unmatched fails');
