@@ -73,46 +73,6 @@ function matchLocationToMbsRegion(location) {
     return null;
 }
 
-function normalizeLocationQuery(text) {
-    return String(text || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s/-]/g, ' ')
-        .replace(/\b(left|right|lt|rt|bilateral|mid|medial|lateral|proximal|distal|upper|lower|inner|outer|anterior|posterior|dorsal|volar)\b/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function searchLocationSites(query) {
-    const raw = String(query || '').trim();
-    const q = normalizeLocationQuery(raw);
-    if (q.length < 2 && raw.length < 2) return [];
-    const tokens = q.split(' ').filter((tok) => tok.length >= 2);
-    return MBS_LOCATION_SITES.map((site) => {
-        const hay = (site.label + ' ' + (site.aliases || []).join(' ')).toLowerCase();
-        let score = 0;
-        if (q && hay.includes(q)) score += 12;
-        if (q && site.label.toLowerCase().startsWith(q)) score += 18;
-        tokens.forEach((tok) => {
-            if (hay.includes(tok)) score += 4;
-        });
-        if (site.re.test(raw)) score += 16;
-        return { site, score };
-    }).filter((row) => row.score > 0)
-        .sort((a, b) => b.score - a.score || a.site.region - b.site.region || a.site.label.localeCompare(b.site.label))
-        .slice(0, 8)
-        .map((row) => row.site);
-}
-
-function locationLateralityPrefix(text) {
-    const hit = String(text || '').match(/\b(left|right|lt|rt)\b/i);
-    if (!hit) return '';
-    return /left|lt/i.test(hit[1]) ? 'Left ' : 'Right ';
-}
-
-function locationSuggestionValue(typed, site) {
-    return locationLateralityPrefix(typed) + site.label;
-}
-
 function locationZoneNoteText(hit, options) {
     if (!hit) {
         return options && options.empty
@@ -126,52 +86,9 @@ function locZoneWrap(input) {
     return input?.closest('.loc-zone') || input?.parentElement || null;
 }
 
-function locZoneSuggestEl(input) {
-    return locZoneWrap(input)?.querySelector('.loc-suggest') || null;
-}
-
 function locZoneNoteEl(input, noteId) {
     if (noteId) return document.getElementById(noteId);
     return locZoneWrap(input)?.querySelector('.loc-zone-note') || null;
-}
-
-function hideLocSuggest(input) {
-    const list = locZoneSuggestEl(input);
-    if (list) {
-        list.classList.add('hidden');
-        list.innerHTML = '';
-    }
-}
-
-function paintLocSuggest(state, query) {
-    const list = locZoneSuggestEl(state.input);
-    if (!list) return;
-    const hits = searchLocationSites(query);
-    if (!hits.length) {
-        hideLocSuggest(state.input);
-        return;
-    }
-    list.innerHTML = hits.map((site, idx) => (
-        '<button type="button" class="dx-suggest-item' + (idx === 0 ? ' is-active' : '') + '" data-loc-id="'
-        + site.id + '" role="option">'
-        + '<span class="dx-suggest-label">' + (typeof escapeHtml === 'function' ? escapeHtml(site.label) : site.label) + '</span>'
-        + '<span class="dx-suggest-meta">Region ' + site.region + '</span></button>'
-    )).join('');
-    list.classList.remove('hidden');
-    state.activeIndex = 0;
-}
-
-function locSuggestItems(input) {
-    return [...(locZoneSuggestEl(input)?.querySelectorAll('.dx-suggest-item') || [])];
-}
-
-function moveLocActive(state, delta) {
-    const items = locSuggestItems(state.input);
-    if (!items.length) return;
-    items.forEach((item) => item.classList.remove('is-active'));
-    state.activeIndex = (state.activeIndex + delta + items.length) % items.length;
-    items[state.activeIndex].classList.add('is-active');
-    items[state.activeIndex].scrollIntoView({ block: 'nearest' });
 }
 
 function applyLocationZoneUi(input, options) {
@@ -193,15 +110,29 @@ function applyLocationZoneUi(input, options) {
         else if (!select.value) select.value = '';
     }
     if (typeof options.onChange === 'function') options.onChange(hit, text);
+    if (input.id === 'inspLesionLocation' || input.id === 'lesionLocation') {
+        syncLesionLocationSaveButtons();
+    }
     return hit;
 }
 
-function chooseLocSite(state, site) {
-    if (!site) return;
-    state.input.value = locationSuggestionValue(state.input.value, site);
-    hideLocSuggest(state.input);
-    applyLocationZoneUi(state.input, state);
-    if (typeof state.afterPick === 'function') state.afterPick(site, state.input.value);
+function syncLesionLocationSaveButtons() {
+    const apply = (inputId, buttonId) => {
+        const input = document.getElementById(inputId);
+        const btn = document.getElementById(buttonId);
+        if (!input || !btn) return;
+        if (input.disabled) {
+            btn.disabled = true;
+            return;
+        }
+        const ok = !!matchLocationToMbsRegion(input.value);
+        btn.disabled = !ok;
+        btn.classList.toggle('opacity-50', !ok);
+        btn.classList.toggle('cursor-not-allowed', !ok);
+        btn.title = ok ? '' : 'Enter a site that maps to MBS region 1, 2 or 3.';
+    };
+    apply('inspLesionLocation', 'btnSaveInspectorDoc');
+    apply('lesionLocation', 'btnSaveLesion');
 }
 
 function bindLocationZoneField(inputId, options) {
@@ -214,12 +145,6 @@ function bindLocationZoneField(inputId, options) {
         return existing;
     }
     const wrap = locZoneWrap(input);
-    if (wrap && !wrap.querySelector('.loc-suggest')) {
-        const list = document.createElement('div');
-        list.className = 'dx-suggest loc-suggest hidden';
-        list.setAttribute('role', 'listbox');
-        wrap.appendChild(list);
-    }
     if (wrap && !wrap.querySelector('.loc-zone-note') && !options.noteId) {
         const note = document.createElement('p');
         note.className = 'loc-zone-note';
@@ -229,54 +154,13 @@ function bindLocationZoneField(inputId, options) {
         input,
         noteId: options.noteId || '',
         regionSelectId: options.regionSelectId || '',
-        onChange: options.onChange || null,
-        afterPick: options.afterPick || null,
-        activeIndex: -1
+        onChange: options.onChange || null
     };
     locZoneRegistry[inputId] = state;
     input.setAttribute('autocomplete', 'off');
     input.classList.add('loc-zone-input');
-    input.addEventListener('focus', () => {
-        if (input.value.trim().length >= 2) paintLocSuggest(state, input.value);
-    });
-    input.addEventListener('input', () => {
-        paintLocSuggest(state, input.value);
-        applyLocationZoneUi(input, state);
-    });
-    input.addEventListener('keydown', (event) => {
-        const list = locZoneSuggestEl(input);
-        const open = list && !list.classList.contains('hidden');
-        if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            if (!open) paintLocSuggest(state, input.value);
-            else moveLocActive(state, 1);
-        } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            if (open) moveLocActive(state, -1);
-        } else if (event.key === 'Enter' && open) {
-            event.preventDefault();
-            const items = locSuggestItems(input);
-            const btn = items[state.activeIndex] || items[0];
-            const site = MBS_LOCATION_SITES.find((item) => item.id === btn?.dataset.locId);
-            if (site) chooseLocSite(state, site);
-        } else if (event.key === 'Escape') {
-            hideLocSuggest(input);
-        }
-    });
-    input.addEventListener('blur', () => {
-        window.setTimeout(() => {
-            if (document.activeElement === input) return;
-            hideLocSuggest(input);
-            applyLocationZoneUi(input, state);
-        }, 140);
-    });
-    wrap?.addEventListener('mousedown', (event) => {
-        const btn = event.target.closest('.loc-suggest .dx-suggest-item');
-        if (!btn) return;
-        event.preventDefault();
-        const site = MBS_LOCATION_SITES.find((item) => item.id === btn.dataset.locId);
-        if (site) chooseLocSite(state, site);
-    });
+    input.addEventListener('input', () => applyLocationZoneUi(input, state));
+    input.addEventListener('blur', () => applyLocationZoneUi(input, state));
     applyLocationZoneUi(input, state);
     return state;
 }
@@ -346,9 +230,7 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         MBS_LOCATION_SITES,
         matchLocationToMbsRegion,
-        searchLocationSites,
         locationZoneFields,
-        locationSuggestionValue,
         locationZoneNoteText,
         requireMatchedLocation
     };

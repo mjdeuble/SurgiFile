@@ -1152,7 +1152,6 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                     <div class="loc-zone">
                         <input type="text" id="inspLesionLocation" class="insp-input loc-zone-input" value="${escapeHtml(lesion.location || '')}" placeholder="e.g. Right cheek"${disabled} autocomplete="off">
                         <p class="loc-zone-note" id="inspLesionLocationZoneNote"></p>
-                        <div class="dx-suggest loc-suggest hidden" role="listbox"></div>
                     </div>
                 </div>
                 <div>
@@ -1800,7 +1799,7 @@ function saveInspectorLesionDocumentation() {
                 ? readMmInputValue('inspExamLesionMargin')
                 : (document.getElementById('inspExamLesionMargin')?.value.trim() || '');
         }
-        if (biopsyType.includes('Shave')) {
+        if (typeof isVerbalConsentBiopsyType === 'function' ? isVerbalConsentBiopsyType(biopsyType) : biopsyType.includes('Shave')) {
             const existingLesion = editId
                 ? ((typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(editId))
                     || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId)))
@@ -1809,7 +1808,7 @@ function saveInspectorLesionDocumentation() {
             const alreadyConsented = existingConsent === 'verbal' || existingConsent === 'written';
             if (!alreadyConsented && pendingShaveConsentAction !== 'verbal' && pendingShaveConsentAction !== 'skip') {
                 pendingLesionSaveSource = 'inspector';
-                if (typeof openShaveConsentModal === 'function') openShaveConsentModal();
+                if (typeof openShaveConsentModal === 'function') openShaveConsentModal(biopsyType);
                 return;
             }
         }
@@ -1892,7 +1891,8 @@ function saveInspectorLesionDocumentation() {
         lesionRecord.suggestedMarginMm = suggestMeta.suggestedMm || suggestMeta.mm || '';
         lesionRecord.marginSuggestionReason = suggestMeta.reason || '';
     }
-    if (biopsyType.includes('Shave') && pendingShaveConsentAction === 'verbal') {
+    if ((typeof isVerbalConsentBiopsyType === 'function' ? isVerbalConsentBiopsyType(biopsyType) : biopsyType.includes('Shave'))
+        && pendingShaveConsentAction === 'verbal') {
         const existingConsent = editId && typeof lesionConsentStatus === 'function'
             ? lesionConsentStatus((typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(editId))
                 || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(editId)))
