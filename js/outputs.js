@@ -258,16 +258,19 @@ function generateEMRNotePlainText(options) {
     const noteLesions = typeof visitNoteLesions === 'function'
         ? visitNoteLesions()
         : (typeof lesions !== 'undefined' && Array.isArray(lesions) ? lesions : []);
+    const reviewLesions = remote && typeof visitDeskReviewLesions === 'function'
+        ? visitDeskReviewLesions()
+        : [];
 
     if (!remote) {
         txt += formatExamFindingsPlainText(examScope, noteLesions.length);
         txt += generateRegionalClearanceSummary();
     }
 
-    if (noteLesions.length > 0) {
-        txt += remote
-            ? `=== LESIONS DISCUSSED / PLANNED ===\n\n`
-            : `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
+    if (remote) {
+        txt += formatChartReviewLesionsSection(reviewLesions);
+    } else if (noteLesions.length > 0) {
+        txt += `=== DOCUMENTED SKIN LESIONS & DERMOSCOPY ===\n\n`;
         noteLesions.forEach((l, idx) => {
             txt += `Lesion #${idx + 1}: ${l.location}\n`;
             const episode = typeof formatLesionEpisodePlainText === 'function'
@@ -339,7 +342,7 @@ function generateEMRNotePlainText(options) {
         if (comp) txt += `- Complications: ${comp}\n\n`;
     }
 
-    txt += generateHistologyResultEmrSection();
+    if (!remote) txt += generateHistologyResultEmrSection();
 
     const biopsiesCount = typeof sessionBiopsyCount === 'function' ? sessionBiopsyCount() : getBiopsyLesions().length;
     if (biopsiesCount > 0) {
@@ -392,6 +395,94 @@ function generateEMRNotePlainText(options) {
     }
 
     return txt;
+}
+
+function reviewEventIsToday(iso, now) {
+    const at = Date.parse(iso);
+    if (Number.isNaN(at)) return false;
+    if (typeof isSameLocalDay === 'function' && now == null) return isSameLocalDay(iso);
+    const ref = now ? new Date(now) : new Date();
+    if (Number.isNaN(ref.getTime())) return false;
+    const day = new Date(at);
+    return day.getFullYear() === ref.getFullYear()
+        && day.getMonth() === ref.getMonth()
+        && day.getDate() === ref.getDate();
+}
+
+function chartReviewTodayNotes(lesion, now) {
+    const events = Array.isArray(lesion?.timeline) ? lesion.timeline : [];
+    const notes = [];
+    events.forEach((event) => {
+        if (String(event?.type || '') !== 'note') return;
+        const text = String(event.note || '').trim();
+        if (!text || !reviewEventIsToday(event.at, now)) return;
+        if (!notes.includes(text)) notes.push(text);
+    });
+    return notes;
+}
+
+function hasTodayReviewPlanEvent(lesion, now) {
+    if (reviewEventIsToday(lesion?.clinicallyFinalisedAt, now) || reviewEventIsToday(lesion?.resultAdvisedAt, now)) {
+        return true;
+    }
+    return (Array.isArray(lesion?.timeline) ? lesion.timeline : []).some((event) => {
+        const type = String(event?.type || '');
+        if (type !== 'plan' && type !== 'result_advised' && type !== 'histology') return false;
+        return reviewEventIsToday(event.at, now);
+    });
+}
+
+function chartReviewDisposition(lesion) {
+    const resultPlan = String(lesion?.resultPlan || '');
+    if (resultPlan === 'no_followup' || String(lesion?.managementStatus || '') === 'no_followup') {
+        return 'No further action';
+    }
+    if (resultPlan === 'further_management' || resultPlan === 'plan_excision') {
+        if (typeof formatProposedManagementPlan === 'function' && String(lesion?.proposedPlan || '').trim()) {
+            return formatProposedManagementPlan(lesion);
+        }
+        return 'Needs further management';
+    }
+    if (String(lesion?.proposedPlan || '').trim() && typeof formatProposedManagementPlan === 'function') {
+        return formatProposedManagementPlan(lesion);
+    }
+    if (typeof formatLesionPlanIemr === 'function') {
+        const label = formatLesionPlanIemr(lesion);
+        if (label) return label;
+    }
+    return String(lesion?.currentPlan || lesion?.plan || '').trim();
+}
+
+function chartReviewPlanLine(lesion, now) {
+    if (hasTodayReviewPlanEvent(lesion, now)) return chartReviewDisposition(lesion);
+    if (reviewEventIsToday(lesion?.createdAt, now)) return chartReviewDisposition(lesion);
+    return '';
+}
+
+function formatChartReviewLesionLines(lesion, now) {
+    if (!lesion) return [];
+    const lines = [];
+    const plan = chartReviewPlanLine(lesion, now);
+    if (plan) lines.push('Plan: ' + plan);
+    chartReviewTodayNotes(lesion, now).forEach((note) => lines.push('Note: ' + note));
+    return lines;
+}
+
+function formatChartReviewLesionBlock(lesion, index, now) {
+    const loc = String(lesion?.location || 'site').trim() || 'site';
+    const lines = formatChartReviewLesionLines(lesion, now);
+    if (!lines.length) return '';
+    return ['Lesion #' + index + ': ' + loc]
+        .concat(lines.map((line) => '    - ' + line))
+        .join('\n');
+}
+
+function formatChartReviewLesionsSection(list, now) {
+    const rows = (Array.isArray(list) ? list : [])
+        .map((lesion, idx) => formatChartReviewLesionBlock(lesion, idx + 1, now))
+        .filter(Boolean);
+    if (!rows.length) return '';
+    return '=== LESIONS REVIEWED TODAY ===\n\n' + rows.join('\n\n') + '\n\n';
 }
 
 function visitNoteLesions() {
@@ -1159,5 +1250,18 @@ function toggleNotePreviewModal() {
     } else {
         modal.classList.add('hidden');
     }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        reviewEventIsToday,
+        chartReviewTodayNotes,
+        hasTodayReviewPlanEvent,
+        chartReviewDisposition,
+        chartReviewPlanLine,
+        formatChartReviewLesionLines,
+        formatChartReviewLesionBlock,
+        formatChartReviewLesionsSection
+    };
 }
 

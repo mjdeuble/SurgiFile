@@ -14,6 +14,8 @@ let pendingWorkspaceTab = '';
 let pendingSanitise = false;
 /** Today's consult mode: 'chart_review' | 'phone' | 'face_to_face' | '' */
 let visitConsultType = '';
+/** Lesions that received a note or plan update during today's desk/chart-review visit. */
+let visitReviewLesionIds = [];
 
 let procedureSession = {
     chartId: '',

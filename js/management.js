@@ -3185,6 +3185,10 @@ async function submitManageLesionModal() {
         }
         if (callNote) message = (message === 'Lesion updated.' ? 'Note added.' : message);
         showToast(message);
+        if (typeof markVisitReviewAndRefreshOutput === 'function') {
+            markVisitReviewAndRefreshOutput(id);
+            if (saved?.openChildId) markVisitReviewAndRefreshOutput(saved.openChildId);
+        }
         if (saved?.needResult) {
             showToast('Save a histology result before opening further management.');
             if (typeof openHistologyModal === 'function') openHistologyModal(id);
@@ -3389,6 +3393,7 @@ async function submitHistologyModal() {
             if (idx !== -1) Object.assign(lesions[idx], saved.lesion);
         }
         if (typeof selectedChartLesionId !== 'undefined') selectedChartLesionId = id;
+        if (typeof markVisitReviewAndRefreshOutput === 'function') markVisitReviewAndRefreshOutput(id);
         const awaitingQueue = typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive()
             && typeof mgmtActiveFilter !== 'undefined' && mgmtActiveFilter === 'awaiting_histology';
         if (fromInspector && awaitingQueue && typeof setMgmtFilter === 'function') {
