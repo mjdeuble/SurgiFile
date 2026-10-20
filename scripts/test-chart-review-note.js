@@ -6,6 +6,7 @@ const {
     chartReviewDisposition,
     chartReviewPlanLine,
     formatChartReviewLesionLines,
+    formatChartReviewIdentityLines,
     formatChartReviewLesionBlock,
     formatChartReviewLesionsSection
 } = require('../js/outputs.js');
@@ -34,14 +35,25 @@ const noted = {
     id: 'L1',
     location: 'Right cheek',
     plan: 'Formally Book Excision Procedure',
+    impression: 'BCC',
     macroscopic: '6mm nodule',
     dermoscopy: 'Arborising vessels',
+    length: '6',
+    width: '6',
+    priorHistologyDiagnosis: 'Nodular BCC',
+    priorHistologyResult: 'Incompletely excised nodular BCC',
     timeline: [yesterdayNote, todayNote]
 };
 eq(chartReviewTodayNotes(noted, now), ['Morning review — desk to phone after 10'], 'only today notes');
 eq(chartReviewPlanLine(noted, now), '', 'note-only does not reprint the old exam plan');
 eq(formatChartReviewLesionLines(noted, now), ['Note: Morning review — desk to phone after 10'], 'note-only lines');
-eq(formatChartReviewLesionBlock(noted, 1, now).includes('Macroscopic'), false, 'review block omits exam dump');
+eq(formatChartReviewIdentityLines(noted).includes('Macroscopic: 6mm nodule'), true, 'identity includes macroscopic');
+eq(formatChartReviewIdentityLines(noted).includes('Dermoscopic: Arborising vessels'), true, 'identity includes dermoscopy');
+eq(formatChartReviewIdentityLines(noted).includes('Prior histology: Nodular BCC'), true, 'identity includes prior histology');
+eq(formatChartReviewLesionBlock(noted, 1, now).includes('Macroscopic: 6mm nodule'), true, 'review block includes exam background');
+eq(formatChartReviewLesionBlock(noted, 1, now).includes('Arborising vessels'), true, 'review block includes dermoscopy');
+eq(formatChartReviewLesionBlock(noted, 1, now).includes('Nodular BCC'), true, 'review block includes prior histology');
+eq(formatChartReviewLesionBlock(noted, 1, now).includes('Old note from yesterday'), false, 'review block omits yesterday notes');
 eq(formatChartReviewLesionBlock(noted, 1, now).includes('Right cheek'), true, 'review block names the site');
 
 const nfa = {
@@ -98,8 +110,8 @@ eq(formatChartReviewLesionBlock(stale, 1, now), '', 'untouched lesion is omitted
 
 const section = formatChartReviewLesionsSection([noted, nfa], now);
 eq(section.includes('=== LESIONS REVIEWED TODAY ==='), true, 'section heading');
-eq(section.includes('Examination'), false, 'section has no examination heading');
-eq(section.includes('Arborising'), false, 'section has no dermoscopy');
+eq(section.includes('Arborising'), true, 'section includes dermoscopy so the site is identifiable');
+eq(section.includes('6mm nodule'), true, 'section includes macroscopic');
 eq(section.includes('Note: Morning review — desk to phone after 10'), true, 'section includes today note');
 eq(section.includes('Plan: No further action'), true, 'section includes today plan');
 

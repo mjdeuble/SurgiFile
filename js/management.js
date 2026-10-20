@@ -1439,7 +1439,8 @@ function lesionProcedureTodayPointer(lesion) {
 
 function formatLesionEpisodePlainLines(lesion, options) {
     if (!lesion) return [];
-    const slimToday = !!(options && options.slimProcedureToday)
+    const backgroundOnly = !!(options && options.backgroundOnly);
+    const slimToday = !backgroundOnly && !!(options && options.slimProcedureToday)
         && typeof lesionPerformedToday === 'function'
         && lesionPerformedToday(lesion);
     const ancestors = typeof collectLesionAncestors === 'function' ? collectLesionAncestors(lesion) : [];
@@ -1463,6 +1464,11 @@ function formatLesionEpisodePlainLines(lesion, options) {
             specimenIndex += 1;
         }
     });
+    if (backgroundOnly) {
+        const currentSpec = formatLesionSpecimenPlainLines(lesion, specimenIndex, 'current');
+        if (currentSpec.length) lines.push(...currentSpec);
+        return lines.filter(Boolean);
+    }
     if (slimToday) {
         lines.push(lesionProcedureTodayPointer(lesion));
         return lines.filter(Boolean);

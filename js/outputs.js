@@ -468,13 +468,54 @@ function formatChartReviewLesionLines(lesion, now) {
     return lines;
 }
 
+function formatChartReviewIdentityLines(lesion) {
+    if (!lesion) return [];
+    const lines = [];
+    const push = (label, value) => {
+        const text = String(value || '').trim();
+        if (text) lines.push(label + ': ' + text);
+    };
+    const impression = (typeof formatDiagnosisIemr === 'function'
+        ? formatDiagnosisIemr(lesion.impression)
+        : '') || lesion.impression;
+    push('Provisional diagnosis', impression);
+    push('Macroscopic', lesion.macroscopic);
+    push('Dermoscopic', lesion.dermoscopy);
+    const dims = typeof lesionExamDimensions === 'function' ? lesionExamDimensions(lesion) : '';
+    push('Dimensions', dims);
+    const margin = typeof lesionExamMargin === 'function' ? lesionExamMargin(lesion) : '';
+    push('Margin', margin);
+    const priorCite = typeof formatPriorHistologyCitation === 'function'
+        ? formatPriorHistologyCitation(lesion)
+        : '';
+    if (priorCite) lines.push(priorCite);
+    else {
+        push('Prior histology', lesion.priorHistologyDiagnosis);
+        push('Prior microscopy', lesion.priorHistologyResult);
+    }
+    push('Histology', lesion.histologyDiagnosis);
+    push('Microscopy', lesion.histologyResult);
+    return lines;
+}
+
+function formatChartReviewBackgroundBlock(lesion) {
+    if (typeof formatLesionEpisodePlainText === 'function') {
+        const episode = formatLesionEpisodePlainText(lesion, { backgroundOnly: true, indent: '    ' });
+        if (episode) return episode;
+    }
+    const lines = formatChartReviewIdentityLines(lesion);
+    return lines.map((line) => '    - ' + line).join('\n');
+}
+
 function formatChartReviewLesionBlock(lesion, index, now) {
     const loc = String(lesion?.location || 'site').trim() || 'site';
-    const lines = formatChartReviewLesionLines(lesion, now);
-    if (!lines.length) return '';
-    return ['Lesion #' + index + ': ' + loc]
-        .concat(lines.map((line) => '    - ' + line))
-        .join('\n');
+    const actions = formatChartReviewLesionLines(lesion, now);
+    if (!actions.length) return '';
+    const parts = ['Lesion #' + index + ': ' + loc];
+    const background = formatChartReviewBackgroundBlock(lesion);
+    if (background) parts.push(background);
+    actions.forEach((line) => parts.push('    - ' + line));
+    return parts.join('\n');
 }
 
 function formatChartReviewLesionsSection(list, now) {
@@ -1260,6 +1301,8 @@ if (typeof module !== 'undefined' && module.exports) {
         chartReviewDisposition,
         chartReviewPlanLine,
         formatChartReviewLesionLines,
+        formatChartReviewIdentityLines,
+        formatChartReviewBackgroundBlock,
         formatChartReviewLesionBlock,
         formatChartReviewLesionsSection
     };
