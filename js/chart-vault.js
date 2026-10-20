@@ -170,9 +170,71 @@ function collectVisitSessionFromDom() {
         sanitised: consultType === 'face_to_face' || (typeof isBedSanitised !== 'undefined' ? !!isBedSanitised : false),
         patientConcerns: Array.isArray(patientConcerns) ? patientConcerns.slice() : [],
         visitLesionIds: (Array.isArray(lesions) ? lesions : []).map((item) => String(item.id)).filter(Boolean),
+        visitReviewLesionIds: uniqueVisitReviewLesionIds([
+            ...(typeof visitReviewLesionIds !== 'undefined' ? visitReviewLesionIds : []),
+            ...((prev?.visitDate === today && Array.isArray(prev.visitReviewLesionIds)) ? prev.visitReviewLesionIds : [])
+        ]),
         screeningAsked,
         updatedAt: new Date().toISOString()
     };
+}
+
+function uniqueVisitReviewLesionIds(ids) {
+    const out = [];
+    const seen = new Set();
+    (ids || []).forEach((id) => {
+        const key = String(id || '').trim();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        out.push(key);
+    });
+    return out;
+}
+
+function markVisitReviewAndRefreshOutput(id) {
+    if (typeof touchVisitReviewLesion === 'function') touchVisitReviewLesion(id);
+    if (typeof updateOutput === 'function') updateOutput();
+}
+
+function touchVisitReviewLesion(id) {
+    const key = String(id || '').trim();
+    if (!key) return;
+    if (typeof visitReviewLesionIds === 'undefined') return;
+    if (!visitReviewLesionIds.includes(key)) visitReviewLesionIds.push(key);
+    const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
+    if (chart && chart.visitSession && typeof todayVisitKey === 'function' && chart.visitSession.visitDate === todayVisitKey()) {
+        chart.visitSession.visitReviewLesionIds = uniqueVisitReviewLesionIds([
+            ...(chart.visitSession.visitReviewLesionIds || []),
+            key
+        ]);
+    }
+    if (typeof scheduleChartSave === 'function') scheduleChartSave();
+}
+
+function visitReviewLesionIdList() {
+    const live = typeof visitReviewLesionIds !== 'undefined' ? visitReviewLesionIds : [];
+    const stored = (typeof currentManagedChart === 'function' ? currentManagedChart()?.visitSession?.visitReviewLesionIds : null) || [];
+    return uniqueVisitReviewLesionIds([].concat(live, stored));
+}
+
+function visitReviewLesions() {
+    const wanted = new Set(visitReviewLesionIdList());
+    if (!wanted.size) return [];
+    const source = typeof chartLesions === 'function'
+        ? chartLesions()
+        : (typeof managedLesions !== 'undefined' ? managedLesions : []);
+    return source.filter((item) => wanted.has(String(item.id)));
+}
+
+function visitDeskReviewLesions() {
+    const byId = new Map();
+    visitReviewLesions().forEach((item) => byId.set(String(item.id), item));
+    const session = typeof visitNoteLesions === 'function' ? visitNoteLesions() : [];
+    session.forEach((item) => {
+        const key = String(item.id || '');
+        if (key && !byId.has(key)) byId.set(key, item);
+    });
+    return Array.from(byId.values());
 }
 
 function isVisitSessionActive(session) {
@@ -182,6 +244,7 @@ function isVisitSessionActive(session) {
     if (session.consultType) return true;
     if (session.sanitised) return true;
     if ((session.visitLesionIds || []).length) return true;
+    if ((session.visitReviewLesionIds || []).length) return true;
     if ((session.patientConcerns || []).length) return true;
     if (typeof isClinicalWorkspaceTab === 'function' ? isClinicalWorkspaceTab(session.workspaceTab) : (session.workspaceTab === 'skin-check' || session.workspaceTab === 'excision-generator')) return true;
     return false;
@@ -216,6 +279,9 @@ function restoreVisitSessionFromChart(chart) {
         patientConcerns = session.patientConcerns.slice();
     }
     hydrateVisitLesionsFromIds(session.visitLesionIds);
+    if (typeof visitReviewLesionIds !== 'undefined') {
+        visitReviewLesionIds = uniqueVisitReviewLesionIds(session.visitReviewLesionIds || []);
+    }
 
     const consultType = session.consultType
         || (session.sanitised ? 'face_to_face' : '');
@@ -1103,6 +1169,13 @@ function examVisitFingerprint() {
             margin: item.margin,
             procedureCompletedAt: item.procedureCompletedAt
         })),
+        review: (typeof visitDeskReviewLesions === 'function' ? visitDeskReviewLesions() : []).map((item) => ({
+            id: item.id,
+            resultPlan: item.resultPlan,
+            proposedPlan: item.proposedPlan,
+            currentPlan: item.currentPlan,
+            notes: typeof chartReviewTodayNotes === 'function' ? chartReviewTodayNotes(item) : []
+        })),
         concerns: patientConcerns || [],
         procedureStarted: !!(procedureSession && procedureSession.started),
         exam: collectChartExamFromDom()
@@ -1546,7 +1619,8 @@ function sessionNotesShouldPromptClose() {
     const exam = typeof collectChartExamFromDom === 'function' ? collectChartExamFromDom() : null;
     const examFilled = typeof examFromDomIsFilled === 'function' && examFromDomIsFilled(exam);
     const hasVisitLesions = (Array.isArray(lesions) && lesions.length > 0)
-        || !!(typeof currentManagedChart === 'function' && (currentManagedChart()?.visitSession?.visitLesionIds || []).length);
+        || !!(typeof currentManagedChart === 'function' && (currentManagedChart()?.visitSession?.visitLesionIds || []).length)
+        || (typeof visitReviewLesionIdList === 'function' && visitReviewLesionIdList().length > 0);
     const procedureActive = !!(typeof procedureSession !== 'undefined'
         && (procedureSession.started || procedureSession.completedAt));
     const screeningDone = !!(typeof screeningMarkedComplete !== 'undefined' && screeningMarkedComplete)

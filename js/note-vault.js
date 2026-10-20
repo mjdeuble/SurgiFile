@@ -27,7 +27,7 @@ function consultNoteIsSavable(text) {
     const t = String(text || '').trim();
     if (t.length < 40) return false;
     if (/^Your (generated|clinical)/i.test(t)) return false;
-    return /CLINICAL NOTE|PRE-PROCEDURAL|DOCUMENTED SKIN LESIONS|LESIONS DISCUSSED|OPERATIVE NOTE/i.test(t);
+    return /CLINICAL NOTE|PRE-PROCEDURAL|DOCUMENTED SKIN LESIONS|LESIONS DISCUSSED|LESIONS REVIEWED TODAY|OPERATIVE NOTE/i.test(t);
 }
 
 function procedureNoteIsSavable(text) {
