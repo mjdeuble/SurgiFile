@@ -1042,6 +1042,7 @@ function renderChartLesionTree() {
         } else if (title) {
             title.textContent = 'Practice';
         }
+        if (typeof syncChartTreeLayout === 'function') syncChartTreeLayout();
         return;
     }
     if (title) title.textContent = 'Patient chart';
@@ -1085,6 +1086,7 @@ function renderChartLesionTree() {
                 + (liveCount ? ' · ' + liveCount + ' current' : '');
         }
     }
+    if (typeof syncChartTreeLayout === 'function') syncChartTreeLayout();
 }
 
 function inspectorLesionMode(lesion) {
