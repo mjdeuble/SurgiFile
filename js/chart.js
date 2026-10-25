@@ -2105,6 +2105,263 @@ function inspectorLesionSlot() {
     return document.getElementById('inspLesionSlot') || document.getElementById('chartLesionInspector');
 }
 
+function currentInspectorLesion() {
+    const id = String(selectedChartLesionId || inspectorFormLesionId || '');
+    if (!id) return null;
+    const fromChart = (typeof chartLesions === 'function' ? chartLesions() : [])
+        .find((item) => String(item.id) === id);
+    if (fromChart) return fromChart;
+    return typeof findLesionRecordById === 'function' ? findLesionRecordById(id) : null;
+}
+
+function lesionHistoryShareVisible() {
+    if (typeof chartLesionInspectorVisible === 'function' && !chartLesionInspectorVisible()) return false;
+    if (typeof practiceBillingActive === 'function' && practiceBillingActive()) return false;
+    if (typeof practiceNotesActive === 'function' && practiceNotesActive()) return false;
+    if (typeof inspectorToolMode === 'function' && inspectorToolMode()) return false;
+    if (inspectorPaneMode === 'form') return false;
+    return !!currentInspectorLesion();
+}
+
+function inspectorPrintPatient() {
+    const identityFrom = (source) => {
+        if (!source) return null;
+        const ident = typeof patientIdentityFromRecord === 'function'
+            ? patientIdentityFromRecord(source)
+            : {
+                name: source.name || source.patientName || '',
+                dob: source.dob || source.patientDob || '',
+                phone: source.phone || source.patientPhone || '',
+                clinician: source.clinician || '',
+                chartId: source.chartId || ''
+            };
+        const storedName = String(source.name || source.patientName || '').trim();
+        if (storedName) ident.name = storedName;
+        if (!ident.name && !ident.dob && !ident.phone) return null;
+        return ident;
+    };
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient() && typeof currentPatient !== 'undefined') {
+        const open = identityFrom(currentPatient);
+        if (open) {
+            open.clinician = (typeof loggedInDoctorName === 'function' && loggedInDoctorName())
+                || open.clinician
+                || currentPatient.clinician
+                || '';
+            return open;
+        }
+    }
+    const fromLesion = identityFrom(currentInspectorLesion());
+    if (fromLesion) return fromLesion;
+    return { name: '', dob: '', phone: '', clinician: '', chartId: '' };
+}
+
+function iframePrintHtml(frame) {
+    const srcdoc = String(frame?.srcdoc || '');
+    if (srcdoc) {
+        const body = srcdoc.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        return body ? body[1] : srcdoc;
+    }
+    try {
+        return frame?.contentDocument?.body?.innerHTML || '';
+    } catch (err) {
+        return '';
+    }
+}
+
+function snapshotLesionHistoryForPrint() {
+    const slot = inspectorLesionSlot();
+    if (!slot) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'lesion-history-print';
+    const caption = slot.querySelector('.chart-inspector-caption');
+    const dossier = slot.querySelector('.histo-dossier');
+    const notes = slot.querySelector('.lesion-timeline');
+    if (caption) wrap.appendChild(caption.cloneNode(true));
+    if (dossier) wrap.appendChild(dossier.cloneNode(true));
+    if (notes && notes.children.length) {
+        const sec = document.createElement('section');
+        sec.className = 'insp-card';
+        sec.innerHTML = '<div class="insp-card-head">Notes</div>';
+        const body = document.createElement('div');
+        body.className = 'insp-card-body';
+        body.appendChild(notes.cloneNode(true));
+        sec.appendChild(body);
+        wrap.appendChild(sec);
+    }
+    wrap.querySelectorAll('button, script, .no-print, .sr-only, .insp-actions').forEach((el) => el.remove());
+    return wrap.innerHTML.trim() ? wrap : null;
+}
+
+function inspectorPrintStylesheetTags() {
+    return [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => {
+        const href = link.href || link.getAttribute('href') || '';
+        return href ? `<link rel="stylesheet" href="${escapeHtml(href)}">` : '';
+    }).filter(Boolean).join('\n');
+}
+
+function inspectorPrintPageCss() {
+    return `
+        @page { size: A4; margin: 12mm; }
+        html, body.inspector-print {
+            background: #fff !important;
+            color: #111;
+            margin: 0;
+            height: auto !important;
+            overflow: visible !important;
+        }
+        body.inspector-print { font-family: "Segoe UI", Calibri, Arial, sans-serif; }
+        .inspector-print-patient {
+            border: 2px solid #111;
+            padding: 10px 12px;
+            margin: 0 0 12px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 4px 16px;
+        }
+        .inspector-print-kicker {
+            font-size: 8.5pt;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #444;
+            grid-column: 1 / -1;
+        }
+        .inspector-print-name {
+            font-size: 16pt;
+            font-weight: 800;
+            line-height: 1.15;
+        }
+        .inspector-print-when {
+            font-size: 9pt;
+            color: #333;
+            text-align: right;
+        }
+        .inspector-print-meta {
+            font-size: 10pt;
+            grid-column: 1 / -1;
+        }
+        .inspector-print-pane .chart-inspector-caption,
+        .inspector-print-pane .histo-dossier,
+        .inspector-print-pane .insp-card {
+            display: block !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            background: #fff !important;
+        }
+        .inspector-print-pane button,
+        .inspector-print-pane .insp-actions {
+            display: none !important;
+        }
+        @media print {
+            .no-print { display: none !important; }
+            a { color: inherit; text-decoration: none; }
+        }
+    `;
+}
+
+function buildLesionHistoryPrintHtml(patient, paneHtml, extras) {
+    const esc = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value ?? '');
+    const printed = new Date().toLocaleString('en-AU', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    const clinic = (typeof clinicProfile !== 'undefined' && clinicProfile?.clinicName) ? clinicProfile.clinicName : '';
+    const doctor = patient.clinician
+        || (typeof loggedInDoctorName === 'function' && loggedInDoctorName())
+        || '';
+    const bits = [
+        patient.dob ? 'DOB ' + patient.dob : '',
+        patient.phone || '',
+        doctor ? 'Dr ' + doctor : '',
+        clinic
+    ].filter(Boolean);
+    const titleBits = [patient.name || 'Patient', patient.dob, extras?.caption].filter(Boolean);
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>${esc(titleBits.join(' · '))} — DermRecord</title>
+    ${typeof document !== 'undefined' ? inspectorPrintStylesheetTags() : ''}
+    <style>${inspectorPrintPageCss()}</style>
+</head>
+<body class="inspector-print">
+    <header class="inspector-print-patient">
+        <div class="inspector-print-kicker">DermRecord · lesion history${extras?.queue ? ' · ' + esc(extras.queue) : ''}</div>
+        <div class="inspector-print-name">${esc(patient.name || 'Unnamed patient')}</div>
+        <div class="inspector-print-when">Printed ${esc(printed)}</div>
+        <div class="inspector-print-meta">${esc(bits.join(' · ') || 'No further patient details on file')}</div>
+    </header>
+    <main class="inspector-print-pane">${paneHtml}</main>
+    <p class="no-print" style="margin-top:12px;"><button type="button" onclick="window.print()">Print</button></p>
+    <script>window.onload = function () { window.print(); };<\/script>
+</body>
+</html>`;
+}
+
+function openInspectorPrintWindow(html) {
+    const printWin = window.open('', '_blank', 'width=900,height=1100');
+    if (!printWin) {
+        if (typeof showToast === 'function') showToast('Unable to open print window. Please allow pop-ups for this app.');
+        return false;
+    }
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+    return true;
+}
+
+function copyLesionHistory() {
+    const lesion = currentInspectorLesion();
+    if (!lesion) {
+        if (typeof showToast === 'function') showToast('Open a lesion to copy its history.');
+        return false;
+    }
+    const text = typeof formatLesionHistoryShareText === 'function'
+        ? formatLesionHistoryShareText(lesion, inspectorPrintPatient())
+        : '';
+    if (!text) {
+        if (typeof showToast === 'function') showToast('Nothing to copy for this lesion.');
+        return false;
+    }
+    if (typeof copyTextToClipboard === 'function') {
+        return copyTextToClipboard(text, 'Lesion history copied.');
+    }
+    return false;
+}
+
+function printLesionHistory() {
+    const lesion = currentInspectorLesion();
+    if (!lesion) {
+        if (typeof showToast === 'function') showToast('Open a lesion to print its history.');
+        return false;
+    }
+    const snap = snapshotLesionHistoryForPrint();
+    if (!snap) {
+        if (typeof showToast === 'function') showToast('Nothing in the right pane to print.');
+        return false;
+    }
+    const patient = inspectorPrintPatient() || {};
+    const caption = snap.querySelector('.chart-inspector-caption h2')?.textContent?.trim()
+        || lesion.location
+        || '';
+    const queue = (typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive()
+        && typeof practiceFilterLabel === 'function')
+        ? practiceFilterLabel()
+        : '';
+    const html = buildLesionHistoryPrintHtml(patient, snap.innerHTML, { caption, queue });
+    return openInspectorPrintWindow(html);
+}
+
+function syncLesionHistoryActions() {
+    const on = lesionHistoryShareVisible();
+    const bar = document.getElementById('chartInspectorPrintbar');
+    if (bar) bar.classList.toggle('hidden', !on);
+}
+
 function inspectorToolMode() {
     return inspectorPaneMode === 'letter' || inspectorPaneMode === 'billing' || inspectorPaneMode === 'advice';
 }
@@ -2208,6 +2465,7 @@ function renderChartLesionInspector(options) {
     const unlocked = typeof visitClinicalUnlocked === 'function' ? visitClinicalUnlocked() : true;
     showInspectorToolSlot(inspectorPaneMode);
     syncInspectorActionTreeSelection();
+    syncLesionHistoryActions();
     if (inspectorToolMode()) {
         dockInspectorTool(inspectorPaneMode);
         inspectorRenderedMode = inspectorPaneMode;
@@ -2295,6 +2553,8 @@ function renderChartLesionInspector(options) {
     const pendingBill = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion)
         && typeof lesionCanCloseNoFollowup === 'function' && !lesionCanCloseNoFollowup(lesion);
     const toolbar = [
+        `<button type="button" onclick="copyLesionHistory()">Copy history</button>`,
+        `<button type="button" onclick="printLesionHistory()">Print history</button>`,
         practiceWorkspaceActive() ? `<button type="button" onclick="openChartFromLesion('${safeId}')">Open chart</button>` : '',
         refer ? `<button type="button" onclick="openLetterModalForRefer('${safeId}')">Generate letter</button>` : ''
     ].filter(Boolean).join('');
@@ -2345,6 +2605,7 @@ function syncChartLesionWorkspace() {
     });
     renderChartLesionTree();
     renderChartLesionInspector();
+    syncLesionHistoryActions();
     applyVisitSectionVisibility();
     syncChartVisitTreeStatus();
     const viewMgmt = document.getElementById('view-management');
