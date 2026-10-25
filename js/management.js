@@ -1487,6 +1487,44 @@ function formatLesionEpisodePlainText(lesion, options) {
     }).filter(Boolean).join('\n');
 }
 
+function formatLesionHistoryShareText(lesion, patient) {
+    if (!lesion) return '';
+    const ident = patient || {};
+    const lines = [];
+    const name = String(ident.name || ident.patientName || lesion.patientName || '').trim();
+    if (name) lines.push(name);
+    const meta = [
+        ident.dob || ident.patientDob || lesion.patientDob ? 'DOB ' + (ident.dob || ident.patientDob || lesion.patientDob) : '',
+        ident.phone || lesion.patientPhone || '',
+        ident.clinician || lesion.clinician ? 'Dr ' + (ident.clinician || lesion.clinician) : ''
+    ].filter(Boolean);
+    if (meta.length) lines.push(meta.join(' · '));
+    const site = String(lesion.location || '').trim();
+    if (site) {
+        if (lines.length) lines.push('');
+        lines.push(site);
+    }
+    const episode = typeof formatLesionEpisodePlainText === 'function'
+        ? formatLesionEpisodePlainText(lesion, { indent: '' })
+        : '';
+    if (episode) {
+        if (lines.length) lines.push('');
+        lines.push(episode);
+    }
+    const notes = typeof lesionNoteEvents === 'function' ? lesionNoteEvents(lesion) : [];
+    if (notes.length) {
+        if (lines.length) lines.push('');
+        lines.push('Notes');
+        notes.forEach((event) => {
+            const when = typeof formatLesionWhen === 'function' ? formatLesionWhen(event.at) : (event.at || '');
+            const note = String(event.note || '').trim();
+            if (!note) return;
+            lines.push(when ? (when + ' · ' + note) : note);
+        });
+    }
+    return lines.join('\n').trim();
+}
+
 function renderManagedLesionActions(lesion) {
     const id = String(lesion.id || '').replace(/'/g, '');
     const btns = [];
@@ -3991,4 +4029,12 @@ async function finaliseCurrentCaseToBilling() {
     showToast('Excision finalised. Specimen sent — Awaiting results until the report is filed. Billing can be confirmed separately.');
     switchWorkspaceTab('management');
     setMgmtFilter('awaiting_histology');
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        formatLesionHistoryShareText,
+        formatLesionEpisodePlainText,
+        formatLesionEpisodePlainLines
+    };
 }
