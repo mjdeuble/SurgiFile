@@ -85,6 +85,20 @@ function lesionStatusLabel(lesion) {
     else if (status === 'awaiting_histology') label = 'Awaiting results';
     else if (status === 'needs_contact') label = lesion?.contactUrgent ? 'Needs contact · Urgent' : 'Needs contact';
     else if (status === 'appointment_requested') label = 'Appointment requested';
+    else if (status === 'awaiting_assessment' && lesion?.monitorFollowUp && lesion.monitorFollowUp !== 'none'
+        && (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(lesion.plan) : /Monitor/i.test(lesion.plan || ''))) {
+        label = 'Monitor · review in ' + lesion.monitorFollowUp;
+    }
+    else if (status === 'awaiting_assessment' && typeof isDeclineTreatmentPlan === 'function'
+        && isDeclineTreatmentPlan(lesion.plan) && lesion.declineReview && lesion.declineReview !== 'none') {
+        label = 'Declined · review in ' + lesion.declineReview;
+    }
+    else if (status === 'awaiting_assessment' && typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan)) {
+        label = 'Refer / Specialist';
+    }
+    else if (status === 'awaiting_assessment' && typeof hasOutstandingTopicalWork === 'function' && hasOutstandingTopicalWork(lesion)) {
+        label = lesion.topicalDecision === 'pdt' ? 'PDT quoted' : 'Cryotherapy recall';
+    }
     else label = LESION_STATUSES[status] || status || 'On chart';
     const consent = typeof lesionConsentLabel === 'function' ? lesionConsentLabel(lesion) : '';
     return consent ? label + ' · ' + consent : label;
@@ -1183,6 +1197,18 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                     <option value="Declines Treatment / Other"${inspectorOpt(plan, 'Declines Treatment / Other')}>Declines Treatment / Other</option>
                 </select>
             </div>
+            <div id="inspPlanMonitorFields" class="insp-sub hidden">
+                <label class="insp-label" for="inspMonitorFollowUp">Follow-up</label>
+                <select id="inspMonitorFollowUp" class="insp-select"${disabled}>
+                    <option value="none"${inspectorOpt(lesion.monitorFollowUp || 'none', 'none')}>No scheduled follow-up</option>
+                    <option value="2 weeks"${inspectorOpt(lesion.monitorFollowUp, '2 weeks')}>Review in 2 weeks</option>
+                    <option value="4 weeks"${inspectorOpt(lesion.monitorFollowUp, '4 weeks')}>Review in 4 weeks</option>
+                    <option value="8 weeks"${inspectorOpt(lesion.monitorFollowUp, '8 weeks')}>Review in 8 weeks</option>
+                    <option value="3 months"${inspectorOpt(lesion.monitorFollowUp, '3 months')}>Review in 3 months</option>
+                    <option value="6 months"${inspectorOpt(lesion.monitorFollowUp, '6 months')}>Review in 6 months</option>
+                </select>
+                <p class="insp-hint">A scheduled review keeps this lesion on Open until you clear it or open further management.</p>
+            </div>
             <div id="inspPlanBiopsyFields" class="insp-sub hidden">
                 <p class="insp-label" style="margin:0">Biopsy technique</p>
                 <div class="insp-choice-row">
@@ -1400,6 +1426,7 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
 
 function inspectorCanSetResultPlan(lesion) {
     if (!lesion) return false;
+    if (typeof lesionAllowsReviewDisposition === 'function' && lesionAllowsReviewDisposition(lesion)) return true;
     if (typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion)) return true;
     return !!(typeof lesionHasSavedHistology === 'function'
         ? lesionHasSavedHistology(lesion)
@@ -1479,6 +1506,10 @@ function renderInspectorHistologyEntryForm(lesion) {
 }
 
 function inspectorNotePlaceholder(lesion) {
+    if (typeof lesionReviewDispositionCopy === 'function') {
+        const copy = lesionReviewDispositionCopy(lesion);
+        if (copy && copy.kind && copy.kind !== 'result') return copy.placeholder;
+    }
     if (typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion)) {
         return 'e.g. Field clear at review — no further treatment';
     }
@@ -1497,15 +1528,21 @@ function renderInspectorPlanContactForm(lesion) {
     const planVal = showPlan ? (further ? 'further_management' : (alreadyNfa ? 'no_followup' : '')) : '';
     const proposed = String(lesion?.proposedPlan || '').trim();
     const notes = typeof renderLesionNotesListHtml === 'function' ? renderLesionNotesListHtml(lesion) : '';
+    const copy = typeof lesionReviewDispositionCopy === 'function'
+        ? lesionReviewDispositionCopy(lesion)
+        : null;
     const topicalReview = typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion);
-    const nfaHint = topicalReview
+    const reviewHeading = copy?.heading || (topicalReview ? 'Review plan' : 'Clinical plan');
+    const nfaLabel = copy?.nfa || (topicalReview ? 'Cleared / no further action' : 'No further action');
+    const furtherLabel = copy?.further || 'Needs further management';
+    const nfaHint = copy?.hint || (topicalReview
         ? 'Cleared at this review — no further action. The original topical episode stays on the history.'
-        : 'Confirming no further action clinically finalises this lesion. You can reopen it later if more treatment is needed.';
+        : 'Confirming no further action clinically finalises this lesion. You can reopen it later if more treatment is needed.');
     const planBlock = showPlan ? `<div>
-                <p class="insp-label">${topicalReview ? 'Review plan' : 'Clinical plan'}</p>
+                <p class="insp-label">${reviewHeading}</p>
                 <div class="insp-choice-list">
-                    <label class="insp-choice"><input type="radio" name="inspHistologyNext" value="no_followup"${inspectorChecked(planVal, 'no_followup')} onchange="onInspectorManagePlanChange()"> ${topicalReview ? 'Cleared / no further action' : 'No further action'}</label>
-                    <label class="insp-choice"><input type="radio" name="inspHistologyNext" value="further_management"${inspectorChecked(planVal, 'further_management')} onchange="onInspectorManagePlanChange()"> Needs further management</label>
+                    <label class="insp-choice"><input type="radio" name="inspHistologyNext" value="no_followup"${inspectorChecked(planVal, 'no_followup')} onchange="onInspectorManagePlanChange()"> ${nfaLabel}</label>
+                    <label class="insp-choice"><input type="radio" name="inspHistologyNext" value="further_management"${inspectorChecked(planVal, 'further_management')} onchange="onInspectorManagePlanChange()"> ${furtherLabel}</label>
                 </div>
                 <p id="inspManageLesionNfaHint" class="insp-hint${planVal === 'no_followup' ? '' : ' hidden'}">${nfaHint}</p>
             </div>
@@ -1596,12 +1633,16 @@ function handleInspectorPlanChange() {
     const tFields = document.getElementById('inspPlanTopicalFields');
     const hFields = document.getElementById('inspPlanConfirmedHistoFields');
     const dFields = document.getElementById('inspPlanDeclineFields');
+    const mFields = document.getElementById('inspPlanMonitorFields');
     if (bFields) bFields.classList.add('hidden');
     if (eFields) eFields.classList.add('hidden');
     if (tFields) tFields.classList.add('hidden');
     if (hFields) hFields.classList.add('hidden');
     if (dFields) dFields.classList.add('hidden');
-    if (typeof isPunchShaveBiopsyPlan === 'function' && isPunchShaveBiopsyPlan(plan)) {
+    if (mFields) mFields.classList.add('hidden');
+    if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(plan) : /Monitor/i.test(plan)) {
+        if (mFields) mFields.classList.remove('hidden');
+    } else if (typeof isPunchShaveBiopsyPlan === 'function' && isPunchShaveBiopsyPlan(plan)) {
         if (bFields) bFields.classList.remove('hidden');
         handleInspectorBiopsyTypeChange();
     } else if (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(plan)) {
@@ -1917,10 +1958,18 @@ function saveInspectorLesionDocumentation() {
         lesionRecord.type = 'topical';
     } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
         lesionRecord.type = 'none';
-        lesionRecord.managementStatus = 'no_followup';
         lesionRecord.currentPlan = typeof formatDeclinePlanSummary === 'function'
             ? formatDeclinePlanSummary(lesionRecord)
             : 'Declined recommended treatment';
+        if (typeof deriveLesionStatusFromPlan === 'function') {
+            lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
+        }
+    } else if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(plan) : /Monitor/i.test(plan)) {
+        lesionRecord.type = 'none';
+        lesionRecord.monitorFollowUp = document.getElementById('inspMonitorFollowUp')?.value || 'none';
+        if (typeof deriveLesionStatusFromPlan === 'function') {
+            lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
+        }
     } else {
         lesionRecord.type = 'none';
     }
@@ -1951,15 +2000,18 @@ async function submitInspectorManageLesion() {
     const hasExistingResult = typeof lesionHasSavedHistology === 'function'
         ? lesionHasSavedHistology(lesion)
         : !!String(lesion?.histologyResult || '').trim();
-    const procedureDone = typeof lesionProcedureDone === 'function' && lesionProcedureDone(lesion);
     if (next === 'no_followup' && !manageLesionNfaConfirmed
         && !(typeof lesionAlreadyClinicallyFinalised === 'function' && lesionAlreadyClinicallyFinalised(lesion))) {
         manageLesionPendingSave = true;
         if (typeof openManageLesionNfaConfirm === 'function') openManageLesionNfaConfirm();
         return false;
     }
-    const reviewDisposition = typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion);
-    if (next === 'further_management' && !hasExistingResult && procedureDone && !reviewDisposition) {
+    const reviewDisposition = (typeof lesionAllowsReviewDisposition === 'function' && lesionAllowsReviewDisposition(lesion) && !hasExistingResult)
+        || (typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion));
+    const canOpenFurther = typeof lesionCanOpenFurtherManagement === 'function'
+        ? lesionCanOpenFurtherManagement(lesion)
+        : (hasExistingResult || reviewDisposition);
+    if (next === 'further_management' && !hasExistingResult && !canOpenFurther) {
         showToast('Save a histology result before opening further management.');
         const resultEl = document.getElementById('inspHistologyResultText');
         if (resultEl) resultEl.focus();
@@ -1970,7 +2022,7 @@ async function submitInspectorManageLesion() {
         callNote: '',
         contact: reviewDisposition ? 'advised_now' : (lesion.contactState || 'mark_for_contact'),
         fileNoCall: false,
-        allowWithoutHistology: reviewDisposition,
+        allowWithoutHistology: reviewDisposition && canOpenFurther,
         proposedPlan: (next === 'further_management' || next === 'plan_excision') ? proposedPlan : '',
         proposedPlanNote: (next === 'further_management' || next === 'plan_excision') ? proposedPlanNote : ''
     };

@@ -1,4 +1,4 @@
-const CACHE_VERSION = '193';
+const CACHE_VERSION = '194';
 const CACHE_NAME = 'dermrecord-v' + CACHE_VERSION;
 const CACHE_QUERY = '?v=' + CACHE_VERSION;
 

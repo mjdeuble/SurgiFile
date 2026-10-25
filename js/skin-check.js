@@ -679,6 +679,8 @@ function openLesionModal(lesionId = null) {
             }
             if (examPunch) examPunch.value = typeof parseMarginMm === 'function' ? (parseMarginMm(item.punchSize) || item.punchSize || '') : (item.punchSize || '');
             populateTopicalForm(item);
+            const monitorEl = document.getElementById('monitorFollowUp');
+            if (monitorEl) monitorEl.value = item.monitorFollowUp || 'none';
             if (typeof mountDeclinePlanFields === 'function') mountDeclinePlanFields('planDeclineFields', '', item);
         }
     } else {
@@ -705,6 +707,8 @@ function openLesionModal(lesionId = null) {
 
         resetTopicalForm();
         clearPriorHistologyForm();
+        const monitorEl = document.getElementById('monitorFollowUp');
+        if (monitorEl) monitorEl.value = 'none';
         if (typeof mountDeclinePlanFields === 'function') mountDeclinePlanFields('planDeclineFields', '', emptyDeclineFields());
     }
 
@@ -768,14 +772,18 @@ function handlePlanChange() {
     const tFields = document.getElementById('planTopicalFields');
     const hFields = document.getElementById('planConfirmedHistoFields');
     const dFields = document.getElementById('planDeclineFields');
+    const mFields = document.getElementById('planMonitorFields');
 
     if (bFields) bFields.classList.add('hidden');
     if (eFields) eFields.classList.add('hidden');
     if (tFields) tFields.classList.add('hidden');
     if (hFields) hFields.classList.add('hidden');
     if (dFields) dFields.classList.add('hidden');
+    if (mFields) mFields.classList.add('hidden');
 
-    if (isPunchShaveBiopsyPlan(plan)) {
+    if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(plan) : /Monitor/i.test(plan)) {
+        if (mFields) mFields.classList.remove('hidden');
+    } else if (isPunchShaveBiopsyPlan(plan)) {
         if (bFields) bFields.classList.remove('hidden');
         handleBiopsyTypeChange();
     } else if (isConfirmedHistologyExcisionPlan(plan)) {
@@ -979,10 +987,18 @@ function saveLesion() {
         lesionRecord.type = 'topical';
     } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
         lesionRecord.type = 'none';
-        lesionRecord.managementStatus = 'no_followup';
         lesionRecord.currentPlan = typeof formatDeclinePlanSummary === 'function'
             ? formatDeclinePlanSummary(lesionRecord)
             : 'Declined recommended treatment';
+        if (typeof deriveLesionStatusFromPlan === 'function') {
+            lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
+        }
+    } else if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(plan) : /Monitor/i.test(plan)) {
+        lesionRecord.type = 'none';
+        lesionRecord.monitorFollowUp = document.getElementById('monitorFollowUp')?.value || 'none';
+        if (typeof deriveLesionStatusFromPlan === 'function') {
+            lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
+        }
     } else {
         lesionRecord.type = 'none';
     }

@@ -1005,6 +1005,7 @@ function lesionShowsPlanCard(lesion) {
     if (done) return false;
     const type = typeof lesionType === 'function' ? lesionType(lesion) : (lesion.type || '');
     if (type === 'topical' || (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))) return true;
+    if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(lesion.plan) : /Monitor/i.test(lesion.plan || '')) return true;
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan)) return true;
     const status = typeof lesionLifecycleStatus === 'function'
         ? lesionLifecycleStatus(lesion)
@@ -1055,6 +1056,15 @@ function renderInspectorDeclinePlanRows(lesion) {
     ].join('');
 }
 
+function renderInspectorMonitorPlanRows(lesion) {
+    return [
+        histoReportRow('Plan', 'Monitor / Reassure (Benign)'),
+        histoReportRow('Follow-up', lesion?.monitorFollowUp && lesion.monitorFollowUp !== 'none'
+            ? lesion.monitorFollowUp
+            : 'None scheduled')
+    ].join('');
+}
+
 function renderInspectorProposedPlanRows(lesion) {
     const key = lesionProposedPlanKey(lesion);
     const label = (typeof proposedPlanLabel === 'function' ? proposedPlanLabel(key) : '')
@@ -1072,7 +1082,10 @@ function renderInspectorPlanCard(lesion, options) {
     const topical = (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))
         || (typeof lesionType === 'function' ? lesionType(lesion) : lesion.type) === 'topical';
     const decline = typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan);
-    const proposed = !topical && !decline && !!lesionProposedPlanKey(lesion)
+    const monitor = !topical && !decline && (typeof isMonitorLesionPlan === 'function'
+        ? isMonitorLesionPlan(lesion.plan)
+        : /Monitor/i.test(lesion.plan || ''));
+    const proposed = !topical && !decline && !monitor && !!lesionProposedPlanKey(lesion)
         && !(typeof isPunchShaveBiopsyPlan === 'function' && isPunchShaveBiopsyPlan(lesion.plan))
         && !(typeof isExcisionBookingPlan === 'function' && isExcisionBookingPlan(lesion.plan));
     const changeBtn = options.changePlan !== false
@@ -1088,6 +1101,8 @@ function renderInspectorPlanCard(lesion, options) {
         rows = renderInspectorDeclinePlanRows(lesion);
     } else if (topical) {
         rows = renderInspectorTopicalPlanRows(lesion);
+    } else if (monitor) {
+        rows = renderInspectorMonitorPlanRows(lesion);
     } else if (proposed) {
         rows = renderInspectorProposedPlanRows(lesion);
     } else {
@@ -1363,8 +1378,11 @@ function formatLesionPlanPlainLines(lesion) {
     const topical = (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))
         || (typeof lesionType === 'function' ? lesionType(lesion) : lesion.type) === 'topical';
     const decline = typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan);
+    const monitor = !topical && !decline && (typeof isMonitorLesionPlan === 'function'
+        ? isMonitorLesionPlan(lesion.plan)
+        : /Monitor/i.test(lesion.plan || ''));
     const proposedKey = String(lesion.proposedPlan || '').trim();
-    const proposed = !topical && !decline && !!proposedKey
+    const proposed = !topical && !decline && !monitor && !!proposedKey
         && !(typeof isPunchShaveBiopsyPlan === 'function' && isPunchShaveBiopsyPlan(lesion.plan))
         && !(typeof isExcisionBookingPlan === 'function' && isExcisionBookingPlan(lesion.plan));
     const lines = ['Plan'];
@@ -1388,6 +1406,9 @@ function formatLesionPlanPlainLines(lesion) {
         push('Safety-net', lesion.declineSafetyNetAdvice);
         push('Review', lesion.declineReview && lesion.declineReview !== 'none' ? lesion.declineReview : '');
         push('Notes', lesion.declineNotes);
+    } else if (monitor) {
+        push('Plan', 'Monitor / Reassure (Benign)');
+        push('Follow-up', lesion.monitorFollowUp && lesion.monitorFollowUp !== 'none' ? lesion.monitorFollowUp : 'None scheduled');
     } else if (topical) {
         const decision = typeof formatTopicalDecisionText === 'function'
             ? formatTopicalDecisionText(lesion)
@@ -3045,7 +3066,28 @@ function lesionAlreadyClinicallyFinalised(lesion) {
         : lesion.managementStatus) === 'no_followup';
 }
 
+function applyManageLesionReviewCopy(lesion) {
+    const copy = typeof lesionReviewDispositionCopy === 'function'
+        ? lesionReviewDispositionCopy(lesion)
+        : null;
+    const heading = document.getElementById('manageLesionPlanHeading');
+    const nfaLabel = document.getElementById('manageLesionNfaLabel');
+    const hint = document.getElementById('manageLesionNfaHint');
+    const title = document.getElementById('manageLesionNfaTitle');
+    const body = document.getElementById('manageLesionNfaBody');
+    const btn = document.getElementById('btnConfirmManageLesionNfa');
+    if (heading) heading.textContent = copy?.heading || 'Plan';
+    if (nfaLabel) nfaLabel.textContent = copy?.nfa || 'No further action';
+    if (hint) hint.textContent = copy?.hint
+        || 'Confirming no further action clinically finalises this lesion. You can reopen it later if more treatment is needed.';
+    if (title) title.textContent = copy?.confirmTitle || 'No further action for this lesion?';
+    if (body) body.textContent = copy?.confirmBody
+        || 'This clinically finalises the lesion. You can change it later if more treatment is needed.';
+    if (btn) btn.textContent = copy?.confirmButton || 'Confirm no further action';
+}
+
 function openManageLesionNfaConfirm() {
+    applyManageLesionReviewCopy(typeof histologyDraftLesion === 'function' ? histologyDraftLesion() : null);
     const modal = document.getElementById('manageLesionNfaModal');
     if (modal) modal.classList.remove('hidden');
 }
@@ -3124,6 +3166,7 @@ function openManageLesionModal(id) {
             : '';
     }
     fillLesionPatientContactEl(document.getElementById('manageLesionPatientContact'), lesion);
+    applyManageLesionReviewCopy(lesion);
     fillManageLesionResultSummary(lesion);
     const timelineWrap = document.getElementById('manageLesionTimelineWrap');
     const timelineEl = document.getElementById('manageLesionTimeline');
@@ -3186,8 +3229,12 @@ async function submitManageLesionModal() {
         openManageLesionNfaConfirm();
         return false;
     }
-    if (!hasExistingResult && next === 'further_management'
-        && !(typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion))) {
+    const reviewDisposition = (typeof lesionAllowsReviewDisposition === 'function' && lesionAllowsReviewDisposition(lesion) && !hasExistingResult)
+        || (typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion));
+    const canOpenFurther = typeof lesionCanOpenFurtherManagement === 'function'
+        ? lesionCanOpenFurtherManagement(lesion)
+        : (hasExistingResult || reviewDisposition);
+    if (!hasExistingResult && next === 'further_management' && !canOpenFurther) {
         showToast('Save a histology result before opening further management.');
         closeManageLesionModal();
         if (typeof openHistologyModal === 'function') openHistologyModal(id);
@@ -3197,11 +3244,9 @@ async function submitManageLesionModal() {
         if (progress) progress('Saving lesion…', 0.25);
         const extras = {
             callNote: '',
-            contact: (typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion))
-                ? 'advised_now'
-                : contact,
+            contact: reviewDisposition ? 'advised_now' : contact,
             fileNoCall: false,
-            allowWithoutHistology: typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion),
+            allowWithoutHistology: reviewDisposition && canOpenFurther,
             proposedPlan: (next === 'further_management' || next === 'plan_excision') ? proposedPlan : '',
             proposedPlanNote: (next === 'further_management' || next === 'plan_excision') ? proposedPlanNote : ''
         };
