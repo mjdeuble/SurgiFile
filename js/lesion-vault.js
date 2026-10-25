@@ -357,8 +357,32 @@ function lesionConsentNeededLabel(lesion) {
     return lesionConsentRequirement(lesion) === 'written' ? 'Written consent needed' : 'Consent needed';
 }
 
+function isTopicalFollowUpLesion(lesion) {
+    if (!lesion) return false;
+    if (typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion)) return false;
+    if (lesion.linkedReexcisionId || lesion.linkedChildId) return false;
+    const status = typeof lesionLifecycleStatus === 'function'
+        ? lesionLifecycleStatus(lesion)
+        : canonicalLesionStatus(lesion.managementStatus);
+    if (status === 'topical_followup') return true;
+    const topical = (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))
+        || (typeof lesionType === 'function' ? lesionType(lesion) : lesion.type) === 'topical';
+    return !!(topical && lesion.topicalFollowUp && lesion.topicalFollowUp !== 'none');
+}
+
+function lesionCanOpenFurtherManagement(lesion) {
+    if (!lesion) return false;
+    if (typeof lesionHasSavedHistology === 'function' ? lesionHasSavedHistology(lesion) : !!String(lesion.histologyResult || '').trim()) {
+        return true;
+    }
+    return isTopicalFollowUpLesion(lesion);
+}
+
 function lesionOwnProcedureKind(lesion) {
     const t = typeof lesionType === 'function' ? lesionType(lesion) : String(lesion?.type || '');
+    if (t === 'topical' || (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion?.plan))) {
+        return 'topical / field treatment';
+    }
     if (t === 'shave') return 'shave biopsy';
     if (t === 'punch') return 'punch biopsy';
     if (t === 'excision') return lesion?.priorLesionId ? 're-excision' : 'excision';
@@ -816,6 +840,7 @@ function restorePriorTypeFromProcedure(lesion) {
     if (/shave/i.test(proc)) return 'shave';
     if (/punch/i.test(proc)) return 'punch';
     if (/excision/i.test(proc)) return 'excision';
+    if (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion?.plan)) return 'topical';
     const t = typeof deriveLesionType === 'function' ? deriveLesionType(lesion) : String(lesion?.type || '');
     return LESION_TYPES.includes(t) ? t : 'none';
 }
@@ -2704,15 +2729,17 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
         accession && ('Lab case ' + accession)
     ].filter(Boolean).join(' · ');
     if (action === 'further_management') {
-        if (!lesionHasSavedHistology(lesion)) {
+        const reviewDisposition = !!extras.allowWithoutHistology || isTopicalFollowUpLesion(lesion);
+        if (!lesionHasSavedHistology(lesion) && !reviewDisposition) {
             showToast('Save the histology result before opening further management.');
             return { lesion, needResult: true };
         }
         lesion.currentPlan = 'Further management — opening linked lesion';
-        await saveManagedLesionRecord(lesion, 'histology', note);
+        await saveManagedLesionRecord(lesion, reviewDisposition ? 'plan' : 'histology', note);
         const child = await spawnFurtherManagementChild(lesion, {
-            contact: fileNoCall ? 'mark_for_contact' : contact,
-            advised,
+            allowWithoutHistology: reviewDisposition,
+            contact: reviewDisposition ? 'advised_now' : (fileNoCall ? 'mark_for_contact' : contact),
+            advised: reviewDisposition || advised,
             resultAdvisedAt: lesion.resultAdvisedAt || '',
             contactUrgent: !!lesion.contactUrgent,
             proposedPlan: proposedPlan || (nextAction === 'plan_excision' ? 'excision' : ''),
@@ -2722,7 +2749,7 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
             lesion,
             child,
             spawnedManagement: true,
-            openExcision: !!(advised && (proposedPlan === 'excision' || nextAction === 'plan_excision')),
+            openExcision: !!((reviewDisposition || advised) && (proposedPlan === 'excision' || nextAction === 'plan_excision')),
             openChildId: child?.id || ''
         };
     }
@@ -2976,4 +3003,17 @@ async function markBillingProcessed(ids) {
     for (const id of ids) {
         if (typeof confirmBillingCodes === 'function') await confirmBillingCodes(id);
     }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        isTopicalFollowUpLesion,
+        lesionCanOpenFurtherManagement,
+        lesionOwnProcedureKind,
+        deriveLesionStatusFromPlan,
+        lesionLifecycleStatus,
+        spawnFurtherManagementChild,
+        recordHistologyOutcome,
+        setManagedLesionStatus
+    };
 }
