@@ -357,6 +357,14 @@ function lesionConsentNeededLabel(lesion) {
     return lesionConsentRequirement(lesion) === 'written' ? 'Written consent needed' : 'Consent needed';
 }
 
+function isMonitorLesionPlan(plan) {
+    return /Monitor/i.test(String(plan || ''));
+}
+
+function hasScheduledFollowUp(value) {
+    return !!(value && value !== 'none');
+}
+
 function isTopicalFollowUpLesion(lesion) {
     if (!lesion) return false;
     if (typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion)) return false;
@@ -367,7 +375,57 @@ function isTopicalFollowUpLesion(lesion) {
     if (status === 'topical_followup') return true;
     const topical = (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))
         || (typeof lesionType === 'function' ? lesionType(lesion) : lesion.type) === 'topical';
-    return !!(topical && lesion.topicalFollowUp && lesion.topicalFollowUp !== 'none');
+    return !!(topical && hasScheduledFollowUp(lesion.topicalFollowUp));
+}
+
+function hasOutstandingTopicalWork(lesion) {
+    if (!lesion) return false;
+    const topical = (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))
+        || (typeof lesionType === 'function' ? lesionType(lesion) : lesion.type) === 'topical';
+    if (!topical) return false;
+    if (lesion.topicalDecision === 'pdt') {
+        return !!(Number(lesion.pdtQuotedPrice) > 0
+            || (Array.isArray(lesion.pdtRegions) && lesion.pdtRegions.length)
+            || lesion.pdtAreaName);
+    }
+    return lesion.topicalDecision === 'cryotherapy' && !!lesion.cryoRecallRepeat;
+}
+
+function isScheduledReviewLesion(lesion) {
+    if (!lesion) return false;
+    if (isMonitorLesionPlan(lesion.plan) && hasScheduledFollowUp(lesion.monitorFollowUp)) return true;
+    const decline = typeof isDeclineTreatmentPlan === 'function'
+        ? isDeclineTreatmentPlan(lesion.plan)
+        : /Declines Treatment/i.test(String(lesion.plan || ''));
+    return !!(decline && hasScheduledFollowUp(lesion.declineReview));
+}
+
+function lesionReviewDispositionKind(lesion) {
+    if (!lesion) return '';
+    if (lesion.linkedReexcisionId || lesion.linkedChildId) return '';
+    const status = typeof lesionLifecycleStatus === 'function'
+        ? lesionLifecycleStatus(lesion)
+        : canonicalLesionStatus(lesion.managementStatus);
+    if (status === 'current_case' || status === 'no_followup') return '';
+    const done = typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(lesion)
+        : !!(lesion.procedureCompletedAt || lesion.excisionFinalisedAt);
+    const histo = typeof lesionHasSavedHistology === 'function'
+        ? lesionHasSavedHistology(lesion)
+        : !!String(lesion.histologyResult || '').trim();
+    if (done && !histo) return 'no_result';
+    if (status === 'planned_procedure' && !done) return 'cancel_plan';
+    if (histo) return 'result';
+    const refer = (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan))
+        || String(lesion.proposedPlan || '') === 'refer';
+    if (refer) return 'refer';
+    if (isTopicalFollowUpLesion(lesion) || hasOutstandingTopicalWork(lesion)) return 'topical';
+    if (isScheduledReviewLesion(lesion)) return 'scheduled';
+    return 'open';
+}
+
+function lesionAllowsReviewDisposition(lesion) {
+    return !!lesionReviewDispositionKind(lesion);
 }
 
 function lesionCanOpenFurtherManagement(lesion) {
@@ -375,7 +433,101 @@ function lesionCanOpenFurtherManagement(lesion) {
     if (typeof lesionHasSavedHistology === 'function' ? lesionHasSavedHistology(lesion) : !!String(lesion.histologyResult || '').trim()) {
         return true;
     }
-    return isTopicalFollowUpLesion(lesion);
+    const kind = lesionReviewDispositionKind(lesion);
+    return !!kind && kind !== 'no_result';
+}
+
+function lesionReviewDispositionCopy(lesion) {
+    const kind = lesionReviewDispositionKind(lesion);
+    if (kind === 'topical') {
+        return {
+            kind,
+            heading: 'Review plan',
+            nfa: 'Cleared / no further action',
+            further: 'Needs further management',
+            hint: 'Cleared at this review — no further action. The original topical episode stays on the history.',
+            confirmTitle: 'Clear this lesion?',
+            confirmBody: 'This marks the topical episode complete. The original prescription stays on the history.',
+            confirmButton: 'Confirm cleared',
+            placeholder: 'e.g. Field clear at review — no further treatment'
+        };
+    }
+    if (kind === 'no_result') {
+        return {
+            kind,
+            heading: 'Review plan',
+            nfa: 'Close without result',
+            further: 'Needs further management',
+            hint: 'Closes this episode without a histology report. Use this if the specimen was lost or will not be reported.',
+            confirmTitle: 'Close without a result?',
+            confirmBody: 'This closes the episode without a histology report. Use this if the pot was lost or will not be reported.',
+            confirmButton: 'Close without result',
+            placeholder: 'e.g. Specimen lost — close without result'
+        };
+    }
+    if (kind === 'cancel_plan') {
+        return {
+            kind,
+            heading: 'Review plan',
+            nfa: 'Cancel plan / no further action',
+            further: 'Needs further management',
+            hint: 'Cancels the booked procedure. The original plan stays on the history.',
+            confirmTitle: 'Cancel this planned procedure?',
+            confirmBody: 'This cancels the booked procedure and clinically finalises the lesion. You can reopen it later if treatment is needed.',
+            confirmButton: 'Cancel plan',
+            placeholder: 'e.g. Patient cancelled booked excision'
+        };
+    }
+    if (kind === 'refer') {
+        return {
+            kind,
+            heading: 'Review plan',
+            nfa: 'Episode complete',
+            further: 'Needs further management',
+            hint: 'Marks this referral episode complete. The original referral plan stays on the history.',
+            confirmTitle: 'Mark this referral episode complete?',
+            confirmBody: 'This clinically finalises the lesion. The referral plan stays on the history.',
+            confirmButton: 'Mark episode complete',
+            placeholder: 'e.g. Referral sent to plastics'
+        };
+    }
+    if (kind === 'scheduled') {
+        return {
+            kind,
+            heading: 'Review plan',
+            nfa: 'Cleared / no further action',
+            further: 'Needs further management',
+            hint: 'Cleared at this review — no further action. The original plan stays on the history.',
+            confirmTitle: 'Clear this lesion at review?',
+            confirmBody: 'This marks the scheduled review complete. The original plan stays on the history.',
+            confirmButton: 'Confirm cleared',
+            placeholder: 'e.g. Stable at review — no further treatment'
+        };
+    }
+    if (kind === 'open') {
+        return {
+            kind,
+            heading: 'Review plan',
+            nfa: 'No further action',
+            further: 'Needs further management',
+            hint: 'Confirming no further action clinically finalises this lesion. You can reopen it later if more treatment is needed.',
+            confirmTitle: 'No further action for this lesion?',
+            confirmBody: 'This clinically finalises the lesion. You can change it later if more treatment is needed.',
+            confirmButton: 'Confirm no further action',
+            placeholder: 'e.g. Discussed — no further action'
+        };
+    }
+    return {
+        kind: kind || 'result',
+        heading: 'Clinical plan',
+        nfa: 'No further action',
+        further: 'Needs further management',
+        hint: 'Confirming no further action clinically finalises this lesion. You can reopen it later if more treatment is needed.',
+        confirmTitle: 'No further action for this lesion?',
+        confirmBody: 'This clinically finalises the lesion. You can change it later if more treatment is needed.',
+        confirmButton: 'Confirm no further action',
+        placeholder: 'e.g. Morning review — desk to phone after 10'
+    };
 }
 
 function lesionOwnProcedureKind(lesion) {
@@ -937,7 +1089,7 @@ function buildManagementChildFromPrior(prior, extras) {
         impression: extras.impression || prior.histologyDiagnosis || prior.impression || '',
         macroscopic: prior.macroscopic || 'Unspecified',
         dermoscopy: prior.dermoscopy || 'Unspecified',
-        type: 'none',
+        type: proposedPlan === 'topical' ? 'topical' : 'none',
         plan: '',
         managementStatus,
         consentStatus: '',
@@ -1148,13 +1300,17 @@ function deriveLesionStatusFromPlan(record) {
     const plan = record?.plan || '';
     if (plan.includes('Biopsy') || plan.includes('Excision')) return 'planned_procedure';
     if (typeof isTopicalPlan === 'function' ? isTopicalPlan(plan) : /topical/i.test(plan)) {
-        if (record.topicalDecision === 'declined') return 'no_followup';
-        if (record.topicalFollowUp && record.topicalFollowUp !== 'none') return 'topical_followup';
+        const hasFu = hasScheduledFollowUp(record.topicalFollowUp);
+        if (record.topicalDecision === 'declined') return hasFu ? 'topical_followup' : 'no_followup';
+        if (hasFu) return 'topical_followup';
+        if (hasOutstandingTopicalWork(record)) return 'awaiting_assessment';
         return 'no_followup';
     }
-    if (plan.includes('Monitor')) return 'no_followup';
+    if (isMonitorLesionPlan(plan)) {
+        return hasScheduledFollowUp(record.monitorFollowUp) ? 'awaiting_assessment' : 'no_followup';
+    }
     if (typeof isDeclineTreatmentPlan === 'function' ? isDeclineTreatmentPlan(plan) : /Declines Treatment/i.test(plan)) {
-        return 'no_followup';
+        return hasScheduledFollowUp(record.declineReview) ? 'awaiting_assessment' : 'no_followup';
     }
     return 'awaiting_assessment';
 }
@@ -1190,7 +1346,19 @@ function defaultPlanLine(lesion) {
             : 'Declined recommended treatment';
     }
     if (status === 'no_followup') return 'No follow-up';
-    if (status === 'awaiting_assessment') return 'Awaiting assessment';
+    if (status === 'awaiting_assessment') {
+        if (isMonitorLesionPlan(lesion?.plan) && hasScheduledFollowUp(lesion?.monitorFollowUp)) {
+            return 'Monitor — review in ' + lesion.monitorFollowUp;
+        }
+        if (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion?.plan)) {
+            return 'Refer / Specialist';
+        }
+        if (hasOutstandingTopicalWork(lesion)) {
+            if (lesion.topicalDecision === 'pdt') return 'PDT quoted — awaiting booking';
+            if (lesion.cryoRecallRepeat) return 'Cryotherapy recall';
+        }
+        return 'Awaiting assessment';
+    }
     return String(lesion?.plan || '').trim();
 }
 
@@ -2481,13 +2649,26 @@ async function persistSessionLesionToVault(sessionLesion) {
             next.currentPlan = defaultPlanLine(next);
         }
     }
+    if (isMonitorLesionPlan(sessionLesion.plan) && !completed) {
+        next.monitorFollowUp = sessionLesion.monitorFollowUp || 'none';
+        if (!existing.managementStatus || ['awaiting_assessment', 'topical_followup', 'no_followup', 'planned_procedure'].includes(canonicalLesionStatus(existing.managementStatus))) {
+            next.managementStatus = deriveLesionStatusFromPlan(next);
+            next.type = 'none';
+            next.currentPlan = defaultPlanLine(next);
+            next.clinicallyFinalisedAt = next.managementStatus === 'no_followup'
+                ? (next.clinicallyFinalisedAt || now)
+                : '';
+        }
+    }
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(sessionLesion.plan) && !completed) {
-        next.managementStatus = 'no_followup';
+        next.managementStatus = deriveLesionStatusFromPlan(next);
         next.type = 'none';
         next.currentPlan = typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(next)
             ? formatDeclinePlanSummary(next)
             : (next.currentPlan || 'Declined recommended treatment');
-        next.clinicallyFinalisedAt = next.clinicallyFinalisedAt || now;
+        next.clinicallyFinalisedAt = next.managementStatus === 'no_followup'
+            ? (next.clinicallyFinalisedAt || now)
+            : '';
     }
     const planChanged = !existing.id || existing.plan !== next.plan || existing.type !== next.type;
     if (!existing.id) appendLesionHistory(next, 'created', sessionLesion.plan || '');
@@ -2729,7 +2910,10 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
         accession && ('Lab case ' + accession)
     ].filter(Boolean).join(' · ');
     if (action === 'further_management') {
-        const reviewDisposition = !!extras.allowWithoutHistology || isTopicalFollowUpLesion(lesion);
+        const canOpen = typeof lesionCanOpenFurtherManagement === 'function'
+            ? lesionCanOpenFurtherManagement(lesion)
+            : (lesionHasSavedHistology(lesion) || isTopicalFollowUpLesion(lesion));
+        const reviewDisposition = !!extras.allowWithoutHistology || (canOpen && !lesionHasSavedHistology(lesion));
         if (!lesionHasSavedHistology(lesion) && !reviewDisposition) {
             showToast('Save the histology result before opening further management.');
             return { lesion, needResult: true };
@@ -2791,7 +2975,7 @@ async function applyAdviceFromContact(lesion) {
             return { changed: true, openExcision: true, openChildId: lesion.id };
         }
         if (proposed === 'topical') {
-            lesion.managementStatus = 'topical_followup';
+            lesion.managementStatus = 'awaiting_assessment';
             lesion.type = 'topical';
             lesion.currentPlan = formatProposedManagementPlan(lesion);
             await saveManagedLesionRecord(lesion, 'comms:advised', 'Patient advised');
@@ -3008,12 +3192,19 @@ async function markBillingProcessed(ids) {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         isTopicalFollowUpLesion,
+        hasOutstandingTopicalWork,
+        isScheduledReviewLesion,
+        isMonitorLesionPlan,
+        lesionReviewDispositionKind,
+        lesionAllowsReviewDisposition,
         lesionCanOpenFurtherManagement,
+        lesionReviewDispositionCopy,
         lesionOwnProcedureKind,
         deriveLesionStatusFromPlan,
         lesionLifecycleStatus,
         spawnFurtherManagementChild,
         recordHistologyOutcome,
+        applyAdviceFromContact,
         setManagedLesionStatus
     };
 }
