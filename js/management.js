@@ -3186,7 +3186,8 @@ async function submitManageLesionModal() {
         openManageLesionNfaConfirm();
         return false;
     }
-    if (!hasExistingResult && next === 'further_management') {
+    if (!hasExistingResult && next === 'further_management'
+        && !(typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion))) {
         showToast('Save a histology result before opening further management.');
         closeManageLesionModal();
         if (typeof openHistologyModal === 'function') openHistologyModal(id);
@@ -3196,8 +3197,11 @@ async function submitManageLesionModal() {
         if (progress) progress('Saving lesion…', 0.25);
         const extras = {
             callNote: '',
-            contact,
+            contact: (typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion))
+                ? 'advised_now'
+                : contact,
             fileNoCall: false,
+            allowWithoutHistology: typeof isTopicalFollowUpLesion === 'function' && isTopicalFollowUpLesion(lesion),
             proposedPlan: (next === 'further_management' || next === 'plan_excision') ? proposedPlan : '',
             proposedPlanNote: (next === 'further_management' || next === 'plan_excision') ? proposedPlanNote : ''
         };
