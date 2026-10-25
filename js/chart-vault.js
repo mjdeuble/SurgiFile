@@ -20,6 +20,16 @@ const CHART_SCREENING_FIELDS = [
     { id: 'bldDOAC', type: 'checkbox' },
     { id: 'bldHerbals', type: 'checkbox' },
     { id: 'medicationsText', type: 'value' },
+    { id: 'chadsDrug', type: 'value' },
+    { id: 'chadsIndication', type: 'value' },
+    { id: 'chadsSex', type: 'value' },
+    { id: 'chadsHf', type: 'checkbox' },
+    { id: 'chadsHtn', type: 'checkbox' },
+    { id: 'chadsDiabetes', type: 'checkbox' },
+    { id: 'chadsStroke', type: 'checkbox' },
+    { id: 'chadsVascular', type: 'checkbox' },
+    { id: 'chadsHoldDays', type: 'value' },
+    { id: 'chadsIncludeConsent', type: 'checkbox' },
     { id: 'diaPacemaker', type: 'checkbox' },
     { id: 'diaMetalwork', type: 'checkbox' },
     { id: 'diaCochlear', type: 'checkbox' },
@@ -303,6 +313,7 @@ function updateScreeningOnFileHint(screening) {
 }
 
 function collectChartScreeningFromDom() {
+    if (typeof writeChadsHiddenFields === 'function') writeChadsHiddenFields();
     const fields = {};
     CHART_SCREENING_FIELDS.forEach((field) => {
         const el = document.getElementById(field.id);
@@ -868,6 +879,7 @@ function applyChartScreeningToDom(screening) {
     });
     screeningMarkedComplete = !!(sameVisit && screening && screening.completed);
     if (typeof toggleMelanomaSubFields === 'function') toggleMelanomaSubFields();
+    if (typeof applyChadsFieldsFromStore === 'function') applyChadsFieldsFromStore();
     if (typeof recalculateRecall === 'function') recalculateRecall();
     if (typeof updateScreeningCompleteButton === 'function') updateScreeningCompleteButton();
     if (typeof updateExamSectionHeaders === 'function') updateExamSectionHeaders();
@@ -897,6 +909,11 @@ function resetScreeningAndExamForm() {
         if (last) last.value = '';
         if (typeof handleScopeChange === 'function') handleScopeChange();
         else if (typeof updateExamRequiredFields === 'function') updateExamRequiredFields();
+        const chadsDm = document.getElementById('chadsDiabetes');
+        if (chadsDm) delete chadsDm.dataset.userSet;
+        const chadsInclude = document.getElementById('chadsIncludeConsent');
+        if (chadsInclude) delete chadsInclude.dataset.autoed;
+        if (typeof applyChadsFieldsFromStore === 'function') applyChadsFieldsFromStore();
         if (typeof toggleMelanomaSubFields === 'function') toggleMelanomaSubFields();
         if (typeof recalculateRecall === 'function') recalculateRecall();
         Object.keys(outputCopyState).forEach((key) => {
@@ -1169,6 +1186,10 @@ function generateScreeningEmrSection(options) {
         if (document.getElementById('bldHerbals')?.checked) screeningTxt += `    - Anticoagulant: Fish Oil / Vit E / Herbals\n`;
         const medText = document.getElementById('medicationsText')?.value.trim();
         if (medText) screeningTxt += `    - Current Medications: ${medText}\n`;
+        const chadsLines = typeof formatChadsConsentLines === 'function' ? formatChadsConsentLines() : [];
+        chadsLines.forEach((line) => {
+            screeningTxt += `    - ${line}\n`;
+        });
     } else if (groupStates['bld'] === 'NO') {
         hasAnyScreening = true;
         screeningTxt += `- Bleeding & Anticoagulation Risk: NO (No blood thinners reported)\n`;
@@ -1253,6 +1274,8 @@ function screeningConsentHistoryLines() {
         const meds = document.getElementById('medicationsText')?.value.trim();
         if (bits.length) lines.push('Bleeding risk / anticoagulants: ' + bits.join(', '));
         if (meds) lines.push('Medications: ' + meds);
+        const chadsLines = typeof formatChadsConsentLines === 'function' ? formatChadsConsentLines() : [];
+        chadsLines.forEach((line) => lines.push(line));
     } else if (groupStates['bld'] === 'NO') {
         lines.push('No anticoagulants reported.');
     }
@@ -1306,6 +1329,20 @@ function patientSummaryHistoryLines() {
         if (fields.bldHerbals) bits.push('fish oil / herbals');
         if (bits.length) lines.push('Bleeding risk / anticoagulants: ' + bits.join(', '));
         if (fields.medicationsText) lines.push('Medications: ' + fields.medicationsText);
+        if (fields.bldDOAC && typeof formatChadsConsentLines === 'function') {
+            formatChadsConsentLines({
+                drug: fields.chadsDrug || 'rivaroxaban',
+                indication: fields.chadsIndication || 'af',
+                sex: fields.chadsSex || '',
+                dob: (typeof currentPatient !== 'undefined' && currentPatient?.dob) || '',
+                hf: !!fields.chadsHf,
+                htn: !!fields.chadsHtn,
+                diabetes: !!fields.chadsDiabetes,
+                stroke: !!fields.chadsStroke,
+                vascular: !!fields.chadsVascular,
+                holdDays: Number(fields.chadsHoldDays) || 0
+            }).forEach((line) => lines.push(line));
+        }
     }
     if (groups.dia === 'YES') {
         if (fields.diaPacemaker) lines.push('CRITICAL: Cardiac pacemaker / ICD — monopolar diathermy contraindicated.');

@@ -51,6 +51,7 @@ function prepareExcisionConsentWorkspace() {
     }
     if (typeof applyCurrentPatientToForms === 'function') applyCurrentPatientToForms();
     else if (typeof syncPatientIdentifiers === 'function') syncPatientIdentifiers('main');
+    if (typeof syncChadsConsentCard === 'function') syncChadsConsentCard();
     updateExcisionConsentModalActions();
     return true;
 }
@@ -581,6 +582,7 @@ function collectConsentFormData() {
         locRisks: collectCheckedRisks('chkLocRisk_'),
         nonTxRisks: collectCheckedRisks('chkNonTxRisk_'),
         customRisks: Array.isArray(customConsentRisks) ? customConsentRisks.slice() : [],
+        anticoagHoldLines: (typeof collectChadsConsentBlock === 'function' && collectChadsConsentBlock()?.lines) || [],
         oopFee: document.getElementById('consentOopFee')?.value || "$150.00 Out-of-Pocket Gap",
         reexFee: document.getElementById('consentReexcisionFeeText')?.value || "Standard procedural fees apply if margin re-excision required"
     };
@@ -635,6 +637,10 @@ function buildConsentPlainText(data) {
     txt += '=== 4. LOCATION-SPECIFIC MATERIAL RISKS ===\n\n';
     txt += 'Specific risks associated with operating on these anatomical body sites include:\n';
     txt += bullets(d.locRisks, 'Standard anatomical area risks discussed.') + '\n\n';
+    if (d.anticoagHoldLines && d.anticoagHoldLines.length) {
+        txt += '=== ANTICOAGULANT INTERRUPTION (CHA2DS2-VASC) ===\n\n';
+        txt += bullets(d.anticoagHoldLines) + '\n\n';
+    }
     if (d.customRisks.length) {
         txt += '=== 5. PATIENT-SPECIFIC RISKS DISCUSSED ===\n\n';
         txt += bullets(d.customRisks) + '\n\n';
@@ -737,6 +743,11 @@ function buildConsentPrintHtml(data) {
             <div class="section-head">4. Location-Specific Material Risks</div>
             <p>Specific risks associated with operating on these anatomical body sites include:</p>
             <ul>${li(d.locRisks, 'Standard anatomical area risks discussed.')}</ul>
+
+            ${d.anticoagHoldLines && d.anticoagHoldLines.length ? `
+                <div class="section-head">Anticoagulant interruption (CHA₂DS₂-VASc)</div>
+                <ul>${li(d.anticoagHoldLines)}</ul>
+            ` : ''}
 
             ${d.customRisks.length ? `
                 <div class="section-head">5. Patient-Specific Risks Discussed</div>

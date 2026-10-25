@@ -12,8 +12,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="stylesheet" href="css/tailwind.css?v=194">
-    <link rel="stylesheet" href="css/app.css?v=194">
+    <link rel="stylesheet" href="css/tailwind.css?v=195">
+    <link rel="stylesheet" href="css/app.css?v=195">
 </head>
 
 <body class="bg-slate-100 text-slate-800 h-screen overflow-hidden flex flex-col">
@@ -455,7 +455,7 @@
                                     <input type="checkbox" id="bldWarfarin" onchange="updateOutput()" class="rounded text-blue-600 mr-2"> Warfarin
                                 </label>
                                 <label class="flex items-center text-slate-700 cursor-pointer">
-                                    <input type="checkbox" id="bldDOAC" onchange="updateOutput()" class="rounded text-blue-600 mr-2"> DOAC (Apixaban/Rivaroxaban)
+                                    <input type="checkbox" id="bldDOAC" onchange="onDoacScreeningChange()" class="rounded text-blue-600 mr-2"> DOAC (Apixaban/Rivaroxaban)
                                 </label>
                                 <label class="flex items-center text-slate-700 cursor-pointer">
                                     <input type="checkbox" id="bldHerbals" onchange="updateOutput()" class="rounded text-blue-600 mr-2"> Fish Oil / Vit E / Garlic
@@ -464,6 +464,75 @@
                             <div>
                                 <label class="block text-xs font-semibold text-slate-600 mb-1">Medications List / Details</label>
                                 <input type="text" id="medicationsText" oninput="updateOutput()" placeholder="e.g. Aspirin 100mg daily, Metformin 500mg bd" class="w-full text-xs p-2 border border-slate-300 rounded">
+                            </div>
+                            <input type="hidden" id="chadsDrug" value="rivaroxaban">
+                            <input type="hidden" id="chadsIndication" value="af">
+                            <input type="hidden" id="chadsSex" value="">
+                            <div id="chadsVascPanel" class="hidden p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
+                                <div>
+                                    <p class="text-xs font-bold uppercase tracking-wider text-indigo-950">CHA₂DS₂-VASc — extra stroke risk while a DOAC is held</p>
+                                    <p class="text-[11px] text-indigo-900 mt-1">Use this when the patient is on a DOAC (usually rivaroxaban) for atrial fibrillation and will miss tablets for the procedure. Ask:</p>
+                                    <ul class="list-disc ml-4 mt-1 text-[11px] text-indigo-950 space-y-0.5">
+                                        <li>Which tablet, and is it for AF / flutter or for a clot in the legs or lungs?</li>
+                                        <li>Heart failure, high blood pressure, diabetes</li>
+                                        <li>Prior stroke, TIA, or clot to another organ</li>
+                                        <li>Heart attack, blocked leg arteries, or aortic plaque</li>
+                                        <li>How many days they will miss the tablet, including the procedure day</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <p class="text-[11px] font-semibold text-indigo-950 mb-1">DOAC</p>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                                        <label class="flex items-center text-slate-800 cursor-pointer"><input type="radio" name="chadsDrug" value="rivaroxaban" checked onchange="onChadsVascChange()" class="text-indigo-700 mr-2"> Rivaroxaban (Xarelto)</label>
+                                        <label class="flex items-center text-slate-800 cursor-pointer"><input type="radio" name="chadsDrug" value="apixaban" onchange="onChadsVascChange()" class="text-indigo-700 mr-2"> Apixaban (Eliquis)</label>
+                                        <label class="flex items-center text-slate-800 cursor-pointer"><input type="radio" name="chadsDrug" value="dabigatran" onchange="onChadsVascChange()" class="text-indigo-700 mr-2"> Dabigatran (Pradaxa)</label>
+                                        <label class="flex items-center text-slate-800 cursor-pointer"><input type="radio" name="chadsDrug" value="edoxaban" onchange="onChadsVascChange()" class="text-indigo-700 mr-2"> Edoxaban (Lixiana)</label>
+                                    </div>
+                                </div>
+                                <div>
+                                    <p class="text-[11px] font-semibold text-indigo-950 mb-1">Indication</p>
+                                    <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                                        <label class="flex items-center text-slate-800 cursor-pointer"><input type="radio" name="chadsIndication" value="af" checked onchange="onChadsVascChange()" class="text-indigo-700 mr-2"> Atrial fibrillation / flutter</label>
+                                        <label class="flex items-center text-slate-800 cursor-pointer"><input type="radio" name="chadsIndication" value="vte" onchange="onChadsVascChange()" class="text-indigo-700 mr-2"> VTE / other (score not used)</label>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <p class="text-[11px] font-semibold text-indigo-950 mb-1">Sex</p>
+                                        <div class="flex gap-4 text-xs">
+                                            <label class="flex items-center text-slate-800 cursor-pointer"><input type="radio" name="chadsSex" value="male" onchange="onChadsVascChange()" class="text-indigo-700 mr-2"> Male</label>
+                                            <label class="flex items-center text-slate-800 cursor-pointer"><input type="radio" name="chadsSex" value="female" onchange="onChadsVascChange()" class="text-indigo-700 mr-2"> Female</label>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p class="text-[11px] font-semibold text-indigo-950 mb-1">Age</p>
+                                        <p id="chadsAgeDisplay" class="text-[11px] text-slate-700">Enter a date of birth on the chart — age scores 1 point from 65 and 2 from 75.</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                                    <label class="flex items-center text-slate-800 cursor-pointer"><input type="checkbox" id="chadsHf" onchange="onChadsVascChange()" class="rounded text-indigo-700 mr-2"> Congestive heart failure / LV impairment</label>
+                                    <label class="flex items-center text-slate-800 cursor-pointer"><input type="checkbox" id="chadsHtn" onchange="onChadsVascChange()" class="rounded text-indigo-700 mr-2"> Hypertension (treated or untreated)</label>
+                                    <label class="flex items-center text-slate-800 cursor-pointer"><input type="checkbox" id="chadsDiabetes" onchange="onChadsDiabetesUserChange()" class="rounded text-indigo-700 mr-2"> Diabetes</label>
+                                    <label class="flex items-center text-slate-800 cursor-pointer"><input type="checkbox" id="chadsStroke" onchange="onChadsVascChange()" class="rounded text-indigo-700 mr-2"> Prior stroke, TIA, or systemic embolism</label>
+                                    <label class="flex items-center text-slate-800 cursor-pointer sm:col-span-2"><input type="checkbox" id="chadsVascular" onchange="onChadsVascChange()" class="rounded text-indigo-700 mr-2"> Vascular disease (prior MI, peripheral arterial disease, or aortic plaque)</label>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-semibold text-indigo-950 mb-1" for="chadsHoldDays">Days the DOAC will be held</label>
+                                    <select id="chadsHoldDays" onchange="onChadsVascChange()" class="w-full sm:w-48 p-2 border border-indigo-200 rounded bg-white text-xs">
+                                        <option value="1">1 day</option>
+                                        <option value="2">2 days</option>
+                                        <option value="3" selected>3 days</option>
+                                        <option value="4">4 days</option>
+                                        <option value="5">5 days</option>
+                                        <option value="7">7 days</option>
+                                    </select>
+                                    <p class="text-[11px] text-indigo-900 mt-1">Rivaroxaban is often missed the day before and the day of a bleeding-risk skin procedure, then restarted the next day — commonly 2–3 uncovered days.</p>
+                                </div>
+                                <div id="chadsResultBox" class="p-2.5 bg-white border border-indigo-200 rounded text-xs space-y-1"></div>
+                                <label class="flex items-start text-xs text-slate-800 cursor-pointer">
+                                    <input type="checkbox" id="chadsIncludeConsent" onchange="onChadsVascChange()" class="rounded text-indigo-700 mr-2 mt-0.5">
+                                    <span>Include this estimate on the surgical consent if the calculation is complete</span>
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -518,7 +587,7 @@
                                     <input type="checkbox" id="heaSmoking" onchange="updateOutput()" class="rounded text-blue-600 mr-2"> Active Smoking (Flap/Graft Ischemia)
                                 </label>
                                 <label class="flex items-center text-slate-700 cursor-pointer">
-                                    <input type="checkbox" id="heaDiabetes" onchange="updateOutput()" class="rounded text-blue-600 mr-2"> Diabetes Mellitus
+                                    <input type="checkbox" id="heaDiabetes" onchange="onHealingDiabetesChange()" class="rounded text-blue-600 mr-2"> Diabetes Mellitus
                                 </label>
                                 <label class="flex items-center text-slate-700 cursor-pointer">
                                     <input type="checkbox" id="heaImmuno" onchange="recalculateRecall()" class="rounded text-blue-600 mr-2"> Immunosuppression / Biologics
@@ -1031,9 +1100,22 @@
                         </div>
                     </div>
 
+                    <div id="consentChadsCard" class="consent-section hidden">
+                        <span class="consent-section-title">E. DOAC hold — CHA₂DS₂-VASc interruption risk</span>
+                        <p class="insp-hint">Ask the CHA₂DS₂-VASc factors on History (Bleeding &amp; anticoagulation) when a DOAC is ticked. The estimate appears here and on the printed consent if you include it.</p>
+                        <div id="consentChadsSummary" class="text-xs text-slate-800 bg-indigo-50 border border-indigo-200 rounded-lg p-2.5"></div>
+                        <label class="flex items-start text-xs text-slate-800 cursor-pointer mt-2">
+                            <input type="checkbox" id="consentChadsInclude" onchange="onConsentChadsIncludeChange()" class="rounded text-indigo-700 mr-2 mt-0.5">
+                            <span>Include this calculation on the consent form</span>
+                        </label>
+                        <div class="mt-2">
+                            <button type="button" onclick="focusChadsVascCalculator()" class="consent-win-btn">Edit factors on History</button>
+                        </div>
+                    </div>
+
                     <!-- Custom Patient-Specific Risks -->
                     <div class="consent-section">
-                        <span class="consent-section-title">E. Patient-specific custom clinical risks</span>
+                        <span class="consent-section-title">F. Patient-specific custom clinical risks</span>
                         <div class="consent-custom-row">
                             <input type="text" id="consentCustomRiskInput" placeholder="e.g. Patient on active Warfarin (higher bleeding risk), high anxiety, prior keloid on chest" class="insp-input">
                             <button type="button" onclick="addCustomConsentRisk()" class="consent-win-btn">Add custom risk</button>
@@ -2632,31 +2714,32 @@
         <span id="toastMessage" class="text-xs font-medium">Action completed successfully.</span>
     </div>
 
-    <script src="js/state.js?v=194"></script>
-    <script src="js/diagnosis-catalogue.js?v=194"></script>
-    <script src="js/crypto.js?v=194"></script>
-    <script src="js/vault.js?v=194"></script>
-    <script src="js/ui.js?v=194"></script>
-    <script src="js/topical.js?v=194"></script>
-    <script src="js/decline-plan.js?v=194"></script>
-    <script src="js/billing.js?v=194"></script>
-    <script src="js/margin-guide.js?v=194"></script>
-    <script src="js/skin-check.js?v=194"></script>
-    <script src="js/consent.js?v=194"></script>
-    <script src="js/clinic-profile.js?v=194"></script>
-    <script src="js/aftercare.js?v=194"></script>
-    <script src="js/letters.js?v=194"></script>
-    <script src="js/outputs.js?v=194"></script>
-    <script src="js/excision.js?v=194"></script>
-    <script src="js/lesion-vault.js?v=194"></script>
-    <script src="js/billing-vault.js?v=194"></script>
-    <script src="js/chart-vault.js?v=194"></script>
-    <script src="js/note-vault.js?v=194"></script>
-    <script src="js/consent-vault.js?v=194"></script>
-    <script src="js/auth.js?v=194"></script>
-    <script src="js/management.js?v=194"></script>
-    <script src="js/chart.js?v=194"></script>
-    <script src="js/procedure-session.js?v=194"></script>
-    <script src="js/app.js?v=194"></script>
+    <script src="js/state.js?v=195"></script>
+    <script src="js/diagnosis-catalogue.js?v=195"></script>
+    <script src="js/crypto.js?v=195"></script>
+    <script src="js/vault.js?v=195"></script>
+    <script src="js/ui.js?v=195"></script>
+    <script src="js/topical.js?v=195"></script>
+    <script src="js/decline-plan.js?v=195"></script>
+    <script src="js/chads-vasc.js?v=195"></script>
+    <script src="js/billing.js?v=195"></script>
+    <script src="js/margin-guide.js?v=195"></script>
+    <script src="js/skin-check.js?v=195"></script>
+    <script src="js/consent.js?v=195"></script>
+    <script src="js/clinic-profile.js?v=195"></script>
+    <script src="js/aftercare.js?v=195"></script>
+    <script src="js/letters.js?v=195"></script>
+    <script src="js/outputs.js?v=195"></script>
+    <script src="js/excision.js?v=195"></script>
+    <script src="js/lesion-vault.js?v=195"></script>
+    <script src="js/billing-vault.js?v=195"></script>
+    <script src="js/chart-vault.js?v=195"></script>
+    <script src="js/note-vault.js?v=195"></script>
+    <script src="js/consent-vault.js?v=195"></script>
+    <script src="js/auth.js?v=195"></script>
+    <script src="js/management.js?v=195"></script>
+    <script src="js/chart.js?v=195"></script>
+    <script src="js/procedure-session.js?v=195"></script>
+    <script src="js/app.js?v=195"></script>
 </body>
 </html>
