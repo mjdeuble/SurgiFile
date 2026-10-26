@@ -714,6 +714,7 @@ function openLesionModal(lesionId = null) {
 
     handlePlanChange();
     if (typeof updateConsultExcisionClosureUI === 'function') updateConsultExcisionClosureUI();
+    if (typeof refreshLocationZoneField === 'function') refreshLocationZoneField('lesionLocation');
     modal.classList.remove('hidden');
 }
 
@@ -817,10 +818,8 @@ function updateConsultExcisionClosureUI() {
 function saveLesion() {
     if (!requireCurrentPatient('Select a patient so this lesion is saved to their chart.')) return;
     const loc = document.getElementById('lesionLocation').value.trim();
-    if (!loc) {
-        showToast('Please enter an anatomical location for the lesion.');
-        return;
-    }
+    const locZone = typeof requireMatchedLocation === 'function' ? requireMatchedLocation(loc) : (loc ? { region: '' } : null);
+    if (!locZone) return;
 
     const editId = document.getElementById('editLesionId').value;
     const plan = document.getElementById('lesionPlan').value;
@@ -948,7 +947,8 @@ function saveLesion() {
         ...topicalFields,
         ...declineFields,
         ...(copiedPrior || {}),
-        ...(patientSnap || {})
+        ...(patientSnap || {}),
+        ...(typeof locationZoneFields === 'function' ? locationZoneFields(loc) : {})
     };
     if (typeof applyInferredBillingLesionType === 'function') {
         applyInferredBillingLesionType(lesionRecord);

@@ -2737,3 +2737,38 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             cursor: pointer;
             padding: 0 0.1rem;
         }
+        .loc-zone {
+            position: relative;
+            width: 100%;
+        }
+        .loc-zone-input.is-unmatched,
+        .insp-input.loc-zone-input.is-unmatched,
+        .loc-zone-input.is-unmatched:focus,
+        .insp-input.loc-zone-input.is-unmatched:focus {
+            border-color: #dc2626 !important;
+            background: #fee2e2 !important;
+            outline: 1px solid #dc2626;
+            box-shadow: 0 0 0 1px #fecaca;
+        }
+        .loc-zone-input.is-matched,
+        .insp-input.loc-zone-input.is-matched,
+        .loc-zone-input.is-matched:focus,
+        .insp-input.loc-zone-input.is-matched:focus {
+            border-color: #16a34a !important;
+            background: #dcfce7 !important;
+            outline: 1px solid #16a34a;
+            box-shadow: 0 0 0 1px #bbf7d0;
+        }
+        .loc-zone-note {
+            margin: 0.3rem 0 0;
+            font-size: 11px;
+            line-height: 1.35;
+            color: #64748b;
+        }
+        .loc-zone-note.is-unmatched { color: #b91c1c; font-weight: 600; }
+        .loc-zone-note.is-matched { color: #15803d; font-weight: 600; }
+        #ex-billing-region-container.is-auto-region select:disabled {
+            background: #f0fdf4;
+            border-color: #86efac;
+            color: #166534;
+        }
