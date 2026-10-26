@@ -202,7 +202,16 @@ function uniqueVisitReviewLesionIds(ids) {
 }
 
 function markVisitReviewAndRefreshOutput(id) {
-    if (typeof touchVisitReviewLesion === 'function') touchVisitReviewLesion(id);
+    const key = String(id || '').trim();
+    if (!key) return;
+    if (typeof hasCurrentPatient !== 'function' || !hasCurrentPatient()) return;
+    const lesion = typeof findLesionRecordById === 'function'
+        ? findLesionRecordById(key)
+        : ((typeof managedLesions !== 'undefined' ? managedLesions : []).find((item) => String(item.id) === key) || null);
+    if (lesion && typeof lesionBelongsToOpenChart === 'function' && !lesionBelongsToOpenChart(lesion)) {
+        return;
+    }
+    if (typeof touchVisitReviewLesion === 'function') touchVisitReviewLesion(key);
     if (typeof updateOutput === 'function') updateOutput();
 }
 
@@ -270,13 +279,13 @@ function hydrateVisitLesionsFromIds(ids) {
     const next = [];
     managedLesions.forEach((item) => {
         if (!wanted.has(String(item.id))) return;
-        const row = { ...item };
-        if (typeof lesionChartId === 'function' && lesionChartId(row) !== chartId) {
-            row.chartId = chartId;
-            if (currentPatient.name) row.patientName = row.patientName || currentPatient.name;
-            if (currentPatient.dob) row.patientDob = row.patientDob || currentPatient.dob;
+        if (typeof lesionAllowedOnVisitHydrate === 'function') {
+            if (!lesionAllowedOnVisitHydrate(item, chartId)) return;
+        } else {
+            const itemChart = typeof lesionChartId === 'function' ? lesionChartId(item) : (item.chartId || '');
+            if (itemChart && itemChart !== chartId) return;
         }
-        next.push(row);
+        next.push({ ...item });
     });
     lesions = next;
 }

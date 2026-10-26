@@ -177,8 +177,8 @@ function lesionCanCloseNoFollowup(lesion) {
 }
 
 function resultPlanLabel(plan) {
-    if (plan === 'further_management' || plan === 'plan_excision') return 'Needs further management';
-    if (plan === 'no_followup') return 'No further action';
+    if (plan === 'further_management' || plan === 'plan_excision') return 'Next episode';
+    if (plan === 'no_followup') return 'No further treatment';
     return '';
 }
 
@@ -481,6 +481,29 @@ function lesionAllowsReviewDisposition(lesion) {
     return !!lesionReviewDispositionKind(lesion);
 }
 
+function lesionShowsNextStepPlan(lesion) {
+    const kind = lesionReviewDispositionKind(lesion);
+    return kind === 'result' || kind === 'topical' || kind === 'scheduled';
+}
+
+function lesionFlattensNextStepPlan(lesion) {
+    return lesionReviewDispositionKind(lesion) === 'result';
+}
+
+function lesionOverflowCloseKind(lesion) {
+    const kind = lesionReviewDispositionKind(lesion);
+    if (kind === 'cancel_plan' || kind === 'no_result' || kind === 'refer') return kind;
+    return '';
+}
+
+function lesionAllowsOverflowClose(lesion) {
+    return !!lesionOverflowCloseKind(lesion);
+}
+
+function lesionAllowsOverflowNextEpisode(lesion) {
+    return lesionOverflowCloseKind(lesion) === 'refer';
+}
+
 function lesionCanOpenFurtherManagement(lesion) {
     if (!lesion) return false;
     if (typeof lesionHasSavedHistology === 'function' ? lesionHasSavedHistology(lesion) : !!String(lesion.histologyResult || '').trim()) {
@@ -495,91 +518,112 @@ function lesionReviewDispositionCopy(lesion) {
     if (kind === 'topical') {
         return {
             kind,
-            heading: 'Review plan',
-            nfa: 'Cleared / no further action',
-            further: 'Needs further management',
-            hint: 'Cleared at this review — no further action. The original topical episode stays on the history.',
+            layout: 'binary',
+            heading: '',
+            nfa: 'Clear — no further treatment',
+            further: 'Open next episode',
+            hint: 'Clears this review. The original topical episode stays on the history.',
             confirmTitle: 'Clear this lesion?',
             confirmBody: 'This marks the topical episode complete. The original prescription stays on the history.',
             confirmButton: 'Confirm cleared',
-            placeholder: 'e.g. Field clear at review — no further treatment'
+            placeholder: 'e.g. Field clear at review — no further treatment',
+            overflowClose: '',
+            overflowNext: ''
         };
     }
     if (kind === 'no_result') {
         return {
             kind,
-            heading: 'Review plan',
-            nfa: 'Close without result',
-            further: 'Needs further management',
+            layout: 'overflow',
+            heading: '',
+            nfa: 'Close without a report',
+            further: '',
             hint: 'Closes this episode without a histology report. Use this if the specimen was lost or will not be reported.',
-            confirmTitle: 'Close without a result?',
+            confirmTitle: 'Close without a report?',
             confirmBody: 'This closes the episode without a histology report. Use this if the pot was lost or will not be reported.',
-            confirmButton: 'Close without result',
-            placeholder: 'e.g. Specimen lost — close without result'
+            confirmButton: 'Close without a report',
+            placeholder: 'e.g. Specimen lost — close without a report',
+            overflowClose: 'Close without a report',
+            overflowNext: ''
         };
     }
     if (kind === 'cancel_plan') {
         return {
             kind,
-            heading: 'Review plan',
-            nfa: 'Cancel plan / no further action',
-            further: 'Needs further management',
+            layout: 'overflow',
+            heading: '',
+            nfa: 'Cancel this booking',
+            further: '',
             hint: 'Cancels the booked procedure. The original plan stays on the history.',
-            confirmTitle: 'Cancel this planned procedure?',
+            confirmTitle: 'Cancel this booking?',
             confirmBody: 'This cancels the booked procedure and clinically finalises the lesion. You can reopen it later if treatment is needed.',
-            confirmButton: 'Cancel plan',
-            placeholder: 'e.g. Patient cancelled booked excision'
+            confirmButton: 'Cancel this booking',
+            placeholder: 'e.g. Patient cancelled booked excision',
+            overflowClose: 'Cancel this booking',
+            overflowNext: ''
         };
     }
     if (kind === 'refer') {
         return {
             kind,
-            heading: 'Review plan',
-            nfa: 'Episode complete',
-            further: 'Needs further management',
+            layout: 'overflow',
+            heading: '',
+            nfa: 'Mark this referral complete',
+            further: 'Open next episode',
             hint: 'Marks this referral episode complete. The original referral plan stays on the history.',
-            confirmTitle: 'Mark this referral episode complete?',
+            confirmTitle: 'Mark this referral complete?',
             confirmBody: 'This clinically finalises the lesion. The referral plan stays on the history.',
-            confirmButton: 'Mark episode complete',
-            placeholder: 'e.g. Referral sent to plastics'
+            confirmButton: 'Mark referral complete',
+            placeholder: 'e.g. Referral sent to plastics',
+            overflowClose: 'Mark this referral complete',
+            overflowNext: 'Open next episode'
         };
     }
     if (kind === 'scheduled') {
         return {
             kind,
-            heading: 'Review plan',
-            nfa: 'Cleared / no further action',
-            further: 'Needs further management',
-            hint: 'Cleared at this review — no further action. The original plan stays on the history.',
+            layout: 'binary',
+            heading: '',
+            nfa: 'Clear — no further treatment',
+            further: 'Open next episode',
+            hint: 'Clears this review. The original plan stays on the history.',
             confirmTitle: 'Clear this lesion at review?',
             confirmBody: 'This marks the scheduled review complete. The original plan stays on the history.',
             confirmButton: 'Confirm cleared',
-            placeholder: 'e.g. Stable at review — no further treatment'
+            placeholder: 'e.g. Stable at review — no further treatment',
+            overflowClose: '',
+            overflowNext: ''
         };
     }
     if (kind === 'open') {
         return {
             kind,
-            heading: 'Review plan',
-            nfa: 'No further action',
-            further: 'Needs further management',
-            hint: 'Confirming no further action clinically finalises this lesion. You can reopen it later if more treatment is needed.',
-            confirmTitle: 'No further action for this lesion?',
+            layout: 'none',
+            heading: '',
+            nfa: '',
+            further: '',
+            hint: '',
+            confirmTitle: 'No further treatment for this lesion?',
             confirmBody: 'This clinically finalises the lesion. You can change it later if more treatment is needed.',
-            confirmButton: 'Confirm no further action',
-            placeholder: 'e.g. Discussed — no further action'
+            confirmButton: 'Confirm no further treatment',
+            placeholder: 'e.g. Discussed — no further treatment',
+            overflowClose: '',
+            overflowNext: ''
         };
     }
     return {
         kind: kind || 'result',
-        heading: 'Clinical plan',
-        nfa: 'No further action',
-        further: 'Needs further management',
-        hint: 'Confirming no further action clinically finalises this lesion. You can reopen it later if more treatment is needed.',
-        confirmTitle: 'No further action for this lesion?',
+        layout: 'next_step',
+        heading: 'Next step',
+        nfa: 'No further treatment',
+        further: '',
+        hint: 'No further treatment clinically finalises this lesion. You can reopen it later if more treatment is needed.',
+        confirmTitle: 'No further treatment for this lesion?',
         confirmBody: 'This clinically finalises the lesion. You can change it later if more treatment is needed.',
-        confirmButton: 'Confirm no further action',
-        placeholder: 'e.g. Morning review — desk to phone after 10'
+        confirmButton: 'Confirm no further treatment',
+        placeholder: 'e.g. Morning review — desk to phone after 10',
+        overflowClose: '',
+        overflowNext: ''
     };
 }
 
@@ -1187,12 +1231,12 @@ async function persistManagementChild(child) {
     child.createdAt = child.createdAt || now;
     child.updatedAt = now;
     child.schemaVersion = LESION_SCHEMA_VERSION;
-    if (patient.chartId) child.chartId = patient.chartId;
+    if (!child.chartId && patient.chartId) child.chartId = patient.chartId;
     else if (!child.chartId && child.patientName && child.patientDob && typeof patientChartId === 'function') {
         child.chartId = patientChartId(child.patientName, child.patientDob);
     }
-    if (patient.patientName) child.patientName = child.patientName || patient.patientName;
-    if (patient.patientDob) child.patientDob = child.patientDob || patient.patientDob;
+    if (!child.patientName && patient.patientName) child.patientName = patient.patientName;
+    if (!child.patientDob && patient.patientDob) child.patientDob = patient.patientDob;
     if (patient.patientPhone) child.phone = child.phone || patient.patientPhone;
     if (patient.clinician) child.clinician = child.clinician || patient.clinician;
     if (typeof vaultAuth !== 'undefined' && vaultAuth.username) child.owner = vaultAuth.username;
@@ -1256,7 +1300,7 @@ async function spawnFurtherManagementChild(prior, extras) {
     extras = extras || {};
     if (!prior?.id) return null;
     if (!lesionHasSavedHistology(prior) && !extras.allowWithoutHistology) {
-        showToast('Save histology before opening further management.');
+        showToast('Save histology before opening a next episode.');
         return null;
     }
     const key = String(prior.id);
@@ -1957,6 +2001,38 @@ function patientIdentityFromRecord(source) {
     };
 }
 
+function lesionPersistIdentity(sessionLesion, existing, patient) {
+    sessionLesion = sessionLesion || {};
+    existing = existing || {};
+    patient = patient || {};
+    const ownChart = sessionLesion.chartId || existing.chartId || '';
+    const snapChart = patient.chartId || '';
+    const keepOwn = !!(ownChart && snapChart && ownChart !== snapChart);
+    if (keepOwn) {
+        return {
+            patientName: sessionLesion.patientName || existing.patientName || patient.patientName || '',
+            patientDob: sessionLesion.patientDob || existing.patientDob || patient.patientDob || '',
+            patientPhone: sessionLesion.patientPhone || existing.patientPhone || sessionLesion.phone || existing.phone || patient.patientPhone || '',
+            clinician: sessionLesion.clinician || existing.clinician || patient.clinician || '',
+            chartId: ownChart
+        };
+    }
+    return {
+        patientName: patient.patientName || sessionLesion.patientName || existing.patientName || '',
+        patientDob: patient.patientDob || sessionLesion.patientDob || existing.patientDob || '',
+        patientPhone: patient.patientPhone || sessionLesion.patientPhone || existing.patientPhone || sessionLesion.phone || existing.phone || '',
+        clinician: patient.clinician || sessionLesion.clinician || existing.clinician || '',
+        chartId: patient.chartId || sessionLesion.chartId || existing.chartId || ''
+    };
+}
+
+function lesionAllowedOnVisitHydrate(item, chartId) {
+    if (!item) return false;
+    const itemChart = typeof lesionChartId === 'function' ? lesionChartId(item) : (item.chartId || '');
+    if (itemChart && chartId && itemChart !== chartId) return false;
+    return true;
+}
+
 function sessionPatientSnapshot() {
     if (hasCurrentPatient()) {
         return {
@@ -2615,6 +2691,7 @@ async function persistSessionLesionToVault(sessionLesion) {
     const priorConsent = lesionConsentStatus(existing);
     const now = new Date().toISOString();
     const patient = sessionPatientSnapshot();
+    const identity = lesionPersistIdentity(sessionLesion, existing, patient);
     const merged = { ...existing, ...sessionLesion };
     if (merged.priorLesionId) sanitizeOpenReexcisionChild(merged);
     const type = deriveLesionType(merged);
@@ -2655,11 +2732,11 @@ async function persistSessionLesionToVault(sessionLesion) {
         createdAt: existing.createdAt || now,
         updatedAt: now,
         owner: vaultAuth.username,
-        patientName: patient.patientName || sessionLesion.patientName || existing.patientName || '',
-        patientDob: patient.patientDob || sessionLesion.patientDob || existing.patientDob || '',
-        patientPhone: patient.patientPhone || sessionLesion.patientPhone || existing.patientPhone || sessionLesion.phone || existing.phone || '',
-        clinician: patient.clinician || sessionLesion.clinician || existing.clinician || '',
-        chartId: patient.chartId || sessionLesion.chartId || existing.chartId || '',
+        patientName: identity.patientName,
+        patientDob: identity.patientDob,
+        patientPhone: identity.patientPhone,
+        clinician: identity.clinician,
+        chartId: identity.chartId,
         type,
         managementStatus,
         currentPlan: sessionLesion.currentPlan || existing.currentPlan || '',
@@ -2970,7 +3047,7 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
             : (lesionHasSavedHistology(lesion) || isTopicalFollowUpLesion(lesion));
         const reviewDisposition = !!extras.allowWithoutHistology || (canOpen && !lesionHasSavedHistology(lesion));
         if (!lesionHasSavedHistology(lesion) && !reviewDisposition) {
-            showToast('Save the histology result before opening further management.');
+            showToast('Save the histology result before opening a next episode.');
             return { lesion, needResult: true };
         }
         lesion.currentPlan = 'Further management — opening linked lesion';
@@ -3169,12 +3246,12 @@ async function persistReexcisionChild(child) {
     }
     child.billingStatus = child.billingStatus || 'none';
     child.schemaVersion = LESION_SCHEMA_VERSION;
-    if (patient.chartId) child.chartId = patient.chartId;
+    if (!child.chartId && patient.chartId) child.chartId = patient.chartId;
     else if (!child.chartId && child.patientName && child.patientDob && typeof patientChartId === 'function') {
         child.chartId = patientChartId(child.patientName, child.patientDob);
     }
-    if (patient.patientName) child.patientName = child.patientName || patient.patientName;
-    if (patient.patientDob) child.patientDob = child.patientDob || patient.patientDob;
+    if (!child.patientName && patient.patientName) child.patientName = patient.patientName;
+    if (!child.patientDob && patient.patientDob) child.patientDob = patient.patientDob;
     if (patient.patientPhone) child.phone = child.phone || patient.patientPhone;
     if (patient.clinician) child.clinician = child.clinician || patient.clinician;
     if (typeof vaultAuth !== 'undefined' && vaultAuth.username) child.owner = vaultAuth.username;
@@ -3252,6 +3329,13 @@ if (typeof module !== 'undefined' && module.exports) {
         isMonitorLesionPlan,
         lesionReviewDispositionKind,
         lesionAllowsReviewDisposition,
+        lesionShowsNextStepPlan,
+        lesionFlattensNextStepPlan,
+        lesionOverflowCloseKind,
+        lesionAllowsOverflowClose,
+        lesionAllowsOverflowNextEpisode,
+        lesionPersistIdentity,
+        lesionAllowedOnVisitHydrate,
         lesionCanOpenFurtherManagement,
         lesionReviewDispositionCopy,
         lesionOwnProcedureKind,

@@ -46,6 +46,9 @@ const topical = {
     history: []
 };
 eq(vault.isTopicalFollowUpLesion(topical), true, 'topical with follow-up needs a review disposition');
+eq(vault.lesionShowsNextStepPlan(topical), true, 'topical review shows clear / next episode');
+eq(vault.lesionReviewDispositionCopy(topical).nfa, 'Clear — no further treatment', 'topical clear label');
+eq(vault.lesionReviewDispositionCopy(topical).further, 'Open next episode', 'topical next-episode label');
 eq(vault.lesionCanOpenFurtherManagement(topical), true, 'topical follow-up can open further management without histology');
 eq(vault.lesionOwnProcedureKind(topical), 'topical / field treatment', 'topical kind label');
 eq(vault.deriveLesionStatusFromPlan(topical), 'topical_followup', 'follow-up still derives topical_followup');

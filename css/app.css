@@ -1342,6 +1342,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             font-size: 11px;
             color: #555;
         }
+        .insp-overflow {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.15rem;
+        }
+        .insp-overflow-link {
+            display: inline-block;
+            padding: 0;
+            border: 0;
+            background: none;
+            color: #1d4ed8;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: underline;
+            text-align: left;
+        }
+        .insp-overflow-link:hover {
+            color: #1e3a8a;
+        }
         .insp-warn {
             font-size: 11px;
             color: #7a4b00;

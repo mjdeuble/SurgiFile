@@ -83,7 +83,7 @@ const further = {
     proposedPlanNote: 'Book 4mm margin',
     timeline: [{ type: 'plan', at: '2026-10-20T09:30:00.000Z', note: '' }]
 };
-eq(chartReviewPlanLine(further, now), 'Needs further management', 'further management without a proposed-plan helper');
+eq(chartReviewPlanLine(further, now), 'Next episode', 'further management without a proposed-plan helper');
 global.formatProposedManagementPlan = (lesion) => 'Proposed: Excision — ' + (lesion.proposedPlanNote || '');
 eq(chartReviewPlanLine(further, now), 'Proposed: Excision — Book 4mm margin', 'further management uses proposed plan when helper exists');
 delete global.formatProposedManagementPlan;
