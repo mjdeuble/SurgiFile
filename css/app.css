@@ -850,11 +850,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         .chart-shell {
             display: flex;
             align-items: stretch;
+            position: relative;
+            min-width: 0;
+            --chart-tree-width: 16.5rem;
         }
         .chart-tree {
             display: flex;
             flex-direction: column;
-            width: 16.5rem;
+            width: var(--chart-tree-width, 16.5rem);
             flex-shrink: 0;
             min-height: 0;
             background: #fff;
@@ -865,6 +868,31 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         }
         .chart-tree.hidden {
             display: none;
+        }
+        .chart-tree-resize {
+            flex: 0 0 5px;
+            width: 5px;
+            margin: 0 -1px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            cursor: col-resize;
+            position: relative;
+            z-index: 3;
+            touch-action: none;
+        }
+        .chart-tree-resize:hover,
+        .chart-tree-resize:focus-visible,
+        .chart-tree-resize.is-dragging {
+            background: #0078d4;
+        }
+        .chart-tree-resize.hidden {
+            display: none;
+        }
+        body.is-tree-resizing,
+        body.is-tree-resizing * {
+            cursor: col-resize !important;
+            user-select: none !important;
         }
         .chart-tree-toolbar {
             display: flex;
@@ -1907,6 +1935,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             background: #d6d6d6;
             overflow: hidden;
             min-height: 0;
+            min-width: 0;
+        }
+        @media (max-width: 1100px) {
+            .chart-shell.is-chart-open .chart-main,
+            .chart-shell.is-practice .chart-main {
+                overflow: auto;
+            }
+            .chart-shell.is-chart-open .chart-inspector-body,
+            .chart-shell.is-practice .chart-inspector-body {
+                overflow-x: auto;
+            }
         }
         .chart-shell.is-chart-open #view-skin-check:not(.hidden),
         .chart-shell.is-chart-open #view-excision-generator:not(.hidden),

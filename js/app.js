@@ -13,12 +13,13 @@ function bootDermRecord() {
     if (typeof renderChartSidebar === 'function') renderChartSidebar();
     initVaultIdleLock();
     if (typeof updateExamRequiredFields === 'function') updateExamRequiredFields();
+    if (typeof initChartTreeLayout === 'function') initChartTreeLayout();
     if (typeof collapseAllAccordions === 'function') collapseAllAccordions();
     if (typeof updateExamSectionHeaders === 'function') updateExamSectionHeaders();
     if (typeof updateScreeningCompleteButton === 'function') updateScreeningCompleteButton();
 
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js?v=195').catch(() => {
+        navigator.serviceWorker.register('sw.js?v=197').catch(() => {
             // Offline cache is optional when opened from file:// or without HTTPS
         });
     }
