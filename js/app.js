@@ -7,6 +7,7 @@ function bootDermRecord() {
     initExcisionGeneratorModule();
     initTopicalModule();
     if (typeof initDiagnosisTypeaheads === 'function') initDiagnosisTypeaheads();
+    if (typeof initLocationZoneFields === 'function') initLocationZoneFields();
     initAuthModule();
     initManagementModule();
     if (typeof bindChartPatientIdentityFields === 'function') bindChartPatientIdentityFields();
@@ -19,7 +20,7 @@ function bootDermRecord() {
     if (typeof updateScreeningCompleteButton === 'function') updateScreeningCompleteButton();
 
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js?v=197').catch(() => {
+        navigator.serviceWorker.register('sw.js?v=198').catch(() => {
             // Offline cache is optional when opened from file:// or without HTTPS
         });
     }
