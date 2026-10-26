@@ -52,8 +52,9 @@ const awaiting = {
 };
 eq(vault.lesionReviewDispositionKind(awaiting), 'open', 'awaiting assessment is an open review');
 eq(vault.lesionAllowsReviewDisposition(awaiting), true, 'awaiting assessment can be cleared');
+eq(vault.lesionShowsNextStepPlan(awaiting), false, 'awaiting assessment has no standing next-step radios');
 eq(vault.lesionCanOpenFurtherManagement(awaiting), true, 'awaiting assessment can open a child');
-eq(vault.lesionReviewDispositionCopy(awaiting).nfa, 'No further action', 'awaiting assessment NFA label');
+eq(vault.lesionReviewDispositionCopy(awaiting).layout, 'none', 'awaiting assessment hides review radios');
 
 const refer = {
     id: 'R1',
@@ -64,7 +65,9 @@ const refer = {
     history: []
 };
 eq(vault.lesionReviewDispositionKind(refer), 'refer', 'refer is a referral review');
-eq(vault.lesionReviewDispositionCopy(refer).nfa, 'Episode complete', 'refer NFA label');
+eq(vault.lesionShowsNextStepPlan(refer), false, 'refer has no standing next-step radios');
+eq(vault.lesionAllowsOverflowClose(refer), true, 'refer can be closed from overflow');
+eq(vault.lesionReviewDispositionCopy(refer).overflowClose, 'Mark this referral complete', 'refer close label');
 eq(vault.deriveLesionStatusFromPlan(refer), 'awaiting_assessment', 'refer stays awaiting assessment');
 
 const monitorOpen = {
@@ -77,6 +80,8 @@ const monitorOpen = {
 eq(vault.isScheduledReviewLesion(monitorOpen), true, 'monitor with interval is a scheduled review');
 eq(vault.deriveLesionStatusFromPlan(monitorOpen), 'awaiting_assessment', 'monitor with interval stays open');
 eq(vault.lesionReviewDispositionKind(monitorOpen), 'scheduled', 'monitor interval kind is scheduled');
+eq(vault.lesionShowsNextStepPlan(monitorOpen), true, 'scheduled review shows clear / next episode');
+eq(vault.lesionReviewDispositionCopy(monitorOpen).nfa, 'Clear — no further treatment', 'scheduled clear label');
 eq(vault.deriveLesionStatusFromPlan({ ...monitorOpen, monitorFollowUp: 'none' }), 'no_followup', 'monitor without interval still completes');
 
 const declineReview = {
@@ -134,7 +139,9 @@ const planned = {
 };
 eq(vault.lesionReviewDispositionKind(planned), 'cancel_plan', 'undone planned procedure is cancel_plan');
 eq(vault.lesionCanOpenFurtherManagement(planned), true, 'cancelled plan can open further management');
-eq(vault.lesionReviewDispositionCopy(planned).nfa, 'Cancel plan / no further action', 'cancel plan NFA label');
+eq(vault.lesionShowsNextStepPlan(planned), false, 'on-track booking has no standing radios');
+eq(vault.lesionAllowsOverflowClose(planned), true, 'planned procedure can cancel from overflow');
+eq(vault.lesionReviewDispositionCopy(planned).overflowClose, 'Cancel this booking', 'cancel booking overflow label');
 
 const punch = {
     id: 'H1',
@@ -149,7 +156,34 @@ const punch = {
 eq(vault.lesionReviewDispositionKind(punch), 'no_result', 'done procedure without report is no_result');
 eq(vault.lesionAllowsReviewDisposition(punch), true, 'no-result episode can be closed');
 eq(vault.lesionCanOpenFurtherManagement(punch), false, 'no-result further management still needs histology');
-eq(vault.lesionReviewDispositionCopy(punch).nfa, 'Close without result', 'no-result NFA label');
+eq(vault.lesionShowsNextStepPlan(punch), false, 'awaiting-result pot has no standing radios');
+eq(vault.lesionAllowsOverflowClose(punch), true, 'no-result episode can close from overflow');
+eq(vault.lesionReviewDispositionCopy(punch).overflowClose, 'Close without a report', 'no-result overflow label');
+
+const withResult = {
+    id: 'H3',
+    plan: 'Punch / Shave Biopsy',
+    type: 'punch',
+    procedureCompletedAt: '2026-10-01T00:00:00.000Z',
+    managementStatus: 'needs_contact',
+    histologyResult: 'BCC',
+    timeline: [],
+    history: []
+};
+eq(vault.lesionReviewDispositionKind(withResult), 'result', 'saved result is a next-step plan');
+eq(vault.lesionShowsNextStepPlan(withResult), true, 'saved result shows next-step radios');
+eq(vault.lesionFlattensNextStepPlan(withResult), true, 'saved result flattens to real next plans');
+eq(vault.lesionReviewDispositionCopy(withResult).layout, 'next_step', 'saved result uses next-step layout');
+
+const stolen = vault.lesionPersistIdentity(
+    { chartId: 'chart-b', patientName: 'Blake', patientDob: '01/01/1960' },
+    { chartId: 'chart-b', patientName: 'Blake' },
+    { chartId: 'chart-a', patientName: 'Avery', patientDob: '02/02/1950' }
+);
+eq(stolen.chartId, 'chart-b', 'persist keeps the lesion on its own chart');
+eq(stolen.patientName, 'Blake', 'persist keeps the lesion patient name');
+eq(vault.lesionAllowedOnVisitHydrate({ chartId: 'chart-b' }, 'chart-a'), false, 'foreign lesion stays off this visit');
+eq(vault.lesionAllowedOnVisitHydrate({ chartId: 'chart-a' }, 'chart-a'), true, 'own lesion can hydrate onto this visit');
 
 const inTheatre = { ...planned, id: 'TNOW', managementStatus: 'current_case' };
 eq(vault.lesionAllowsReviewDisposition(inTheatre), false, 'current case has no review disposition');

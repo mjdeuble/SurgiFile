@@ -441,7 +441,7 @@ function chartReviewDisposition(lesion) {
         if (typeof formatProposedManagementPlan === 'function' && String(lesion?.proposedPlan || '').trim()) {
             return formatProposedManagementPlan(lesion);
         }
-        return 'Needs further management';
+        return 'Next episode';
     }
     if (String(lesion?.proposedPlan || '').trim() && typeof formatProposedManagementPlan === 'function') {
         return formatProposedManagementPlan(lesion);
@@ -1033,8 +1033,8 @@ function generateResultIemrNote(lesion, draft) {
     const fileNoCall = !!(draft && draft.fileNoCall) || (lesion && lesion.contactState === 'file_no_call');
     const accession = lesion && typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
     const planBit = (plan === 'further_management' || plan === 'plan_excision')
-        ? 'Needs further management.'
-        : (plan === 'no_followup' ? 'No further action.' : '');
+        ? 'Next episode opened.'
+        : (plan === 'no_followup' ? 'No further treatment.' : '');
     let contactBit = 'Patient to be contacted.';
     if (fileNoCall) contactBit = 'Filed. No call (agreed call-if-anything).';
     else if (contact === 'advised_now') contactBit = 'Patient advised.';
