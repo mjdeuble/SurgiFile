@@ -2121,6 +2121,7 @@ function setCurrentPatient(patient, options) {
         shaveConsentVerified = false;
         pendingShaveConsentAction = '';
         lesions = [];
+        if (typeof visitReviewLesionIds !== 'undefined') visitReviewLesionIds = [];
         patientConcerns = [];
         noPatientConcerns = false;
         screeningMarkedComplete = false;
@@ -2153,6 +2154,7 @@ function clearCurrentPatient() {
     shaveConsentVerified = false;
     pendingShaveConsentAction = '';
     lesions = [];
+    if (typeof visitReviewLesionIds !== 'undefined') visitReviewLesionIds = [];
     patientConcerns = [];
     noPatientConcerns = false;
     screeningMarkedComplete = false;

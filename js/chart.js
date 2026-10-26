@@ -2097,6 +2097,7 @@ async function submitInspectorManageLesion() {
             await saveManagedLesionRecord(saved, 'note', callNote);
         }
         showToast('Note added.');
+        if (typeof markVisitReviewAndRefreshOutput === 'function') markVisitReviewAndRefreshOutput(id);
         renderChartLesionInspector({ force: true });
         if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
         return true;
@@ -2130,6 +2131,10 @@ async function submitInspectorManageLesion() {
             }
             showToast(message);
             if (saved?.openChildId) selectedChartLesionId = String(saved.openChildId);
+            if (typeof markVisitReviewAndRefreshOutput === 'function') {
+                markVisitReviewAndRefreshOutput(id);
+                if (saved?.openChildId) markVisitReviewAndRefreshOutput(saved.openChildId);
+            }
             renderChartLesionInspector({ force: true });
             if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
             return true;
