@@ -165,7 +165,6 @@ function lesionNeedsFormalConsent(lesion) {
     if (typeof lesionHasProcedureConsent === 'function' && lesionHasProcedureConsent(lesion)) return false;
     if (isConsentExcisionLesion(lesion)) return true;
     if (isConsentShaveLesion(lesion)) return true;
-    if (isConsentPunchLesion(lesion)) return true;
     return false;
 }
 
@@ -231,14 +230,12 @@ function importExcisionLesions(options) {
     updateConsentRiskPreview();
     if (source.length && !options?.silent) {
         const shaves = source.filter(isConsentShaveLesion).length;
-        const punches = source.filter((item) => !isConsentShaveLesion(item) && isConsentPunchLesion(item)).length;
         const reex = source.filter((item) => item.priorLesionId).length;
-        const excisions = source.length - shaves - punches;
+        const excisions = source.length - shaves;
         const bits = [];
         if (reex) bits.push(reex + ' re-excision' + (reex === 1 ? '' : 's') + ' needing written consent');
         if (excisions - reex > 0) bits.push((excisions - reex) + ' excision' + (excisions - reex === 1 ? '' : 's'));
         if (shaves) bits.push(shaves + ' shave' + (shaves === 1 ? '' : 's') + ' without verbal consent');
-        if (punches) bits.push(punches + ' punch' + (punches === 1 ? '' : 'es') + ' without consent');
         showToast('Loaded ' + (bits.join(', ') || (source.length + ' procedure' + (source.length === 1 ? '' : 's'))) + ' (all selected).');
     } else if (!source.length && !options?.silent) {
         showToast('No unconsented lesions to import.');

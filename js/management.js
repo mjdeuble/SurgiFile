@@ -558,8 +558,12 @@ function lesionProcedureTypeLabel(lesion) {
             : ((typeof lesionHasCopiedPriorHistology === 'function' && lesionHasCopiedPriorHistology(lesion))
                 ? 'Excision after prior histology'
                 : 'Excision')];
-        if (detail.excisionClosureType) bits.push(detail.excisionClosureType);
-        if (detail.graftType) bits.push(detail.graftType);
+        const closure = detail.excisionClosureType || lesion?.excisionClosureType || '';
+        if (closure) bits.push(closure);
+        const graft = typeof resolvedGraftType === 'function'
+            ? resolvedGraftType(closure, detail.graftType || lesion?.graftType)
+            : ((closure === 'Graft' || closure === 'Graft + Flap') ? (detail.graftType || lesion?.graftType || '') : '');
+        if (graft) bits.push(graft);
         return bits.join(' · ');
     }
     if (type === 'topical') return 'Topical';
@@ -4048,7 +4052,10 @@ async function finaliseCurrentCaseToBilling() {
     lesion.procedureCompletedAt = lesion.procedureCompletedAt || lesion.excisionFinalisedAt;
     lesion.type = 'excision';
     lesion.excisionClosureType = document.getElementById('exExcisionClosureType')?.value || '';
-    lesion.graftType = document.getElementById('exGraftType')?.value || '';
+    const rawGraft = document.getElementById('exGraftType')?.value || '';
+    lesion.graftType = typeof resolvedGraftType === 'function'
+        ? resolvedGraftType(lesion.excisionClosureType, rawGraft)
+        : ((lesion.excisionClosureType === 'Graft' || lesion.excisionClosureType === 'Graft + Flap') ? rawGraft : '');
     lesion.billingGraftType = lesion.graftType;
     lesion.billingReconstruction = inferBillingReconstruction({
         excisionClosureType: lesion.excisionClosureType
