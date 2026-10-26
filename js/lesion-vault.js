@@ -308,6 +308,13 @@ function isExcisionLesion(lesion) {
     return lesionType(lesion) === 'excision';
 }
 
+function isVerbalConsentBiopsyType(biopsyType) {
+    const raw = String(biopsyType || '');
+    if (/shave/i.test(raw)) return true;
+    if (/punch/i.test(raw) && !/excision/i.test(raw)) return true;
+    return false;
+}
+
 function isDiagnosticBiopsyType(lesion) {
     const t = lesionType(lesion);
     return t === 'punch' || t === 'shave';
@@ -330,7 +337,7 @@ function lesionConsentLabel(lesion) {
 function lesionConsentRequirement(lesion) {
     const t = typeof lesionType === 'function' ? lesionType(lesion) : String(lesion?.type || '');
     if (t === 'excision') return 'written';
-    if (t === 'shave' || t === 'punch') return 'any';
+    if (t === 'shave' || t === 'punch') return 'verbal';
     const plan = String(lesion?.plan || '');
     const procedure = String(lesion?.procedureDetail?.procedure || lesion?.procedure || '');
     if (plan.includes('Excision') || /^excision$/i.test(procedure)) return 'written';
@@ -345,6 +352,7 @@ function lesionHasProcedureConsent(lesion) {
     const status = lesionConsentStatus(lesion);
     if (!status) return false;
     if (need === 'written') return status === 'written';
+    if (need === 'verbal') return status === 'verbal' || status === 'written';
     return status === 'verbal' || status === 'written';
 }
 
@@ -354,7 +362,52 @@ function lesionConsentNeededLabel(lesion) {
     if (lesion?.priorLesionId && lesionConsentRequirement(lesion) === 'written') {
         return 'Written consent needed (re-excision)';
     }
-    return lesionConsentRequirement(lesion) === 'written' ? 'Written consent needed' : 'Consent needed';
+    const need = lesionConsentRequirement(lesion);
+    if (need === 'written') return 'Written consent needed';
+    if (need === 'verbal') return 'Verbal consent needed';
+    return 'Consent needed';
+}
+
+function practiceLesionPotNumber(lesion) {
+    return typeof normalizeHistologyPot === 'function'
+        ? normalizeHistologyPot(lesion?.histologyPot)
+        : String(lesion?.histologyPot || '').trim();
+}
+
+function practiceLesionDayKey(lesion) {
+    const iso = lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt || lesion?.histologyAt || '';
+    if (iso) {
+        const d = new Date(iso);
+        if (!Number.isNaN(d.getTime())) {
+            return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+        }
+        return String(iso).slice(0, 10);
+    }
+    return String(lesion?.createdAt || lesion?.examinedAt || '').slice(0, 10);
+}
+
+function practiceLesionOrderKey(lesion) {
+    return String(lesion?.createdAt || lesion?.examinedAt || lesion?.updatedAt || '') + '|' + String(lesion?.id || '');
+}
+
+function comparePracticeLesions(a, b) {
+    const dayCmp = String(practiceLesionDayKey(a)).localeCompare(String(practiceLesionDayKey(b)));
+    if (dayCmp) return dayCmp;
+    const batchCmp = String(a?.histologyBatchId || '').localeCompare(String(b?.histologyBatchId || ''));
+    if (batchCmp) return batchCmp;
+    const pa = practiceLesionPotNumber(a);
+    const pb = practiceLesionPotNumber(b);
+    if (pa && pb) {
+        const potCmp = pa.localeCompare(pb, 'en', { numeric: true, sensitivity: 'base' });
+        if (potCmp) return potCmp;
+    } else if (pa !== pb) {
+        return pa ? -1 : 1;
+    }
+    return practiceLesionOrderKey(a).localeCompare(practiceLesionOrderKey(b));
+}
+
+function practiceLesionTreeNumber(lesion, idx) {
+    return practiceLesionPotNumber(lesion) || String(Number(idx) + 1);
 }
 
 function isMonitorLesionPlan(plan) {
@@ -3205,6 +3258,14 @@ if (typeof module !== 'undefined' && module.exports) {
         spawnFurtherManagementChild,
         recordHistologyOutcome,
         applyAdviceFromContact,
-        setManagedLesionStatus
+        setManagedLesionStatus,
+        isVerbalConsentBiopsyType,
+        lesionConsentRequirement,
+        lesionHasProcedureConsent,
+        practiceLesionPotNumber,
+        practiceLesionDayKey,
+        practiceLesionOrderKey,
+        comparePracticeLesions,
+        practiceLesionTreeNumber
     };
 }

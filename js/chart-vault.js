@@ -828,17 +828,23 @@ async function ensureChartRecord(patient) {
             chart.lastName = source.lastName;
             changed = true;
         }
-        if (source?.consultBilling && !chart.consultBilling) {
-            chart.consultBilling = typeof normalizeConsultBilling === 'function'
+        if (source && Object.prototype.hasOwnProperty.call(source, 'consultBilling') && source.consultBilling) {
+            const next = typeof normalizeConsultBilling === 'function'
                 ? normalizeConsultBilling(source.consultBilling)
                 : source.consultBilling;
-            changed = true;
+            if (chart.consultBilling !== next) {
+                chart.consultBilling = next;
+                changed = true;
+            }
         }
-        if (source?.biopsyBilling && !chart.biopsyBilling) {
-            chart.biopsyBilling = typeof normalizeBiopsyBilling === 'function'
+        if (source && Object.prototype.hasOwnProperty.call(source, 'biopsyBilling') && source.biopsyBilling) {
+            const next = typeof normalizeBiopsyBilling === 'function'
                 ? normalizeBiopsyBilling(source.biopsyBilling)
                 : source.biopsyBilling;
-            changed = true;
+            if (chart.biopsyBilling !== next) {
+                chart.biopsyBilling = next;
+                changed = true;
+            }
         }
         if (changed) await saveManagedChartRecord(chart);
     }
@@ -1020,22 +1026,26 @@ async function saveCurrentChartFromDom(options) {
     if (collectedAkComparison?.explained || previousAkComparison.visitDate === todayVisitKey()) {
         chart.akComparison = collectedAkComparison || previousAkComparison;
     }
-    if (typeof currentConsultBilling === 'function') {
+    if (typeof storedConsultBilling === 'function' && storedConsultBilling(chart)) {
+        chart.consultBilling = storedConsultBilling(chart);
+    } else if (typeof currentConsultBilling === 'function') {
         chart.consultBilling = currentConsultBilling();
     } else if (typeof normalizeConsultBilling === 'function') {
         chart.consultBilling = normalizeConsultBilling(
-            document.getElementById('billingModalConsult')?.value
+            chart.consultBilling
+            || document.getElementById('billingModalConsult')?.value
             || document.getElementById('modalConsultBilling')?.value
-            || chart.consultBilling
         );
     }
-    if (typeof currentBiopsyBilling === 'function') {
+    if (typeof storedBiopsyBilling === 'function' && storedBiopsyBilling(chart)) {
+        chart.biopsyBilling = storedBiopsyBilling(chart);
+    } else if (typeof currentBiopsyBilling === 'function') {
         chart.biopsyBilling = currentBiopsyBilling();
     } else if (typeof normalizeBiopsyBilling === 'function') {
         chart.biopsyBilling = normalizeBiopsyBilling(
-            document.getElementById('billingModalBiopsy')?.value
+            chart.biopsyBilling
+            || document.getElementById('billingModalBiopsy')?.value
             || document.getElementById('modalBiopsyBilling')?.value
-            || chart.biopsyBilling
         );
     }
     if (typeof normalizeSmsNormalResultsConsent === 'function') {
@@ -1075,9 +1085,14 @@ async function saveCurrentChartFromDom(options) {
     return chart;
 }
 
+function cancelScheduledChartSave() {
+    clearTimeout(chartSaveTimer);
+    chartSaveTimer = null;
+}
+
 function scheduleChartSave() {
     if (applyingChartRecord || !hasCurrentPatient()) return;
-    clearTimeout(chartSaveTimer);
+    cancelScheduledChartSave();
     chartSaveTimer = setTimeout(() => {
         if (applyingChartRecord || !hasCurrentPatient()) return;
         saveCurrentChartFromDom().catch((err) => {
@@ -1460,12 +1475,35 @@ async function openPatientChartWork(patient, options) {
         }
         return false;
     }
+    const seededBilling = typeof seedPatientBillingFromSource === 'function'
+        ? seedPatientBillingFromSource(patient)
+        : null;
+    if (typeof cancelScheduledChartSave === 'function') cancelScheduledChartSave();
     setCurrentPatient({ ...identity, name, dob, clinician, chartId }, options);
+    if (typeof cancelScheduledChartSave === 'function') cancelScheduledChartSave();
+    const billingForChart = seededBilling || (() => {
+        const extra = {};
+        if (patient && Object.prototype.hasOwnProperty.call(patient, 'consultBilling')) {
+            extra.consultBilling = patient.consultBilling;
+        }
+        if (patient && Object.prototype.hasOwnProperty.call(patient, 'biopsyBilling')) {
+            extra.biopsyBilling = patient.biopsyBilling;
+        }
+        return extra;
+    })();
     const chart = await ensureChartRecord({
         ...currentPatient,
-        consultBilling: patient?.consultBilling,
-        biopsyBilling: patient?.biopsyBilling
+        ...billingForChart
     });
+    if (billingForChart.consultBilling || billingForChart.biopsyBilling) {
+        if (chart && billingForChart.consultBilling) chart.consultBilling = billingForChart.consultBilling;
+        if (chart && billingForChart.biopsyBilling) chart.biopsyBilling = billingForChart.biopsyBilling;
+        if (typeof persistPatientBilling === 'function') {
+            persistPatientBilling(billingForChart);
+        } else if (typeof applyPatientBillingToDom === 'function') {
+            applyPatientBillingToDom(billingForChart);
+        }
+    }
     if (chart?.phone && !currentPatient.phone) currentPatient.phone = chart.phone;
     if (chart?.firstName && !currentPatient.firstName) currentPatient.firstName = chart.firstName;
     if (chart?.lastName && !currentPatient.lastName) currentPatient.lastName = chart.lastName;

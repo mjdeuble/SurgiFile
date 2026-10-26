@@ -476,13 +476,17 @@ function collectExLesionFromForm(id, sourceLesionId) {
     const getChk = (elId) => document.getElementById(elId)?.checked || false;
     const procedure = getVal('exProcedureType');
     const punchType = procedure === 'Punch' ? (getVal('exPunchType') || 'Punch Biopsy') : '';
+    const excisionClosureType = procedure === 'Excision' ? getVal('exExcisionClosureType') : '';
+    const rawGraft = getVal('exGraftType');
     const lesionData = {
         id,
         sourceLesionId: sourceLesionId || '',
         procedure,
-        excisionClosureType: procedure === 'Excision' ? getVal('exExcisionClosureType') : '',
+        excisionClosureType,
         punchType,
-        graftType: getVal('exGraftType'),
+        graftType: typeof resolvedGraftType === 'function'
+            ? resolvedGraftType(excisionClosureType, rawGraft)
+            : ((excisionClosureType === 'Graft' || excisionClosureType === 'Graft + Flap') ? rawGraft : ''),
         justification: getVal('exFlapGraftJustification'),
         location: getVal('exLesionLocation'),
         patientName: (typeof currentPatient !== 'undefined' && currentPatient?.name) || '',

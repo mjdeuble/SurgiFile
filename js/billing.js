@@ -59,19 +59,31 @@ function readBiopsyBillingFromDom(preferredId) {
         || DEFAULT_BIOPSY_BILLING;
 }
 
+function storedConsultBilling(chart) {
+    const record = chart || (typeof currentManagedChart === 'function' ? currentManagedChart() : null);
+    if (record && record.consultBilling) return normalizeConsultBilling(record.consultBilling);
+    return '';
+}
+
+function storedBiopsyBilling(chart) {
+    const record = chart || (typeof currentManagedChart === 'function' ? currentManagedChart() : null);
+    if (record && record.biopsyBilling) return normalizeBiopsyBilling(record.biopsyBilling);
+    return '';
+}
+
 function currentConsultBilling() {
+    const stored = storedConsultBilling();
+    if (stored) return stored;
     const live = readBillingSelectValue(LIVE_CONSULT_BILLING_SELECT_IDS, normalizeConsultBilling, 'billingModalConsult');
     if (live) return live;
-    const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
-    if (chart && chart.consultBilling) return normalizeConsultBilling(chart.consultBilling);
     return DEFAULT_CONSULT_BILLING;
 }
 
 function currentBiopsyBilling() {
+    const stored = storedBiopsyBilling();
+    if (stored) return stored;
     const live = readBillingSelectValue(LIVE_BIOPSY_BILLING_SELECT_IDS, normalizeBiopsyBilling, 'billingModalBiopsy');
     if (live) return live;
-    const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
-    if (chart && chart.biopsyBilling) return normalizeBiopsyBilling(chart.biopsyBilling);
     return DEFAULT_BIOPSY_BILLING;
 }
 
@@ -127,6 +139,26 @@ function applyPatientBillingToDom(billing) {
     updateChartBillingButtonStatus(consult, biopsy);
 }
 
+function sourceHasBillingField(source, field) {
+    return !!(source && Object.prototype.hasOwnProperty.call(source, field));
+}
+
+function seedPatientBillingFromSource(source) {
+    if (!sourceHasBillingField(source, 'consultBilling') && !sourceHasBillingField(source, 'biopsyBilling')) {
+        return null;
+    }
+    const billing = {
+        consultBilling: sourceHasBillingField(source, 'consultBilling')
+            ? normalizeConsultBilling(source.consultBilling)
+            : currentConsultBilling(),
+        biopsyBilling: sourceHasBillingField(source, 'biopsyBilling')
+            ? normalizeBiopsyBilling(source.biopsyBilling)
+            : currentBiopsyBilling()
+    };
+    applyPatientBillingToDom(billing);
+    return billing;
+}
+
 function persistPatientBilling(billing) {
     if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) return;
     const consult = normalizeConsultBilling(
@@ -144,7 +176,15 @@ function persistPatientBilling(billing) {
     if (chart) {
         chart.consultBilling = consult;
         chart.biopsyBilling = biopsy;
-        if (typeof scheduleChartSave === 'function') scheduleChartSave();
+        if (typeof chartSaveTimer !== 'undefined') clearTimeout(chartSaveTimer);
+        if (typeof saveCurrentChartFromDom === 'function') {
+            saveCurrentChartFromDom().catch((err) => {
+                console.warn('Could not save patient billing', err);
+                if (typeof scheduleChartSave === 'function') scheduleChartSave();
+            });
+        } else if (typeof scheduleChartSave === 'function') {
+            scheduleChartSave();
+        }
     }
     if (typeof updateOutput === 'function') updateOutput();
 }
@@ -797,6 +837,11 @@ function closureNeedsGraftType(closure) {
     return closure === 'Graft' || closure === 'Graft + Flap';
 }
 
+function resolvedGraftType(closure, graftType) {
+    if (!closureNeedsGraftType(closure)) return '';
+    return String(graftType || '').trim();
+}
+
 function usesFlap(recon) {
     return recon === 'flap' || recon === 'flap_graft';
 }
@@ -1406,5 +1451,18 @@ async function confirmSameDaySessionBilling(lesionList) {
         codes.push(row.codes);
     }
     return { confirmed: codes.length, codes, doctorText: summary.doctorText };
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        normalizeConsultBilling,
+        normalizeBiopsyBilling,
+        storedConsultBilling,
+        storedBiopsyBilling,
+        DEFAULT_CONSULT_BILLING,
+        DEFAULT_BIOPSY_BILLING,
+        resolvedGraftType,
+        closureNeedsGraftType
+    };
 }
 

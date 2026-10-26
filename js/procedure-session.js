@@ -407,15 +407,19 @@ function procedureDetailForLesion(lesion) {
     }
     const rawPathology = saved.pathology || fromEx?.pathology || lesion?.impression || '';
     const pathology = typeof normalizePathologyString === 'function' ? normalizePathologyString(rawPathology) : rawPathology;
+    const excisionClosureType = saved.excisionClosureType || fromEx?.excisionClosureType || lesion?.excisionClosureType || '';
+    const rawGraft = saved.graftType || fromEx?.graftType || lesion?.graftType || '';
     return {
         procedure,
-        excisionClosureType: saved.excisionClosureType || fromEx?.excisionClosureType || lesion?.excisionClosureType || '',
+        excisionClosureType,
         punchType: (() => {
             if (procedure !== 'Punch') return '';
             const raw = saved.punchType || fromEx?.punchType || lesion?.biopsyType || '';
             return /excision/i.test(raw) && !/biopsy/i.test(raw) ? 'Punch Excision' : 'Punch Biopsy';
         })(),
-        graftType: saved.graftType || fromEx?.graftType || lesion?.graftType || '',
+        graftType: typeof resolvedGraftType === 'function'
+            ? resolvedGraftType(excisionClosureType, rawGraft)
+            : ((excisionClosureType === 'Graft' || excisionClosureType === 'Graft + Flap') ? rawGraft : ''),
         justification: saved.justification || fromEx?.justification || '',
         location: saved.location || fromEx?.location || lesion?.location || '',
         pathology,
@@ -509,11 +513,15 @@ function collectProcedureDetailFromForm() {
     const getVal = (elId) => document.getElementById(elId)?.value || '';
     const getChk = (elId) => !!document.getElementById(elId)?.checked;
     const procedure = getVal('exProcedureType');
+    const excisionClosureType = procedure === 'Excision' ? getVal('exExcisionClosureType') : '';
+    const rawGraft = getVal('exGraftType');
     return {
         procedure,
-        excisionClosureType: procedure === 'Excision' ? getVal('exExcisionClosureType') : '',
+        excisionClosureType,
         punchType: procedure === 'Punch' ? getVal('exPunchType') : '',
-        graftType: getVal('exGraftType'),
+        graftType: typeof resolvedGraftType === 'function'
+            ? resolvedGraftType(excisionClosureType, rawGraft)
+            : ((excisionClosureType === 'Graft' || excisionClosureType === 'Graft + Flap') ? rawGraft : ''),
         justification: getVal('exFlapGraftJustification'),
         location: getVal('exLesionLocation'),
         pathology: getVal('exProvisionalDiagnoses'),
@@ -867,8 +875,12 @@ function syncProcedureFormToChart(id) {
         if (zone.billingRegion) Object.assign(lesion, zone);
     }
     if (detail.billingRegion) lesion.billingRegion = Number(detail.billingRegion);
-    lesion.graftType = detail.graftType || lesion.graftType;
-    lesion.billingGraftType = lesion.graftType;
+    const graft = typeof resolvedGraftType === 'function'
+        ? resolvedGraftType(detail.excisionClosureType, detail.graftType)
+        : ((detail.excisionClosureType === 'Graft' || detail.excisionClosureType === 'Graft + Flap') ? (detail.graftType || '') : '');
+    detail.graftType = graft;
+    lesion.graftType = graft;
+    lesion.billingGraftType = graft;
     if (detail.pathology) lesion.impression = detail.pathology;
     if (detail.location) lesion.location = detail.location;
     if (detail.procedure === 'Punch' || detail.procedure === 'Shave') {
@@ -1259,11 +1271,12 @@ function applyProcIntraOpAmend(id) {
         const closure = getVal('procAmendClosure') || detail.excisionClosureType || 'Ellipse';
         detail.excisionClosureType = closure;
         lesion.excisionClosureType = closure;
-        if (closure === 'Graft' || closure === 'Graft + Flap') {
-            detail.graftType = getVal('procAmendGraftType') || detail.graftType;
-            lesion.graftType = detail.graftType;
-            lesion.billingGraftType = detail.graftType;
-        }
+        const graft = typeof resolvedGraftType === 'function'
+            ? resolvedGraftType(closure, getVal('procAmendGraftType') || detail.graftType)
+            : ((closure === 'Graft' || closure === 'Graft + Flap') ? (getVal('procAmendGraftType') || detail.graftType || '') : '');
+        detail.graftType = graft;
+        lesion.graftType = graft;
+        lesion.billingGraftType = graft;
         if (closure === 'Graft' || closure === 'Flap' || closure === 'Graft + Flap') {
             detail.justification = getVal('procAmendJustification');
             if (!filledValue(detail.justification)) {
