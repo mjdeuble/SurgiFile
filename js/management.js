@@ -3276,9 +3276,11 @@ async function submitManageLesionModal() {
         let message = 'Lesion updated.';
         if (further) message = 'Further management opened on a linked lesion.';
         else if (next === 'no_followup') {
-            message = saved?.billingHold
-                ? 'Lesion clinically finalised. Unbilled items stay on Billing.'
-                : 'Lesion clinically finalised. No further action.';
+            message = typeof reviewClosureMessage === 'function'
+                ? reviewClosureMessage(saved?.closurePlan, saved?.billingHold)
+                : (saved?.billingHold
+                    ? 'Lesion clinically finalised. Unbilled items stay on Billing.'
+                    : 'Lesion clinically finalised. No further action.');
         }
         if (callNote) message = (message === 'Lesion updated.' ? 'Note added.' : message);
         showToast(message);

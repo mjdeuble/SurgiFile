@@ -76,6 +76,8 @@ eq(vault.isTopicalFollowUpLesion({
     const nfa = await vault.recordHistologyOutcome('T1', '', 'no_followup', '', { callNote: 'Field clear' });
     eq(!!nfa?.closed, true, 'NFA closes the topical review');
     eq(global.managedLesions[0].managementStatus, 'no_followup', 'NFA sets no_followup');
+    eq(global.managedLesions[0].currentPlan, 'Cleared at topical review', 'topical clearance names the review');
+    eq(vault.deriveLesionStatusFromPlan({ ...topical, topicalFollowUp: '4 weeks' }), 'topical_followup', 'a review interval still stays on the same lesion');
     eq(!!global.managedLesions[0].clinicallyFinalisedAt, true, 'NFA stamps clinically finalised');
 
     global.managedLesions = [{

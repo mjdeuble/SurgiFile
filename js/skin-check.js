@@ -79,7 +79,10 @@ function formatExamPlanBadge(lesion) {
     if (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan)) {
         return 'Refer / Specialist';
     }
-    if (lesion.priorLesionId) return 'Re-excision';
+    const linkedReexcision = typeof linkedLesionPlansReexcision === 'function'
+        ? linkedLesionPlansReexcision(lesion)
+        : !!lesion.priorLesionId;
+    if (linkedReexcision) return 'Re-excision';
     const plan = formPlanValue(lesion.plan) || lesion.plan || '';
     const extra = lesion.biopsyType ? ` (${lesion.biopsyType})` : '';
     const prior = lesionUsesCopiedPriorHistology(lesion) ? ' · prior histology' : '';

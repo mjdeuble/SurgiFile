@@ -95,7 +95,28 @@ const createdToday = {
     plan: 'Awaiting Assessment',
     timeline: []
 };
-eq(chartReviewPlanLine(createdToday, now), 'Awaiting Assessment', 'lesion documented today can show its plan');
+eq(chartReviewPlanLine(createdToday, now), '', 'lesion documented today is not treated as reviewed');
+eq(formatChartReviewLesionBlock(createdToday, 1, now), '', 'documented-today lesion is omitted until it is reviewed');
+
+const reexcisionParent = {
+    id: 'L6',
+    location: 'Left forearm',
+    managementStatus: 'no_followup',
+    resultPlan: 'further_management',
+    currentPlan: 'Episode complete · re-excision booked',
+    timeline: [todayPlan]
+};
+eq(chartReviewDisposition(reexcisionParent), 'Episode complete · re-excision booked', 'closed parent keeps the re-excision reason');
+eq(chartReviewPlanLine(reexcisionParent, now), 'Episode complete · re-excision booked', 'desk note uses the stored closure reason');
+
+const topicalClear = {
+    id: 'L7',
+    location: 'Forehead',
+    managementStatus: 'no_followup',
+    currentPlan: 'Cleared at topical review',
+    clinicallyFinalisedAt: '2026-10-20T09:12:00.000Z'
+};
+eq(chartReviewDisposition(topicalClear), 'Cleared at topical review', 'topical clearance is not called no further action');
 
 const stale = {
     id: 'L5',

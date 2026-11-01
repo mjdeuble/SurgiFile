@@ -150,6 +150,8 @@ eq(vault.lesionReviewDispositionKind(punch), 'no_result', 'done procedure withou
 eq(vault.lesionAllowsReviewDisposition(punch), true, 'no-result episode can be closed');
 eq(vault.lesionCanOpenFurtherManagement(punch), false, 'no-result further management still needs histology');
 eq(vault.lesionReviewDispositionCopy(punch).nfa, 'Close without result', 'no-result NFA label');
+eq(/lost/i.test(vault.lesionReviewDispositionCopy(punch).hint + vault.lesionReviewDispositionCopy(punch).confirmBody), false, 'close without result does not say the specimen was lost');
+eq(/booked/i.test(vault.lesionReviewDispositionCopy(planned).hint + vault.lesionReviewDispositionCopy(planned).confirmBody), false, 'cancel plan does not say the procedure was booked');
 
 const inTheatre = { ...planned, id: 'TNOW', managementStatus: 'current_case' };
 eq(vault.lesionAllowsReviewDisposition(inTheatre), false, 'current case has no review disposition');
@@ -172,6 +174,7 @@ eq(vault.deriveLesionStatusFromPlan(proposedTopical), 'awaiting_assessment', 'un
     const nfa = await vault.recordHistologyOutcome('A1', '', 'no_followup', '', { callNote: 'Nothing to treat' });
     eq(!!nfa?.closed, true, 'NFA closes awaiting assessment');
     eq(global.managedLesions[0].managementStatus, 'no_followup', 'awaiting assessment becomes no_followup');
+    eq(global.managedLesions[0].currentPlan, 'No follow-up', 'open review NFA stays no follow-up');
 
     global.managedLesions = [{ ...refer, timeline: [], history: [], linkedChildId: '', linkedReexcisionId: '' }];
     const further = await vault.recordHistologyOutcome('R1', '', 'further_management', '', {
@@ -191,10 +194,13 @@ eq(vault.deriveLesionStatusFromPlan(proposedTopical), 'awaiting_assessment', 'un
     const closedNoResult = await vault.recordHistologyOutcome('H2', '', 'no_followup', '', { callNote: 'Pot lost' });
     eq(!!closedNoResult?.closed, true, 'NFA closes an episode without a result');
     eq(global.managedLesions[0].managementStatus, 'no_followup', 'no-result NFA sets no_followup');
+    eq(global.managedLesions[0].currentPlan, 'Closed without a result — billing pending', 'close without result names that reason');
 
     global.managedLesions = [{ ...planned, timeline: [], history: [], linkedChildId: '', linkedReexcisionId: '' }];
     const cancel = await vault.recordHistologyOutcome('X1', '', 'no_followup', '', { callNote: 'Patient cancelled' });
     eq(!!cancel?.closed, true, 'NFA cancels a planned procedure');
+    eq(global.managedLesions[0].currentPlan, 'Planned procedure cancelled', 'cancel plan names the cancellation');
+    eq(global.managedLesions[0].managementStatus, 'no_followup', 'cancelled plan leaves the active list');
 
     global.managedLesions = [{
         id: 'CH2',
