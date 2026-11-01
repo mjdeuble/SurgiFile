@@ -270,13 +270,8 @@ function hydrateVisitLesionsFromIds(ids) {
     const next = [];
     managedLesions.forEach((item) => {
         if (!wanted.has(String(item.id))) return;
-        const row = { ...item };
-        if (typeof lesionChartId === 'function' && lesionChartId(row) !== chartId) {
-            row.chartId = chartId;
-            if (currentPatient.name) row.patientName = row.patientName || currentPatient.name;
-            if (currentPatient.dob) row.patientDob = row.patientDob || currentPatient.dob;
-        }
-        next.push(row);
+        if (typeof lesionChartId === 'function' && lesionChartId(item) !== chartId) return;
+        next.push({ ...item });
     });
     lesions = next;
 }

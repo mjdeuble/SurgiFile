@@ -285,19 +285,28 @@ function practiceFilterLabel(filter) {
 }
 
 function practicePatientKey(record) {
-    const identity = typeof patientIdentityFromRecord === 'function'
-        ? patientIdentityFromRecord(record)
-        : {
-            name: record?.patientName || record?.name || '',
-            dob: record?.patientDob || record?.dob || '',
-            chartId: record?.chartId || ''
-        };
+    if (typeof recordAttachmentChartId === 'function') {
+        const attached = recordAttachmentChartId(record);
+        if (attached) return attached;
+    }
+    const identity = typeof attachmentPatientIdentity === 'function'
+        ? attachmentPatientIdentity(record)
+        : (typeof patientIdentityFromRecord === 'function'
+            ? patientIdentityFromRecord(record)
+            : {
+                name: record?.patientName || record?.name || '',
+                dob: record?.patientDob || record?.dob || '',
+                chartId: record?.chartId || ''
+            });
     return identity.chartId
         || [String(identity.name || '').toLowerCase(), String(identity.dob || '')].join('|')
         || 'unnamed';
 }
 
 function practicePatientSortName(record) {
+    const identity = typeof attachmentPatientIdentity === 'function' ? attachmentPatientIdentity(record) : null;
+    if (identity?.name && typeof formatPatientSearchName === 'function') return formatPatientSearchName(identity);
+    if (identity?.name) return identity.name;
     if (typeof formatPatientSearchName === 'function') return formatPatientSearchName(record);
     return record?.patientName || record?.name || 'Unnamed patient';
 }
@@ -324,9 +333,11 @@ function groupPracticePatients(items) {
     (items || []).forEach((item) => {
         const key = practicePatientKey(item);
         if (!groups.has(key)) {
+            const identity = typeof attachmentPatientIdentity === 'function' ? attachmentPatientIdentity(item) : null;
             groups.set(key, {
                 key,
                 sortName: practicePatientSortName(item),
+                dob: identity?.dob || item.patientDob || item.dob || '',
                 sample: item,
                 items: []
             });
@@ -392,9 +403,11 @@ function groupPracticeDocuments(items) {
     (items || []).forEach((item) => {
         const key = practicePatientKey(item);
         if (!groups.has(key)) {
+            const identity = typeof attachmentPatientIdentity === 'function' ? attachmentPatientIdentity(item) : null;
             groups.set(key, {
                 key,
                 sortName: practicePatientSortName(item),
+                dob: identity?.dob || item.patientDob || item.dob || '',
                 sample: item,
                 items: []
             });
@@ -582,7 +595,7 @@ function renderPracticeTree() {
             return 0;
         }
         list.innerHTML = groups.map((group) => {
-            const dob = group.sample?.patientDob || '';
+            const dob = group.dob || group.sample?.patientDob || '';
             const kids = group.items.map((item) => {
                 const id = String(item.id || '').replace(/'/g, '');
                 const kind = String(item.kind || '').replace(/'/g, '');
@@ -609,7 +622,7 @@ function renderPracticeTree() {
         return 0;
     }
     list.innerHTML = groups.map((group) => {
-        const dob = group.sample?.patientDob || '';
+        const dob = group.dob || group.sample?.patientDob || '';
         const kids = group.items.map((item, idx) => {
             const id = String(item.id || '').replace(/'/g, '');
             const selected = id && id === String(selectedChartLesionId);

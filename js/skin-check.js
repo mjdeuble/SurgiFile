@@ -241,21 +241,9 @@ function setModalBedSanitation(isClean) {
 
 async function confirmSanitationModal() {
     if (!isBedSanitised) return;
-    const name = currentPatient.name || '';
-    const dob = currentPatient.dob || '';
-    const clinician = (typeof currentDoctorName === 'function' && currentDoctorName())
-        || (typeof loggedInDoctorName === 'function' && loggedInDoctorName())
-        || '';
-    if (!name || !dob) {
+    if (!hasCurrentPatient()) {
         showToast('Open a patient chart before starting in Lesions.');
         return;
-    }
-    if (!hasCurrentPatient() || currentPatient.chartId !== patientChartId(name, dob)) {
-        if (typeof openPatientChart === 'function') {
-            await openPatientChart({ name, dob, clinician }, { silent: true, keepFilter: true });
-        } else {
-            setCurrentPatient({ name, dob, clinician });
-        }
     }
     const modal = document.getElementById('sanitationModal');
     if (modal) modal.classList.add('hidden');

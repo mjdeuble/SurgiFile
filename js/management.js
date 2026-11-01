@@ -132,21 +132,23 @@ function groupRecordsByPatientEpisode(items, options) {
     const patients = new Map();
     (items || []).forEach((item) => {
         const source = options.sourceOf ? options.sourceOf(item) : item;
-        const identity = typeof patientIdentityFromRecord === 'function'
-            ? patientIdentityFromRecord(source)
-            : {
-                name: source.patientName || item.patientName || '',
-                firstName: '',
-                lastName: '',
-                dob: source.patientDob || item.patientDob || '',
-                chartId: source.chartId || item.chartId || ''
-            };
+        const identity = typeof attachmentPatientIdentity === 'function'
+            ? attachmentPatientIdentity(source)
+            : (typeof patientIdentityFromRecord === 'function'
+                ? patientIdentityFromRecord(source)
+                : {
+                    name: source.patientName || item.patientName || '',
+                    firstName: '',
+                    lastName: '',
+                    dob: source.patientDob || item.patientDob || '',
+                    chartId: source.chartId || item.chartId || ''
+                });
         const pKey = identity.chartId
             || [String(identity.name || source.patientName || '').toLowerCase(), String(identity.dob || source.patientDob || '')].join('|')
             || 'unnamed';
         if (!patients.has(pKey)) {
             const sortName = typeof formatPatientSearchName === 'function'
-                ? formatPatientSearchName(source)
+                ? formatPatientSearchName(identity)
                 : (identity.lastName && identity.firstName
                     ? identity.lastName + ', ' + identity.firstName
                     : (identity.name || source.patientName || 'Unnamed patient'));
@@ -1582,14 +1584,16 @@ async function openChartFromLesion(id) {
         showToast('Could not find that lesion.');
         return;
     }
-    const identity = typeof patientIdentityFromRecord === 'function'
-        ? patientIdentityFromRecord(lesion)
-        : {
-            name: lesion.patientName || '',
-            dob: lesion.patientDob || '',
-            clinician: lesion.clinician || '',
-            chartId: lesion.chartId || ''
-        };
+    const identity = typeof attachmentPatientIdentity === 'function'
+        ? attachmentPatientIdentity(lesion)
+        : (typeof patientIdentityFromRecord === 'function'
+            ? patientIdentityFromRecord(lesion)
+            : {
+                name: lesion.patientName || '',
+                dob: lesion.patientDob || '',
+                clinician: lesion.clinician || '',
+                chartId: lesion.chartId || ''
+            });
     if (!identity.name && !identity.chartId) {
         showToast('This lesion has no patient chart yet.');
         return;
@@ -3709,12 +3713,18 @@ function openExcisionProcedureModal(id) {
         return;
     }
     let lesion = findLesionForExcisionProcedure(id);
-    if (lesion?.patientName && lesion?.patientDob && !hasCurrentPatient()) {
-        setCurrentPatient({
-            name: lesion.patientName,
-            dob: lesion.patientDob,
-            clinician: lesion.clinician || ''
-        });
+    if ((lesion?.patientName && lesion?.patientDob) || lesion?.chartId) {
+        if (!hasCurrentPatient()) {
+            const identity = typeof attachmentPatientIdentity === 'function'
+                ? attachmentPatientIdentity(lesion)
+                : {
+                    name: lesion.patientName,
+                    dob: lesion.patientDob,
+                    clinician: lesion.clinician || '',
+                    chartId: typeof lesionChartId === 'function' ? lesionChartId(lesion) : (lesion.chartId || '')
+                };
+            setCurrentPatient(identity);
+        }
     }
     const resolved = resolveExcisionAssignTarget(lesion);
     if (resolved.mode === 'blocked') {
@@ -3976,14 +3986,18 @@ async function submitAssignExcisionModal() {
 async function allocateManagedLesionAsCurrentCase(id) {
     const lesion = managedLesions.find((item) => item.id === id);
     if (!lesion) return;
-    if (lesion.patientName && lesion.patientDob) {
-        const nextId = lesion.chartId || (typeof patientChartId === 'function' ? patientChartId(lesion.patientName, lesion.patientDob) : '');
+    if ((lesion.patientName && lesion.patientDob) || lesion.chartId) {
+        const identity = typeof attachmentPatientIdentity === 'function'
+            ? attachmentPatientIdentity(lesion)
+            : {
+                name: lesion.patientName,
+                dob: lesion.patientDob,
+                clinician: lesion.clinician || '',
+                chartId: typeof lesionChartId === 'function' ? lesionChartId(lesion) : (lesion.chartId || '')
+            };
+        const nextId = identity.chartId || '';
         if (typeof blockOpenChartWhileVisitActive === 'function' && blockOpenChartWhileVisitActive(nextId)) return;
-        setCurrentPatient({
-            name: lesion.patientName,
-            dob: lesion.patientDob,
-            clinician: lesion.clinician || ''
-        });
+        if (!hasCurrentPatient() || currentPatient.chartId !== nextId) setCurrentPatient(identity);
     }
     await setManagedLesionStatus(id, 'current_case', 'Allocated as current operative case');
     currentManagedCaseId = id;

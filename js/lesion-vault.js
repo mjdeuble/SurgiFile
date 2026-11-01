@@ -703,19 +703,9 @@ function lesionIsHiddenByReexcisionLink(lesion) {
 }
 
 function lesionBelongsToOpenChart(lesion) {
-    if (!lesion || typeof hasCurrentPatient !== 'function' || !hasCurrentPatient()) return false;
-    const chartId = currentPatient.chartId;
-    const seen = new Set();
-    let current = lesion;
-    while (current?.id) {
-        const id = String(current.id);
-        if (seen.has(id)) break;
-        seen.add(id);
-        if (typeof lesionChartId === 'function' && lesionChartId(current) === chartId) return true;
-        if (!current.priorLesionId) break;
-        current = findLesionRecordById(current.priorLesionId);
-    }
-    return false;
+    if (!lesion || !hasCurrentPatient()) return false;
+    const chartId = lesionChartId(lesion);
+    return !!chartId && chartId === currentPatient.chartId;
 }
 
 function lesionIsCompletedEpisode(lesion) {
@@ -1183,18 +1173,10 @@ function buildManagementChildFromPrior(prior, extras) {
 async function persistManagementChild(child) {
     if (!child?.id) return null;
     const now = new Date().toISOString();
-    const patient = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : {};
     child.createdAt = child.createdAt || now;
     child.updatedAt = now;
     child.schemaVersion = LESION_SCHEMA_VERSION;
-    if (patient.chartId) child.chartId = patient.chartId;
-    else if (!child.chartId && child.patientName && child.patientDob && typeof patientChartId === 'function') {
-        child.chartId = patientChartId(child.patientName, child.patientDob);
-    }
-    if (patient.patientName) child.patientName = child.patientName || patient.patientName;
-    if (patient.patientDob) child.patientDob = child.patientDob || patient.patientDob;
-    if (patient.patientPhone) child.phone = child.phone || patient.patientPhone;
-    if (patient.clinician) child.clinician = child.clinician || patient.clinician;
+    applyChildChartIdentity(child);
     if (typeof vaultAuth !== 'undefined' && vaultAuth.username) child.owner = vaultAuth.username;
     if (!child.currentPlan) child.currentPlan = formatProposedManagementPlan(child);
     if (typeof appendLesionHistory === 'function' && !(child.history || []).length) {
@@ -1739,8 +1721,253 @@ function patientChartId(name, dob) {
     return n + '|' + d;
 }
 
+function canonicalChartName(name) {
+    const split = splitPatientName(name);
+    const composed = composePatientName(split.firstName, split.lastName);
+    return normalizeChartName(composed || name);
+}
+
+function canonicalPatientChartId(name, dob) {
+    const n = canonicalChartName(name);
+    const d = normalizeChartDob(dob);
+    if (!n || !d) return '';
+    return n + '|' + d;
+}
+
+function findChartById(id) {
+    const wanted = String(id || '').trim();
+    if (!wanted) return null;
+    if (typeof findManagedChart === 'function') {
+        const found = findManagedChart(wanted);
+        if (found) return found;
+    }
+    const charts = typeof managedCharts !== 'undefined' && Array.isArray(managedCharts) ? managedCharts : [];
+    return charts.find((chart) => chart && chart.id === wanted) || null;
+}
+
+function chartIdForName(name, dob) {
+    const raw = patientChartId(name, dob);
+    const canonical = canonicalPatientChartId(name, dob);
+    if (!raw && !canonical) return '';
+    const dobKey = normalizeChartDob(dob);
+    const charts = typeof managedCharts !== 'undefined' && Array.isArray(managedCharts) ? managedCharts : [];
+    const matches = charts.filter((chart) => {
+        if (!chart?.id || normalizeChartDob(chart.dob) !== dobKey) return false;
+        if (chart.id === raw || chart.id === canonical) return true;
+        const chartName = composePatientName(chart.firstName, chart.lastName, chart.name);
+        return !!canonical && canonicalPatientChartId(chartName, chart.dob) === canonical;
+    });
+    if (matches.length === 1) return matches[0].id;
+    if (matches.length > 1) return '';
+    return raw || canonical;
+}
+
+function identityChartId(record) {
+    if (!record) return '';
+    const stored = String(record.chartId || '').trim();
+    const named = chartIdForName(record.patientName || record.name, record.patientDob || record.dob);
+    if (stored && findChartById(stored)) return stored;
+    if (named && findChartById(named)) return named;
+    return stored || named || '';
+}
+
+function lesionAncestry(lesion) {
+    const chain = [];
+    const seen = new Set();
+    let current = lesion;
+    while (current) {
+        const id = String(current.id || '');
+        if (id) {
+            if (seen.has(id)) break;
+            seen.add(id);
+        }
+        chain.push(current);
+        if (!current.priorLesionId) break;
+        const parent = typeof findLesionRecordById === 'function' ? findLesionRecordById(current.priorLesionId) : null;
+        if (!parent) break;
+        current = parent;
+    }
+    return chain;
+}
+
+function resolvedUnlinkedChartId(lesion) {
+    if (!lesion) return '';
+    const stored = String(lesion.chartId || '').trim();
+    const namedId = chartIdForName(lesion.patientName || lesion.name, lesion.patientDob || lesion.dob);
+    const namedChart = namedId && findChartById(namedId);
+    const storedChart = stored && findChartById(stored);
+    if (namedChart && (!storedChart || namedChart.id !== storedChart.id)) return namedChart.id;
+    return identityChartId(lesion);
+}
+
 function lesionChartId(lesion) {
-    return lesion?.chartId || patientChartId(lesion?.patientName, lesion?.patientDob);
+    if (!lesion) return '';
+    const chain = lesionAncestry(lesion);
+    const root = chain[chain.length - 1] || lesion;
+    return resolvedUnlinkedChartId(root);
+}
+
+function recordAttachmentChartId(record) {
+    if (!record) return '';
+    if (record.lesionId && typeof findLesionRecordById === 'function') {
+        const lesion = findLesionRecordById(record.lesionId);
+        if (lesion) return lesionChartId(lesion);
+    }
+    if (record.patientName || record.priorLesionId || record.managementStatus || record.location) {
+        const id = lesionChartId(record);
+        if (id) return id;
+    }
+    return String(record.chartId || '').trim();
+}
+
+function attachmentPatientIdentity(record) {
+    const chartId = recordAttachmentChartId(record);
+    const chart = findChartById(chartId);
+    if (chart) {
+        const name = composePatientName(chart.firstName, chart.lastName, chart.name);
+        const split = splitPatientName(name);
+        return {
+            name,
+            firstName: chart.firstName || split.firstName,
+            lastName: chart.lastName || split.lastName,
+            dob: chart.dob || '',
+            phone: chart.phone || '',
+            clinician: chart.clinician || record?.clinician || '',
+            chartId: chart.id
+        };
+    }
+    const chain = lesionAncestry(record);
+    const root = chain[chain.length - 1] || record || {};
+    const name = root.patientName || root.name || record?.patientName || record?.name || '';
+    const split = splitPatientName(name);
+    return {
+        name,
+        firstName: root.firstName || record?.firstName || split.firstName,
+        lastName: root.lastName || record?.lastName || split.lastName,
+        dob: root.patientDob || root.dob || record?.patientDob || record?.dob || '',
+        phone: root.patientPhone || root.phone || record?.patientPhone || record?.phone || '',
+        clinician: root.clinician || record?.clinician || '',
+        chartId: chartId || root.chartId || record?.chartId || ''
+    };
+}
+
+function lesionSaveIdentity(existing, openSnap, sessionLesion) {
+    existing = existing || {};
+    openSnap = openSnap || {};
+    sessionLesion = sessionLesion || {};
+    const existingId = lesionChartId(existing);
+    const openId = String(openSnap.chartId || '').trim();
+    const keep = !!(existingId && (!openId || openId !== existingId));
+    if (keep) {
+        const owner = attachmentPatientIdentity(existing);
+        const ownerMatches = owner && owner.chartId === existingId;
+        return {
+            patientName: (ownerMatches && owner.name) || existing.patientName || sessionLesion.patientName || '',
+            patientDob: (ownerMatches && owner.dob) || existing.patientDob || sessionLesion.patientDob || '',
+            patientPhone: existing.patientPhone || sessionLesion.patientPhone || existing.phone || sessionLesion.phone || (ownerMatches && owner.phone) || '',
+            clinician: existing.clinician || sessionLesion.clinician || openSnap.clinician || '',
+            chartId: existingId
+        };
+    }
+    return {
+        patientName: openSnap.patientName || sessionLesion.patientName || existing.patientName || '',
+        patientDob: openSnap.patientDob || sessionLesion.patientDob || existing.patientDob || '',
+        patientPhone: openSnap.patientPhone || sessionLesion.patientPhone || existing.patientPhone || sessionLesion.phone || existing.phone || '',
+        clinician: openSnap.clinician || sessionLesion.clinician || existing.clinician || '',
+        chartId: openId || sessionLesion.chartId || existing.chartId || identityChartId(sessionLesion) || ''
+    };
+}
+
+function lesionChildIdentity(child, prior) {
+    const ownerId = prior ? lesionChartId(prior) : '';
+    if (prior && ownerId) {
+        return {
+            chartId: ownerId,
+            patientName: prior.patientName || child?.patientName || '',
+            patientDob: prior.patientDob || child?.patientDob || '',
+            phone: prior.phone || prior.patientPhone || child?.phone || '',
+            clinician: prior.clinician || child?.clinician || ''
+        };
+    }
+    const open = hasCurrentPatient() ? sessionPatientSnapshot() : {};
+    return {
+        chartId: child?.chartId || open.chartId || chartIdForName(child?.patientName, child?.patientDob),
+        patientName: child?.patientName || open.patientName || '',
+        patientDob: child?.patientDob || open.patientDob || '',
+        phone: child?.phone || open.patientPhone || '',
+        clinician: child?.clinician || open.clinician || ''
+    };
+}
+
+function applyChildChartIdentity(child) {
+    if (!child) return child;
+    const prior = child.priorLesionId && typeof findLesionRecordById === 'function'
+        ? findLesionRecordById(child.priorLesionId)
+        : null;
+    const ident = lesionChildIdentity(child, prior);
+    if (ident.chartId) child.chartId = ident.chartId;
+    if (ident.patientName) child.patientName = ident.patientName;
+    if (ident.patientDob) child.patientDob = ident.patientDob;
+    if (ident.phone) child.phone = ident.phone;
+    if (ident.clinician) child.clinician = child.clinician || ident.clinician;
+    return child;
+}
+
+function lesionChartRepair(lesion) {
+    if (!lesion?.id) return null;
+    const chain = lesionAncestry(lesion);
+    const root = chain[chain.length - 1] || lesion;
+    const linked = chain.length > 1 && root && String(root.id) !== String(lesion.id);
+    if (linked) {
+        const resolved = lesionChartId(root);
+        if (!resolved) return null;
+        const sameChart = String(lesion.chartId || '') === resolved;
+        const sameName = !root.patientName || lesion.patientName === root.patientName;
+        const sameDob = !root.patientDob || lesion.patientDob === root.patientDob;
+        if (sameChart && sameName && sameDob) return null;
+        return {
+            chartId: resolved,
+            patientName: root.patientName || lesion.patientName || '',
+            patientDob: root.patientDob || lesion.patientDob || '',
+            phone: lesion.phone || root.phone || root.patientPhone || ''
+        };
+    }
+    const stored = String(lesion.chartId || '').trim();
+    const namedId = chartIdForName(lesion.patientName, lesion.patientDob);
+    const namedChart = namedId ? findChartById(namedId) : null;
+    if (!namedChart || stored === namedChart.id) return null;
+    if (stored && findChartById(stored) && findChartById(stored).id === namedChart.id) return null;
+    return {
+        chartId: namedChart.id,
+        patientName: lesion.patientName || '',
+        patientDob: lesion.patientDob || '',
+        phone: lesion.phone || ''
+    };
+}
+
+async function repairMisattachedLesionCharts() {
+    const items = typeof managedLesions !== 'undefined' ? managedLesions : [];
+    let fixed = 0;
+    for (const lesion of items) {
+        const repair = lesionChartRepair(lesion);
+        if (!repair) continue;
+        lesion.chartId = repair.chartId;
+        if (repair.patientName) lesion.patientName = repair.patientName;
+        if (repair.patientDob) lesion.patientDob = repair.patientDob;
+        if (repair.phone && !lesion.phone) lesion.phone = repair.phone;
+        try {
+            if (typeof saveManagedLesionRecord === 'function') {
+                await saveManagedLesionRecord(lesion, 'repair:chart', 'Moved back to the patient chart this lesion belongs to', { silent: true });
+            }
+            fixed += 1;
+        } catch (err) {
+            console.warn('Could not move lesion back to its chart', lesion.id, err);
+        }
+    }
+    if (fixed && typeof showToast === 'function') {
+        showToast('Moved ' + fixed + ' lesion' + (fixed === 1 ? '' : 's') + ' back onto the correct patient chart.');
+    }
+    return fixed;
 }
 
 function hasCurrentPatient() {
@@ -1958,23 +2185,22 @@ function patientIdentityFromRecord(source) {
 }
 
 function sessionPatientSnapshot() {
-    if (hasCurrentPatient()) {
+    const clinician = (typeof loggedInDoctorName === 'function' && loggedInDoctorName()) || '';
+    if (!hasCurrentPatient()) {
         return {
-            patientName: currentPatient.name,
-            patientDob: currentPatient.dob,
-            patientPhone: currentPatient.phone || '',
-        clinician: (typeof loggedInDoctorName === 'function' && loggedInDoctorName()) || currentPatient.clinician || '',
-            chartId: currentPatient.chartId
+            patientName: '',
+            patientDob: '',
+            patientPhone: '',
+            clinician,
+            chartId: ''
         };
     }
-    const name = document.getElementById('mainPatientName')?.value.trim() || '';
-    const dob = document.getElementById('mainPatientDOB')?.value.trim() || '';
     return {
-        patientName: name,
-        patientDob: dob,
+        patientName: currentPatient.name,
+        patientDob: currentPatient.dob,
         patientPhone: currentPatient.phone || '',
-        clinician: (typeof loggedInDoctorName === 'function' && loggedInDoctorName()) || document.getElementById('mainDoctorName')?.value.trim() || '',
-        chartId: patientChartId(name, dob)
+        clinician: clinician || currentPatient.clinician || '',
+        chartId: currentPatient.chartId
     };
 }
 
@@ -2161,6 +2387,7 @@ function clearCurrentPatient() {
     if (typeof screeningAskedThisConsult !== 'undefined') screeningAskedThisConsult = false;
     smsNormalResultsConsent = '';
     selectedChartLesionId = '';
+    if (typeof applyCurrentPatientToForms === 'function') applyCurrentPatientToForms();
     updateHeaderPatient();
     rememberLastPatient();
     if (typeof renderManagedLesions === 'function') renderManagedLesions();
@@ -2574,6 +2801,9 @@ async function loadManagedLesionsFromVault() {
         if (typeof vaultLoadBeginStage === 'function') vaultLoadBeginStage('Loading charts…', 0.46, 0.7);
         await loadManagedChartsFromVault();
     }
+    if (typeof repairMisattachedLesionCharts === 'function') {
+        await repairMisattachedLesionCharts();
+    }
     if (typeof loadManagedVisitNotesFromVault === 'function') {
         if (typeof vaultLoadBeginStage === 'function') vaultLoadBeginStage('Loading notes…', 0.7, 0.8);
         await loadManagedVisitNotesFromVault();
@@ -2615,6 +2845,7 @@ async function persistSessionLesionToVault(sessionLesion) {
     const priorConsent = lesionConsentStatus(existing);
     const now = new Date().toISOString();
     const patient = sessionPatientSnapshot();
+    const ident = lesionSaveIdentity(existing, patient, sessionLesion);
     const merged = { ...existing, ...sessionLesion };
     if (merged.priorLesionId) sanitizeOpenReexcisionChild(merged);
     const type = deriveLesionType(merged);
@@ -2655,11 +2886,11 @@ async function persistSessionLesionToVault(sessionLesion) {
         createdAt: existing.createdAt || now,
         updatedAt: now,
         owner: vaultAuth.username,
-        patientName: patient.patientName || sessionLesion.patientName || existing.patientName || '',
-        patientDob: patient.patientDob || sessionLesion.patientDob || existing.patientDob || '',
-        patientPhone: patient.patientPhone || sessionLesion.patientPhone || existing.patientPhone || sessionLesion.phone || existing.phone || '',
-        clinician: patient.clinician || sessionLesion.clinician || existing.clinician || '',
-        chartId: patient.chartId || sessionLesion.chartId || existing.chartId || '',
+        patientName: ident.patientName,
+        patientDob: ident.patientDob,
+        patientPhone: ident.patientPhone,
+        clinician: ident.clinician,
+        chartId: ident.chartId,
         type,
         managementStatus,
         currentPlan: sessionLesion.currentPlan || existing.currentPlan || '',
@@ -3153,7 +3384,6 @@ async function persistReexcisionChild(child) {
         }
     }
     const now = new Date().toISOString();
-    const patient = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : {};
     child.createdAt = child.createdAt || now;
     child.updatedAt = now;
     child.type = 'excision';
@@ -3169,14 +3399,7 @@ async function persistReexcisionChild(child) {
     }
     child.billingStatus = child.billingStatus || 'none';
     child.schemaVersion = LESION_SCHEMA_VERSION;
-    if (patient.chartId) child.chartId = patient.chartId;
-    else if (!child.chartId && child.patientName && child.patientDob && typeof patientChartId === 'function') {
-        child.chartId = patientChartId(child.patientName, child.patientDob);
-    }
-    if (patient.patientName) child.patientName = child.patientName || patient.patientName;
-    if (patient.patientDob) child.patientDob = child.patientDob || patient.patientDob;
-    if (patient.patientPhone) child.phone = child.phone || patient.patientPhone;
-    if (patient.clinician) child.clinician = child.clinician || patient.clinician;
+    applyChildChartIdentity(child);
     if (typeof vaultAuth !== 'undefined' && vaultAuth.username) child.owner = vaultAuth.username;
     if (!child.currentPlan) child.currentPlan = defaultPlanLine(child);
     sanitizeOpenReexcisionChild(child);
@@ -3268,6 +3491,17 @@ if (typeof module !== 'undefined' && module.exports) {
         practiceLesionDayKey,
         practiceLesionOrderKey,
         comparePracticeLesions,
-        practiceLesionTreeNumber
+        practiceLesionTreeNumber,
+        patientChartId,
+        canonicalPatientChartId,
+        chartIdForName,
+        lesionChartId,
+        lesionBelongsToOpenChart,
+        recordAttachmentChartId,
+        attachmentPatientIdentity,
+        lesionSaveIdentity,
+        lesionChildIdentity,
+        lesionChartRepair,
+        sessionPatientSnapshot
     };
 }
