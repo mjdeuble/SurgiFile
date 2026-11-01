@@ -29,8 +29,16 @@ function emptyClinicProfile() {
         urgentAdvice: 'If you have heavy bleeding that will not stop, rapidly spreading infection, shortness of breath, or feel severely unwell, seek urgent care (this clinic if open, your GP, or a hospital emergency department). Take this sheet with you.',
         histoWaitGreenDays: DEFAULT_HISTO_WAIT_GREEN_DAYS,
         histoWaitOrangeDays: DEFAULT_HISTO_WAIT_ORANGE_DAYS,
+        timeZone: 'Australia/Brisbane',
         updatedAt: ''
     };
+}
+
+function clinicTimeZone(src) {
+    const p = src || (typeof clinicProfile !== 'undefined' ? clinicProfile : null) || {};
+    if (typeof normalizeClinicTimeZone === 'function') return normalizeClinicTimeZone(p.timeZone);
+    const name = String(p.timeZone || '').trim();
+    return name || 'Australia/Brisbane';
 }
 
 let clinicProfile = emptyClinicProfile();
@@ -103,7 +111,8 @@ async function loadClinicProfile() {
             website: String(data.website || '').trim(),
             urgentAdvice: String(data.urgentAdvice || emptyClinicProfile().urgentAdvice).trim(),
             histoWaitGreenDays: wait.green,
-            histoWaitOrangeDays: wait.orange
+            histoWaitOrangeDays: wait.orange,
+            timeZone: clinicTimeZone(data)
         };
     } catch (err) {
         /* File may not exist yet. */
@@ -130,6 +139,7 @@ async function saveClinicProfile(profile) {
     const wait = clinicHistoWaitThresholds(next);
     next.histoWaitGreenDays = wait.green;
     next.histoWaitOrangeDays = wait.orange;
+    next.timeZone = clinicTimeZone(next);
     await writeTextFile(vaultRootHandle, clinicProfileFileName(), JSON.stringify(next, null, 2));
     clinicProfile = next;
     return clinicProfile;
@@ -328,6 +338,31 @@ function fillClinicProfileSettingsFields() {
     const wait = clinicHistoWaitThresholds();
     fill('clinicHistoWaitGreenDays', String(wait.green));
     fill('clinicHistoWaitOrangeDays', String(wait.orange));
+    const zone = clinicTimeZone();
+    const select = document.getElementById('clinicTimeZone');
+    const custom = document.getElementById('clinicTimeZoneCustom');
+    const wrap = document.getElementById('clinicTimeZoneCustomWrap');
+    const known = select && Array.from(select.options).some((opt) => opt.value === zone);
+    if (select) select.value = known ? zone : '__other__';
+    if (custom) custom.value = known ? '' : zone;
+    if (wrap) wrap.classList.toggle('hidden', !!known);
+}
+
+function syncClinicTimeZoneCustomField() {
+    const select = document.getElementById('clinicTimeZone');
+    const wrap = document.getElementById('clinicTimeZoneCustomWrap');
+    if (!wrap) return;
+    wrap.classList.toggle('hidden', !select || select.value !== '__other__');
+}
+
+function clinicTimeZoneFromModal() {
+    let zone = document.getElementById('clinicTimeZone')?.value || '';
+    if (zone === '__other__') zone = document.getElementById('clinicTimeZoneCustom')?.value || '';
+    const trimmed = String(zone || '').trim();
+    if (trimmed && typeof isValidIanaTimeZone === 'function' && !isValidIanaTimeZone(trimmed)) {
+        return { ok: false, zone: trimmed };
+    }
+    return { ok: true, zone: clinicTimeZone({ timeZone: trimmed }) };
 }
 
 function switchClinicSettingsTab(tab) {
@@ -401,6 +436,11 @@ function closeClinicProfileModal() {
 async function saveClinicProfileFromModal() {
     const save = async ({ progress }) => {
         if (progress) progress('Saving clinic details…', 0.3);
+        const zonePick = clinicTimeZoneFromModal();
+        if (!zonePick.ok) {
+            showToast('That time zone was not recognised. Choose Brisbane, or enter a valid IANA name such as Pacific/Auckland.');
+            return;
+        }
         try {
             await saveClinicProfile({
                 clinicName: document.getElementById('clinicProfileName')?.value,
@@ -412,7 +452,8 @@ async function saveClinicProfileFromModal() {
                 website: document.getElementById('clinicProfileWebsite')?.value,
                 urgentAdvice: document.getElementById('clinicProfileUrgent')?.value,
                 histoWaitGreenDays: document.getElementById('clinicHistoWaitGreenDays')?.value,
-                histoWaitOrangeDays: document.getElementById('clinicHistoWaitOrangeDays')?.value
+                histoWaitOrangeDays: document.getElementById('clinicHistoWaitOrangeDays')?.value,
+                timeZone: zonePick.zone
             });
             if (typeof fillClinicProfileSettingsFields === 'function') fillClinicProfileSettingsFields();
             if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
@@ -447,4 +488,11 @@ function clinicProfileContactLines() {
 
 function clinicProfileHasContacts() {
     return clinicProfileContactLines().length > 0;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        emptyClinicProfile,
+        clinicTimeZone
+    };
 }

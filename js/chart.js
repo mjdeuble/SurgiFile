@@ -325,7 +325,8 @@ function practiceVisibleLesions() {
         .filter((item) => typeof isClinicalLesionTile !== 'function' || isClinicalLesionTile(item));
     const filter = typeof mgmtActiveFilter !== 'undefined' ? mgmtActiveFilter : 'open';
     if (filter === 'billing' || filter === 'notes') return [];
-    return items.filter((item) => typeof lesionMatchesFilter !== 'function' || lesionMatchesFilter(item, filter));
+    const matched = items.filter((item) => typeof lesionMatchesFilter !== 'function' || lesionMatchesFilter(item, filter));
+    return typeof lesionsForOpenAttention === 'function' ? lesionsForOpenAttention(matched) : matched;
 }
 
 function groupPracticePatients(items) {
@@ -617,8 +618,9 @@ function renderPracticeTree() {
     const lesions = practiceVisibleLesions();
     const groups = groupPracticePatients(lesions);
     if (!groups.length) {
-        list.innerHTML = '<p class="chart-tree-empty">No lesions in this queue.</p>';
-        if (status) status.textContent = 'No lesions';
+        const attention = typeof openAttentionFilterActive === 'function' && openAttentionFilterActive();
+        list.innerHTML = '<p class="chart-tree-empty">' + (attention ? 'No lesions need attention now.' : 'No lesions in this queue.') + '</p>';
+        if (status) status.textContent = attention ? 'No lesions need attention now' : 'No lesions';
         return 0;
     }
     list.innerHTML = groups.map((group) => {
@@ -644,7 +646,10 @@ function renderPracticeTree() {
             <div class="chart-tree-children">${kids}</div>`;
     }).join('');
     if (status) {
-        status.textContent = lesions.length + ' lesion' + (lesions.length === 1 ? '' : 's') + ' · ' + groups.length + ' patient' + (groups.length === 1 ? '' : 's');
+        const attention = typeof openAttentionFilterActive === 'function' && openAttentionFilterActive();
+        status.textContent = lesions.length + ' lesion' + (lesions.length === 1 ? '' : 's')
+            + ' · ' + groups.length + ' patient' + (groups.length === 1 ? '' : 's')
+            + (attention ? ' · future dates hidden' : '');
     }
     return lesions.length;
 }
@@ -909,7 +914,11 @@ function chartTreeNodeLabel(lesion) {
     const status = done ? '' : (typeof lesionStatusLabel === 'function' ? lesionStatusLabel(lesion) : (lesion?.managementStatus || ''));
     const wait = lesionHistoWaitSummary(lesion);
     const today = typeof isVisitLesion === 'function' && isVisitLesion(lesion.id) ? 'Today' : '';
-    const meta = [dx, status, wait.dateLabel, today].filter(Boolean).join(' · ');
+    const actionDate = typeof formatFurtherActionDateLabel === 'function'
+        ? formatFurtherActionDateLabel(lesion?.furtherActionDate)
+        : '';
+    const actionLabel = actionDate ? ('Action ' + actionDate) : '';
+    const meta = [dx, status, actionLabel, wait.dateLabel, today].filter(Boolean).join(' · ');
     return { site, meta, waitTone: wait.tone };
 }
 
@@ -1473,6 +1482,32 @@ function inspectorShowsHistologyEntry(lesion) {
     return typeof inspectorNeedsHistologyEntry === 'function'
         ? inspectorNeedsHistologyEntry(lesion)
         : !!(lesion && (lesion.procedureCompletedAt || lesion.excisionFinalisedAt) && !String(lesion.histologyResult || '').trim());
+}
+
+function renderFurtherActionDateCard(lesion) {
+    if (!lesion) return '';
+    const active = typeof isActiveManagementStatus === 'function'
+        ? isActiveManagementStatus(lesion.managementStatus)
+        : false;
+    if (!active) return '';
+    const date = typeof normalizeFurtherActionDate === 'function'
+        ? normalizeFurtherActionDate(lesion.furtherActionDate)
+        : '';
+    const saved = date && typeof formatFurtherActionDateLabel === 'function'
+        ? formatFurtherActionDateLabel(date)
+        : '';
+    return `<section class="insp-card" id="inspFurtherActionCard">
+        <div class="insp-card-head">Further action</div>
+        <div class="insp-card-body">
+            <label class="insp-label" for="inspFurtherActionDate">Next attention date</label>
+            <p class="insp-hint">The day this open lesion next needs attention. Leave it blank to keep the lesion on Needs attention now. A later date hides it until that day. You can change it after contact, after a procedure is planned, or if the patient does not attend.</p>
+            <div class="further-action-row">
+                <input type="date" id="inspFurtherActionDate" class="insp-input" value="${escapeHtml(date)}" onchange="saveFurtherActionDateFromInspector()">
+                <button type="button" onclick="clearFurtherActionDateFromInspector()">Clear</button>
+            </div>
+            <p class="insp-hint">${saved ? ('Saved: ' + escapeHtml(saved)) : 'No date set.'}</p>
+        </div>
+    </section>`;
 }
 
 function renderInspectorHistologyEntryForm(lesion) {
@@ -2692,6 +2727,7 @@ function renderChartLesionInspector(options) {
         ${toolbar ? `<div class="chart-inspector-toolbar">${toolbar}</div>` : ''}
         <div class="chart-inspector-body" data-inspector-view="1">
             ${pendingBill ? '<p class="insp-warn" style="margin-bottom:0.45rem">Clinically finalised · billing still pending</p>' : ''}
+            ${renderFurtherActionDateCard(lesion)}
             ${dossier}
             ${renderInspectorHistologyEntryForm(lesion)}
             ${renderInspectorPlanContactForm(lesion)}

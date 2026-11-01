@@ -138,6 +138,103 @@ function isActiveManagementStatus(status) {
     return ACTIVE_MANAGEMENT_STATUSES.includes(canonicalLesionStatus(status));
 }
 
+const DEFAULT_CLINIC_TIME_ZONE = 'Australia/Brisbane';
+
+function isValidIanaTimeZone(zone) {
+    const name = String(zone || '').trim();
+    if (!name) return false;
+    try {
+        Intl.DateTimeFormat('en-CA', { timeZone: name }).format(new Date());
+        return true;
+    } catch (err) {
+        return false;
+    }
+}
+
+function normalizeClinicTimeZone(value) {
+    const name = String(value || '').trim();
+    if (isValidIanaTimeZone(name)) return name;
+    return DEFAULT_CLINIC_TIME_ZONE;
+}
+
+function clinicCalendarDayKey(timeZone, now) {
+    const zone = normalizeClinicTimeZone(timeZone);
+    const date = now instanceof Date ? now : new Date(now == null ? Date.now() : now);
+    if (Number.isNaN(date.getTime())) return '';
+    let parts;
+    try {
+        parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: zone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(date);
+    } catch (err) {
+        return '';
+    }
+    const pick = (type) => {
+        const part = parts.find((item) => item.type === type);
+        return part ? String(part.value || '') : '';
+    };
+    const year = pick('year');
+    const month = pick('month').padStart(2, '0');
+    const day = pick('day').padStart(2, '0');
+    if (!/^\d{4}$/.test(year) || !/^\d{2}$/.test(month) || !/^\d{2}$/.test(day)) return '';
+    return year + '-' + month + '-' + day;
+}
+
+function clinicTodayKey(timeZone, now) {
+    const zone = timeZone || (typeof clinicTimeZone === 'function' ? clinicTimeZone() : DEFAULT_CLINIC_TIME_ZONE);
+    return clinicCalendarDayKey(zone, now);
+}
+
+function normalizeFurtherActionDate(value) {
+    const text = String(value || '').trim();
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+    if (!match) return '';
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const dt = new Date(Date.UTC(year, month - 1, day));
+    if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day) return '';
+    return text;
+}
+
+function formatFurtherActionDateLabel(value) {
+    const date = normalizeFurtherActionDate(value);
+    if (!date) return '';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = Number(date.slice(5, 7));
+    const day = Number(date.slice(8, 10));
+    return day + ' ' + months[month - 1] + ' ' + date.slice(0, 4);
+}
+
+function furtherActionDateIsFuture(lesion, todayKey) {
+    const date = normalizeFurtherActionDate(lesion && lesion.furtherActionDate);
+    const today = normalizeFurtherActionDate(todayKey);
+    if (!date || !today) return false;
+    return date > today;
+}
+
+function applyFurtherActionDate(lesion, raw) {
+    if (!lesion) return { ok: false, reason: 'missing' };
+    const trimmed = String(raw == null ? '' : raw).trim();
+    const next = normalizeFurtherActionDate(trimmed);
+    if (trimmed && !next) return { ok: false, reason: 'invalid' };
+    lesion.furtherActionDate = next;
+    return { ok: true, furtherActionDate: next };
+}
+
+function lesionStaysOnOpenAttentionList(lesion, options) {
+    const opts = options || {};
+    if (!lesion) return false;
+    if (typeof lesionIsHiddenByReexcisionLink === 'function' && lesionIsHiddenByReexcisionLink(lesion)) return false;
+    if (!isActiveManagementStatus(lesion.managementStatus)) return false;
+    if (!opts.attentionOnly) return true;
+    const today = opts.todayKey || clinicTodayKey(opts.timeZone, opts.now);
+    return !furtherActionDateIsFuture(lesion, today);
+}
+
 function isRequiresManagementStatus(status) {
     return REQUIRES_MANAGEMENT_STATUSES.includes(canonicalLesionStatus(status));
 }
@@ -3806,6 +3903,17 @@ function reviewLesionChartMismatches(input) {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        DEFAULT_CLINIC_TIME_ZONE,
+        isValidIanaTimeZone,
+        normalizeClinicTimeZone,
+        clinicCalendarDayKey,
+        clinicTodayKey,
+        normalizeFurtherActionDate,
+        formatFurtherActionDateLabel,
+        furtherActionDateIsFuture,
+        applyFurtherActionDate,
+        lesionStaysOnOpenAttentionList,
+        isActiveManagementStatus,
         isTopicalFollowUpLesion,
         hasOutstandingTopicalWork,
         isScheduledReviewLesion,
