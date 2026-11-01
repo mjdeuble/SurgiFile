@@ -1,6 +1,98 @@
 /* Admin: practice lesion list, filters, and separate billing queue. */
 
 let mgmtActiveFilter = 'open';
+const OPEN_ATTENTION_STORAGE_KEY = 'dermrecord-open-attention';
+let openAttentionOnly = false;
+try {
+    openAttentionOnly = localStorage.getItem(OPEN_ATTENTION_STORAGE_KEY) === '1';
+} catch (err) {
+    openAttentionOnly = false;
+}
+
+function openAttentionFilterActive() {
+    if (!openAttentionOnly) return false;
+    const filter = typeof normalizeMgmtFilter === 'function' ? normalizeMgmtFilter(mgmtActiveFilter) : mgmtActiveFilter;
+    return filter === 'open' || filter === 'active';
+}
+
+function lesionsForOpenAttention(items) {
+    const list = Array.isArray(items) ? items : [];
+    if (!openAttentionFilterActive()) return list;
+    const today = typeof clinicTodayKey === 'function' ? clinicTodayKey() : '';
+    return list.filter((item) => typeof lesionStaysOnOpenAttentionList !== 'function'
+        || lesionStaysOnOpenAttentionList(item, { attentionOnly: true, todayKey: today }));
+}
+
+function syncOpenAttentionControl() {
+    const wrap = document.getElementById('openAttentionFilter');
+    const box = document.getElementById('openAttentionToggle');
+    const filter = typeof normalizeMgmtFilter === 'function' ? normalizeMgmtFilter(mgmtActiveFilter) : mgmtActiveFilter;
+    const practice = typeof practiceWorkspaceActive !== 'function' || practiceWorkspaceActive();
+    const show = practice && (filter === 'open' || filter === 'active');
+    if (wrap) wrap.classList.toggle('hidden', !show);
+    if (box) box.checked = !!openAttentionOnly;
+}
+
+function setOpenAttentionFilter(on) {
+    openAttentionOnly = !!on;
+    try {
+        localStorage.setItem(OPEN_ATTENTION_STORAGE_KEY, openAttentionOnly ? '1' : '0');
+    } catch (err) {
+        /* This session still uses the choice. */
+    }
+    syncOpenAttentionControl();
+    renderManagedLesions();
+}
+
+function inspectorLesionForFurtherAction() {
+    const id = typeof selectedChartLesionId !== 'undefined' ? selectedChartLesionId : '';
+    const list = typeof managedLesions !== 'undefined' ? managedLesions : [];
+    return list.find((item) => String(item.id) === String(id)) || null;
+}
+
+async function persistFurtherActionDate(lesion, raw) {
+    if (!lesion) {
+        showToast('Could not find that lesion.');
+        return;
+    }
+    const trimmed = String(raw == null ? '' : raw).trim();
+    const next = typeof normalizeFurtherActionDate === 'function' ? normalizeFurtherActionDate(trimmed) : '';
+    if (trimmed && !next) {
+        showToast('Enter a valid further action date.');
+        if (typeof renderChartLesionInspector === 'function') renderChartLesionInspector({ force: true });
+        return;
+    }
+    const current = typeof normalizeFurtherActionDate === 'function'
+        ? normalizeFurtherActionDate(lesion.furtherActionDate)
+        : '';
+    if (current === next) return;
+    const statusBefore = lesion.managementStatus;
+    if (typeof applyFurtherActionDate === 'function') applyFurtherActionDate(lesion, next);
+    else lesion.furtherActionDate = next;
+    lesion.managementStatus = statusBefore;
+    const label = next && typeof formatFurtherActionDateLabel === 'function'
+        ? formatFurtherActionDateLabel(next)
+        : '';
+    await saveManagedLesionRecord(
+        lesion,
+        'further-action',
+        next ? ('Further action ' + next) : 'Further action date cleared'
+    );
+    showToast(next ? ('Further action set to ' + label + '.') : 'Further action date cleared.');
+    if (typeof renderChartLesionInspector === 'function') renderChartLesionInspector({ force: true });
+}
+
+async function saveFurtherActionDateFromInspector() {
+    const lesion = inspectorLesionForFurtherAction();
+    const input = document.getElementById('inspFurtherActionDate');
+    await persistFurtherActionDate(lesion, input ? input.value : '');
+}
+
+async function clearFurtherActionDateFromInspector() {
+    const input = document.getElementById('inspFurtherActionDate');
+    if (input) input.value = '';
+    await persistFurtherActionDate(inspectorLesionForFurtherAction(), '');
+}
 
 function initManagementModule() {
     bindSavedVaultQueueClicks();
@@ -329,6 +421,7 @@ function renderManagedLesions() {
         btn.classList.toggle('is-active', on);
         btn.setAttribute('aria-selected', on ? 'true' : 'false');
     });
+    if (typeof syncOpenAttentionControl === 'function') syncOpenAttentionControl();
     if (typeof updateChartChrome === 'function') updateChartChrome();
 
     const chart = adminLesions();
@@ -397,7 +490,8 @@ function renderManagedLesions() {
         return;
     }
 
-    const visible = chart.filter((item) => lesionMatchesFilter(item, mgmtActiveFilter));
+    let visible = chart.filter((item) => lesionMatchesFilter(item, mgmtActiveFilter));
+    if (mgmtActiveFilter === 'open' || mgmtActiveFilter === 'active') visible = lesionsForOpenAttention(visible);
     if (empty) empty.classList.toggle('hidden', visible.length > 0);
 
     if (mgmtActiveFilter === 'open' || mgmtActiveFilter === 'active') {
@@ -411,7 +505,10 @@ function renderManagedLesions() {
 
 function renderOpenLesionBoard(items) {
     const html = renderPatientEpisodeGroups(items, (lesion, opts) => renderManagedLesionCard(lesion, opts));
-    return html || '<p class="text-sm text-slate-400 italic lg:col-span-2">No open lesions.</p>';
+    if (html) return html;
+    const attention = typeof openAttentionFilterActive === 'function' && openAttentionFilterActive();
+    const message = attention ? 'No lesions need attention now.' : 'No open lesions.';
+    return '<p class="text-sm text-slate-400 italic lg:col-span-2">' + message + '</p>';
 }
 
 function renderNamedStatusColumn(title, items) {
@@ -924,6 +1021,9 @@ function renderManagedLesionCard(lesion, options) {
             ${missed ? `<p class="lesion-call-badge">${escapeHtml(formatCallBadge(missed))}</p>` : ''}
             ${showCopiedPrior ? `<p class="text-[11px] text-slate-600">${escapeHtml(prior)}</p>` : ''}
             ${lesion.currentPlan ? `<p class="text-[11px] text-slate-700"><span class="font-semibold text-slate-600">Plan:</span> ${escapeHtml(lesion.currentPlan)}</p>` : ''}
+            ${typeof formatFurtherActionDateLabel === 'function' && formatFurtherActionDateLabel(lesion.furtherActionDate)
+                ? `<p class="text-[11px] text-slate-700"><span class="font-semibold text-slate-600">Further action:</span> ${escapeHtml(formatFurtherActionDateLabel(lesion.furtherActionDate))}</p>`
+                : ''}
             ${typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion)
                 && typeof lesionCanCloseNoFollowup === 'function' && !lesionCanCloseNoFollowup(lesion)
                 ? '<p class="text-[11px] font-semibold text-amber-800">Clinically finalised · billing still pending</p>'
