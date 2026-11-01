@@ -590,7 +590,7 @@ function renderPracticeTree() {
         const groups = groupPracticeDocuments(docs);
         const selectedKey = selectedPracticeDoc ? practiceDocKey(selectedPracticeDoc) : '';
         if (!groups.length) {
-            list.innerHTML = '<p class="chart-tree-empty">No saved notes in the last 7 days.</p>';
+            list.innerHTML = '<p class="chart-tree-empty">No saved notes in the last 45 days.</p>';
             if (status) status.textContent = 'No saved notes';
             return 0;
         }
@@ -2638,7 +2638,7 @@ function renderChartLesionInspector(options) {
         inspectorRenderedLesionId = doc ? practiceDocKey(doc) : '';
         inspectorRenderedMode = 'practice-doc';
         if (!doc) {
-            slot.innerHTML = '<div class="chart-inspector-empty">No saved notes in the last 7 days.</div>';
+            slot.innerHTML = '<div class="chart-inspector-empty">No saved notes in the last 45 days.</div>';
             return;
         }
         renderPracticeDocumentInspector(doc);

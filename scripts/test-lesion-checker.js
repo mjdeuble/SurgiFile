@@ -79,6 +79,47 @@ const expired = reviewLesionChartMismatches({
 });
 eq(expired.length, 0, 'an expired visit note is ignored');
 
+const tenDaysAgo = Date.now() - (10 * 24 * 60 * 60 * 1000);
+const keptFromOldStamp = reviewLesionChartMismatches({
+    lesions: [misplaced],
+    charts,
+    notes: [{
+        chartId: JANE,
+        createdAt: new Date(tenDaysAgo).toISOString(),
+        expiresAt: new Date(tenDaysAgo + (7 * 24 * 60 * 60 * 1000)).toISOString(),
+        consultText: 'Left upper arm. Basal cell carcinoma. Case S24-100.'
+    }],
+    now: Date.now()
+});
+eq(one(keptFromOldStamp, 'arm').suggestions[0].chartId, JANE, 'a visit note inside 45 days still counts after its old 7-day expiry');
+
+const fortySixDaysAgo = Date.now() - (46 * 24 * 60 * 60 * 1000);
+const agedOut = reviewLesionChartMismatches({
+    lesions: [misplaced],
+    charts,
+    notes: [{
+        chartId: JANE,
+        createdAt: new Date(fortySixDaysAgo).toISOString(),
+        expiresAt: new Date(fortySixDaysAgo + (7 * 24 * 60 * 60 * 1000)).toISOString(),
+        consultText: 'Left upper arm. Basal cell carcinoma. Case S24-100.'
+    }],
+    now: Date.now()
+});
+eq(agedOut.length, 0, 'a visit note older than 45 days is ignored');
+
+const expiredConsent = reviewLesionChartMismatches({
+    lesions: [misplaced],
+    charts,
+    consents: [{
+        chartId: JANE,
+        createdAt: new Date(tenDaysAgo).toISOString(),
+        expiresAt: new Date(tenDaysAgo + (7 * 24 * 60 * 60 * 1000)).toISOString(),
+        lesionIds: ['arm']
+    }],
+    now: Date.now()
+});
+eq(expiredConsent.length, 0, 'a consent past 7 days is ignored');
+
 const shortSite = reviewLesionChartMismatches({
     lesions: [{ ...misplaced, id: 'nose', location: 'Nose' }],
     charts,

@@ -234,7 +234,7 @@ async function ensureVaultLayout(rootHandle) {
         await writeTextFile(rootHandle, 'dermrecord.json', JSON.stringify({
             app: 'DermRecord',
             version: 1,
-            note: 'Encrypted records live under users/<username>/. Chart, note, and consent filenames are random ids (not name or DOB). Notes and consents kept 7 days; processed billing 14 days; idle charts deleted 14 days after work is finished. Last-open chart id in ui-session.json.enc'
+            note: 'Encrypted records live under users/<username>/. Chart, note, and consent filenames are random ids (not name or DOB). Visit notes kept 45 days; consents kept 7 days; processed billing 14 days; idle charts deleted 14 days after work is finished. Last-open chart id in ui-session.json.enc'
         }, null, 2));
     } catch (err) {
         /* Marker file is optional; the users/ directory is what login needs. */

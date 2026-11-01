@@ -1,6 +1,6 @@
-/* Encrypted 7-day visit note snapshots: consult and procedure text, labelled by patient and time. */
+/* Encrypted visit note snapshots: consult and procedure text, labelled by patient and time. Kept 45 days from the day they were written. */
 
-const VISIT_NOTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const VISIT_NOTE_TTL_MS = 45 * 24 * 60 * 60 * 1000;
 let visitNoteSaveTimer = null;
 
 function visitNoteFileName() {
@@ -15,12 +15,27 @@ function visitNoteExpiresAt(fromIso) {
     return new Date(start + VISIT_NOTE_TTL_MS).toISOString();
 }
 
-function visitNoteIsExpired(note) {
-    const expiry = Date.parse(note?.expiresAt || '');
-    if (!Number.isNaN(expiry)) return expiry <= Date.now();
+function visitNoteKeptUntilMs(note) {
     const created = Date.parse(note?.createdAt || '');
-    if (Number.isNaN(created)) return false;
-    return created + VISIT_NOTE_TTL_MS <= Date.now();
+    if (!Number.isNaN(created)) return created + VISIT_NOTE_TTL_MS;
+    const expiry = Date.parse(note?.expiresAt || '');
+    return Number.isNaN(expiry) ? NaN : expiry;
+}
+
+function visitNoteIsExpired(note, nowMs) {
+    const until = visitNoteKeptUntilMs(note);
+    if (Number.isNaN(until)) return false;
+    return until <= (Number(nowMs) || Date.now());
+}
+
+function extendVisitNoteRetention(note) {
+    const created = Date.parse(note?.createdAt || '');
+    if (!note || Number.isNaN(created)) return false;
+    const until = created + VISIT_NOTE_TTL_MS;
+    const expiry = Date.parse(note.expiresAt || '');
+    if (!Number.isNaN(expiry) && expiry >= until) return false;
+    note.expiresAt = new Date(until).toISOString();
+    return true;
 }
 
 function consultNoteIsSavable(text) {
@@ -161,6 +176,14 @@ async function loadManagedVisitNotesFromVault() {
     if (typeof migrateIdentifyingRecordIds === 'function') {
         await migrateIdentifyingRecordIds(managedVisitNotes, 'visit', (note) => writeManagedVisitNote(note));
     }
+    for (const note of managedVisitNotes) {
+        if (!extendVisitNoteRetention(note) || visitNoteIsExpired(note)) continue;
+        try {
+            await writeManagedVisitNote(note);
+        } catch (err) {
+            console.warn('Could not extend visit note retention', note.id, err);
+        }
+    }
     managedVisitNotes.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
@@ -261,7 +284,7 @@ async function saveCurrentVisitNotes(options) {
     note.patientDob = patient.patientDob || currentPatient.dob || note.patientDob;
     note.clinician = patient.clinician || currentPatient.clinician || note.clinician;
     note.updatedAt = now;
-    if (!note.expiresAt) note.expiresAt = visitNoteExpiresAt(note.createdAt || now);
+    if (!extendVisitNoteRetention(note) && !note.expiresAt) note.expiresAt = visitNoteExpiresAt(note.createdAt || now);
     upsertVisitNoteMemory(note);
     if (isVaultLoggedIn()) await writeManagedVisitNote(note);
     if (typeof mgmtActiveFilter !== 'undefined' && mgmtActiveFilter === 'notes' && typeof renderManagedLesions === 'function') {
@@ -308,8 +331,8 @@ function persistCopiedIemrNote(text) {
 }
 
 function visitNoteDaysLeft(note) {
-    const expiry = Date.parse(note?.expiresAt || visitNoteExpiresAt(note?.createdAt));
-    if (Number.isNaN(expiry)) return 7;
+    const expiry = visitNoteKeptUntilMs(note);
+    if (Number.isNaN(expiry)) return 45;
     return Math.max(0, Math.ceil((expiry - Date.now()) / (24 * 60 * 60 * 1000)));
 }
 
@@ -320,12 +343,12 @@ function renderSavedVisitNotesQueue(notes) {
             <header class="px-4 py-3 bg-sky-50 border-b border-sky-200 flex flex-wrap justify-between items-center gap-2">
                 <div>
                     <h3 class="text-sm font-bold text-slate-800">Saved notes</h3>
-                    <p class="text-[11px] text-slate-500 mt-0.5">Autosaved consult notes, histology requests, and patient advice. Kept for 7 days, then deleted.</p>
+                    <p class="text-[11px] text-slate-500 mt-0.5">Autosaved consult notes, histology requests, and patient advice. Kept for 45 days, then deleted.</p>
                 </div>
                 <span class="text-[11px] font-semibold text-slate-500">${items.length}</span>
             </header>
             <div class="divide-y divide-slate-100">
-                ${items.length ? items.map(renderSavedVisitNoteCard).join('') : '<p class="p-4 text-slate-400 italic text-sm">No autosaved notes in the last 7 days.</p>'}
+                ${items.length ? items.map(renderSavedVisitNoteCard).join('') : '<p class="p-4 text-slate-400 italic text-sm">No autosaved notes in the last 45 days.</p>'}
             </div>
         </section>`;
 }
@@ -392,7 +415,7 @@ function openSavedVisitNote(id) {
     if (title) title.textContent = note.patientName || 'Saved note';
     if (meta) {
         const when = typeof formatLesionWhen === 'function' ? formatLesionWhen(note.updatedAt) : note.updatedAt;
-        meta.textContent = (note.patientDob || '') + (when ? ' · Saved ' + when : '') + ' · Deletes after 7 days';
+        meta.textContent = (note.patientDob || '') + (when ? ' · Saved ' + when : '') + ' · Deletes after 45 days';
     }
     if (consultEl) consultEl.value = note.consultText || '';
     if (procEl) procEl.value = note.procedureText || '';
@@ -580,4 +603,15 @@ function downloadSavedHtmlDoc() {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        VISIT_NOTE_TTL_MS,
+        visitNoteExpiresAt,
+        visitNoteIsExpired,
+        visitNoteKeptUntilMs,
+        extendVisitNoteRetention,
+        visitNoteDaysLeft
+    };
 }

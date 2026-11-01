@@ -3498,9 +3498,27 @@ function checkerIdentityFromChart(chart) {
     };
 }
 
+function checkerRecordIsVisitNote(record) {
+    return !!(record && (
+        Object.prototype.hasOwnProperty.call(record, 'consultText')
+        || Object.prototype.hasOwnProperty.call(record, 'procedureText')
+        || Object.prototype.hasOwnProperty.call(record, 'histologySlipText')
+        || Object.prototype.hasOwnProperty.call(record, 'aftercareHtml')
+    ));
+}
+
 function checkerRecordIsCurrent(record, now) {
     const expiry = Date.parse(record?.expiresAt || '');
-    if (!Number.isNaN(expiry)) return expiry > now;
+    let until = Number.isNaN(expiry) ? NaN : expiry;
+    if (checkerRecordIsVisitNote(record)) {
+        const created = Date.parse(record?.createdAt || '');
+        const keepMs = typeof VISIT_NOTE_TTL_MS === 'number' ? VISIT_NOTE_TTL_MS : (45 * 24 * 60 * 60 * 1000);
+        if (!Number.isNaN(created)) {
+            const fromCreated = created + keepMs;
+            if (Number.isNaN(until) || fromCreated > until) until = fromCreated;
+        }
+    }
+    if (!Number.isNaN(until)) return until > now;
     const created = Date.parse(record?.createdAt || '');
     if (Number.isNaN(created)) return false;
     return created + (7 * 24 * 60 * 60 * 1000) > now;
