@@ -334,27 +334,34 @@ function switchClinicSettingsTab(tab) {
     const details = document.getElementById('clinicSettingsPanelDetails');
     const supplies = document.getElementById('clinicSettingsPanelSupplies');
     const pdt = document.getElementById('clinicSettingsPanelPdt');
+    const checker = document.getElementById('clinicSettingsPanelChecker');
     const btnDetails = document.getElementById('clinicSettingsTabDetails');
     const btnSupplies = document.getElementById('clinicSettingsTabSupplies');
     const btnPdt = document.getElementById('clinicSettingsTabPdt');
-    const active = tab === 'supplies' ? 'supplies' : (tab === 'pdt' ? 'pdt' : 'details');
+    const btnChecker = document.getElementById('clinicSettingsTabChecker');
+    const active = tab === 'supplies' ? 'supplies' : (tab === 'pdt' ? 'pdt' : (tab === 'checker' ? 'checker' : 'details'));
     if (details) details.classList.toggle('hidden', active !== 'details');
     if (supplies) supplies.classList.toggle('hidden', active !== 'supplies');
     if (pdt) pdt.classList.toggle('hidden', active !== 'pdt');
+    if (checker) checker.classList.toggle('hidden', active !== 'checker');
     const styleTab = (btn, on) => {
         if (!btn) return;
         btn.classList.toggle('bg-slate-900', on);
         btn.classList.toggle('text-white', on);
         btn.classList.toggle('bg-white', !on);
         btn.classList.toggle('text-slate-700', !on);
+        btn.classList.toggle('border', !on);
+        btn.classList.toggle('border-slate-300', !on);
         btn.setAttribute('aria-selected', on ? 'true' : 'false');
     };
     styleTab(btnDetails, active === 'details');
     styleTab(btnSupplies, active === 'supplies');
     styleTab(btnPdt, active === 'pdt');
+    styleTab(btnChecker, active === 'checker');
     const saveClinic = document.getElementById('clinicSettingsSaveClinicBtn');
     if (saveClinic) saveClinic.classList.toggle('hidden', active !== 'details');
     if (active === 'pdt' && typeof renderPdtPriceEditor === 'function') renderPdtPriceEditor();
+    if (active === 'checker' && typeof bindLesionCheckerActions === 'function') bindLesionCheckerActions();
 }
 
 function openClinicSettingsModal(tab) {
@@ -373,7 +380,7 @@ function openClinicSettingsModal(tab) {
     fillClinicProfileSettingsFields();
     if (typeof renderProcSupplyEditors === 'function') renderProcSupplyEditors();
     if (typeof renderPdtPriceEditor === 'function') renderPdtPriceEditor();
-    const nextTab = (tab === 'supplies' || tab === 'pdt') ? tab : 'details';
+    const nextTab = (tab === 'supplies' || tab === 'pdt' || tab === 'checker') ? tab : 'details';
     switchClinicSettingsTab(nextTab);
     modal.classList.remove('hidden');
 }

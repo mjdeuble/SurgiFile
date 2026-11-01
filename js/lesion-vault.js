@@ -3467,6 +3467,220 @@ async function markBillingProcessed(ids) {
     }
 }
 
+function checkerResolveChart(charts, chartId, name, dob) {
+    const list = Array.isArray(charts) ? charts : [];
+    const id = String(chartId || '').trim();
+    if (id) {
+        const hit = list.find((chart) => chart && chart.id === id);
+        if (hit) return hit;
+    }
+    const raw = patientChartId(name, dob);
+    const canonical = canonicalPatientChartId(name, dob);
+    if (!raw && !canonical) return null;
+    const dobKey = normalizeChartDob(dob);
+    const matches = list.filter((chart) => {
+        if (!chart?.id || normalizeChartDob(chart.dob) !== dobKey) return false;
+        if (chart.id === raw || chart.id === canonical) return true;
+        const chartName = composePatientName(chart.firstName, chart.lastName, chart.name);
+        return !!canonical && canonicalPatientChartId(chartName, chart.dob) === canonical;
+    });
+    return matches.length === 1 ? matches[0] : null;
+}
+
+function checkerIdentityFromChart(chart) {
+    const name = composePatientName(chart.firstName, chart.lastName, chart.name) || 'Unnamed patient';
+    return {
+        name,
+        dob: String(chart.dob || '').trim(),
+        chartId: chart.id,
+        firstName: chart.firstName || '',
+        lastName: chart.lastName || ''
+    };
+}
+
+function checkerRecordIsCurrent(record, now) {
+    const expiry = Date.parse(record?.expiresAt || '');
+    if (!Number.isNaN(expiry)) return expiry > now;
+    const created = Date.parse(record?.createdAt || '');
+    if (Number.isNaN(created)) return false;
+    return created + (7 * 24 * 60 * 60 * 1000) > now;
+}
+
+function checkerTextMentionsLesion(text, lesion) {
+    const loc = String(lesion?.location || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (loc.length < 8) return false;
+    const hay = String(text || '').toLowerCase().replace(/\s+/g, ' ');
+    if (!hay.includes(loc)) return false;
+    const caseNo = String(lesion.histologyCaseNumber || lesion.priorHistologyCaseNumber || '').trim().toLowerCase();
+    if (caseNo.length >= 4 && hay.includes(caseNo)) return true;
+    const dx = String(lesion.histologyDiagnosis || lesion.impression || '').trim().toLowerCase();
+    return dx.length >= 8 && hay.includes(dx);
+}
+
+function checkerDocumentText(record) {
+    return [
+        record?.consultText,
+        record?.procedureText,
+        record?.histologySlipText,
+        record?.histologyReportText,
+        record?.plainText
+    ].filter(Boolean).join('\n');
+}
+
+function checkerRootLesion(lesion, byId) {
+    const seen = new Set();
+    let current = lesion;
+    while (current?.priorLesionId) {
+        const id = String(current.id || '');
+        if (id && seen.has(id)) break;
+        if (id) seen.add(id);
+        const parent = byId.get(String(current.priorLesionId));
+        if (!parent) break;
+        current = parent;
+    }
+    return current;
+}
+
+function reviewLesionChartMismatches(input) {
+    const lesions = Array.isArray(input?.lesions) ? input.lesions : [];
+    const charts = Array.isArray(input?.charts) ? input.charts : [];
+    const bills = Array.isArray(input?.bills) ? input.bills : [];
+    const notes = Array.isArray(input?.notes) ? input.notes : [];
+    const consents = Array.isArray(input?.consents) ? input.consents : [];
+    const priorCopies = Array.isArray(input?.priorCopies) ? input.priorCopies : [];
+    const now = Number(input?.now) || Date.now();
+    const byId = new Map(lesions.filter((lesion) => lesion?.id).map((lesion) => [String(lesion.id), lesion]));
+    const findings = [];
+
+    lesions.forEach((lesion) => {
+        if (!lesion?.id) return;
+        const storedChart = checkerResolveChart(charts, lesion.chartId, '', '');
+        const namedChart = checkerResolveChart(charts, '', lesion.patientName, lesion.patientDob);
+        const currentChart = storedChart || namedChart;
+        const current = currentChart
+            ? checkerIdentityFromChart(currentChart)
+            : {
+                name: lesion.patientName || 'Unnamed patient',
+                dob: String(lesion.patientDob || '').trim(),
+                chartId: String(lesion.chartId || '').trim(),
+                firstName: '',
+                lastName: ''
+            };
+        const votes = new Map();
+        const vote = (chart, weight, reason) => {
+            if (!chart?.id || (currentChart && chart.id === currentChart.id)) return;
+            let slot = votes.get(chart.id);
+            if (!slot) {
+                slot = { chart, weight: 0, reasons: [] };
+                votes.set(chart.id, slot);
+            }
+            if (weight > slot.weight) slot.weight = weight;
+            if (reason && !slot.reasons.includes(reason)) slot.reasons.push(reason);
+        };
+
+        const root = checkerRootLesion(lesion, byId);
+        if (root && String(root.id) !== String(lesion.id)) {
+            vote(
+                checkerResolveChart(charts, root.chartId, root.patientName, root.patientDob),
+                5,
+                'Linked to an earlier lesion on this chart'
+            );
+        }
+        if (storedChart && namedChart && namedChart.id !== storedChart.id) {
+            vote(namedChart, 3, 'The name still stored on this lesion matches this chart');
+        }
+        charts.forEach((chart) => {
+            const visit = chart?.visitSession || {};
+            const procedure = chart?.procedureSession || {};
+            const visitIds = []
+                .concat(visit.visitLesionIds || [], visit.visitReviewLesionIds || [])
+                .map(String);
+            const procedureIds = []
+                .concat(procedure.selectedIds || [], procedure.lockedIds || [], procedure.detailLesionId || [], procedure.amendLesionId || [])
+                .map(String)
+                .filter(Boolean);
+            if (visitIds.includes(String(lesion.id))) {
+                vote(chart, 5, 'This chart’s visit list includes this lesion');
+            }
+            if (procedureIds.includes(String(lesion.id))) {
+                vote(chart, 5, 'This chart’s procedure list includes this lesion');
+            }
+        });
+        consents.forEach((doc) => {
+            if (!checkerRecordIsCurrent(doc, now)) return;
+            const ids = (doc.lesionIds || []).map(String);
+            if (!ids.includes(String(lesion.id))) return;
+            vote(
+                checkerResolveChart(charts, doc.chartId, doc.patientName, doc.patientDob),
+                5,
+                'A saved consent on this chart includes this lesion'
+            );
+        });
+        bills.forEach((bill) => {
+            if (String(bill?.lesionId || '') !== String(lesion.id)) return;
+            vote(
+                checkerResolveChart(charts, bill.chartId, bill.patientName, bill.patientDob),
+                4,
+                'A billing record is filed on this chart'
+            );
+        });
+        priorCopies.forEach((copy) => {
+            if (String(copy?.id || '') !== String(lesion.id)) return;
+            vote(
+                checkerResolveChart(charts, copy.chartId, copy.patientName, copy.patientDob),
+                4,
+                'An earlier saved copy of this lesion is on this chart'
+            );
+        });
+        notes.forEach((note) => {
+            if (!checkerRecordIsCurrent(note, now)) return;
+            if (!checkerTextMentionsLesion(checkerDocumentText(note), lesion)) return;
+            vote(
+                checkerResolveChart(charts, note.chartId, note.patientName, note.patientDob),
+                2,
+                'A recent visit note on this chart mentions this site and diagnosis'
+            );
+        });
+        consents.forEach((doc) => {
+            if (!checkerRecordIsCurrent(doc, now)) return;
+            const ids = (doc.lesionIds || []).map(String);
+            if (ids.includes(String(lesion.id))) return;
+            if (!checkerTextMentionsLesion(checkerDocumentText(doc), lesion)) return;
+            vote(
+                checkerResolveChart(charts, doc.chartId, doc.patientName, doc.patientDob),
+                2,
+                'A recent consent on this chart mentions this site and diagnosis'
+            );
+        });
+
+        if (!votes.size) return;
+        const top = Math.max(...Array.from(votes.values()).map((slot) => slot.weight));
+        const suggestions = Array.from(votes.values())
+            .filter((slot) => slot.weight === top)
+            .map((slot) => ({
+                ...checkerIdentityFromChart(slot.chart),
+                reasons: slot.reasons
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+        findings.push({
+            lesionId: String(lesion.id),
+            location: lesion.location || '',
+            impression: lesion.impression || lesion.histologyDiagnosis || '',
+            caseNumber: lesion.histologyCaseNumber || '',
+            managementStatus: lesion.managementStatus || '',
+            current,
+            suggestions
+        });
+    });
+
+    findings.sort((a, b) => {
+        const byName = String(a.current?.name || '').localeCompare(String(b.current?.name || ''), 'en', { sensitivity: 'base' });
+        if (byName) return byName;
+        return String(a.location || '').localeCompare(String(b.location || ''), 'en', { sensitivity: 'base' });
+    });
+    return findings;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         isTopicalFollowUpLesion,
@@ -3502,6 +3716,7 @@ if (typeof module !== 'undefined' && module.exports) {
         lesionSaveIdentity,
         lesionChildIdentity,
         lesionChartRepair,
-        sessionPatientSnapshot
+        sessionPatientSnapshot,
+        reviewLesionChartMismatches
     };
 }
