@@ -807,7 +807,10 @@ function loadProcedureLesionIntoForm(lesion) {
     if (title) {
         const headingDetail = procedureDetailForLesion(lesion);
         const t = typeof lesionType === 'function' ? lesionType(lesion) : '';
-        const tag = lesion.priorLesionId
+        const linkedReexcision = typeof linkedLesionPlansReexcision === 'function'
+            ? linkedLesionPlansReexcision(lesion)
+            : !!lesion.priorLesionId;
+        const tag = linkedReexcision
             ? 'Re-excision: '
             : (headingDetail.procedure === 'Excision' || t === 'excision' || isFormalExcisionCandidate(lesion)
                 ? 'Excision: '
@@ -1986,7 +1989,10 @@ function renderProcedureWorkspace() {
         const consentOk = typeof lesionHasProcedureConsent !== 'function' || lesionHasProcedureConsent(lesion);
         const ready = detailsOk && consentOk;
         const t = typeof lesionType === 'function' ? lesionType(lesion) : '';
-        const tag = lesion.priorLesionId
+        const linkedReexcision = typeof linkedLesionPlansReexcision === 'function'
+            ? linkedLesionPlansReexcision(lesion)
+            : !!lesion.priorLesionId;
+        const tag = linkedReexcision
             ? 'Re-excision'
             : (t === 'excision' || isFormalExcisionCandidate(lesion)
                 ? 'Excision'

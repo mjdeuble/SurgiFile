@@ -165,7 +165,10 @@ function formatLesionPlanIemr(lesion) {
     const biopsyPlan = typeof isPunchShaveBiopsyPlan === 'function'
         ? isPunchShaveBiopsyPlan(lesion.plan)
         : /Biopsy/i.test(String(lesion.plan || ''));
-    if (lesion.priorLesionId) return 'Re-excision';
+    const linkedReexcision = typeof linkedLesionPlansReexcision === 'function'
+        ? linkedLesionPlansReexcision(lesion)
+        : !!lesion.priorLesionId;
+    if (linkedReexcision) return 'Re-excision';
     const copiedPrior = typeof lesionUsesCopiedPriorHistology === 'function'
         ? lesionUsesCopiedPriorHistology(lesion)
         : (typeof lesionHasCopiedPriorHistology === 'function' && !lesion.priorLesionId && lesionHasCopiedPriorHistology(lesion));
@@ -432,7 +435,18 @@ function hasTodayReviewPlanEvent(lesion, now) {
     });
 }
 
+function specificClosurePlanText(lesion) {
+    const text = String(lesion?.currentPlan || '').trim();
+    if (!text || /^no follow-up\b/i.test(text)) return '';
+    if (/episode complete|re-excision booked|further management open|closed without a result|planned procedure cancelled|cleared at topical review|cleared at review/i.test(text)) {
+        return text;
+    }
+    return '';
+}
+
 function chartReviewDisposition(lesion) {
+    const specific = specificClosurePlanText(lesion);
+    if (specific) return specific;
     const resultPlan = String(lesion?.resultPlan || '');
     if (resultPlan === 'no_followup' || String(lesion?.managementStatus || '') === 'no_followup') {
         return 'No further action';
@@ -455,7 +469,6 @@ function chartReviewDisposition(lesion) {
 
 function chartReviewPlanLine(lesion, now) {
     if (hasTodayReviewPlanEvent(lesion, now)) return chartReviewDisposition(lesion);
-    if (reviewEventIsToday(lesion?.createdAt, now)) return chartReviewDisposition(lesion);
     return '';
 }
 
@@ -1029,25 +1042,29 @@ function generateResultIemrNote(lesion, draft) {
     if (!result) return '';
     const dx = (draft && draft.diagnosis) || (lesion && lesion.histologyDiagnosis) || '';
     const plan = (draft && draft.plan) || (lesion && lesion.resultPlan) || '';
-    const contact = (draft && draft.contact) || (lesion && lesion.contactState) || 'mark_for_contact';
-    const fileNoCall = !!(draft && draft.fileNoCall) || (lesion && lesion.contactState === 'file_no_call');
+    const contact = (draft && draft.contact) || (lesion && lesion.contactState) || '';
+    const fileNoCall = !!(draft && draft.fileNoCall) || contact === 'file_no_call';
     const accession = lesion && typeof formatHistologyAccession === 'function' ? formatHistologyAccession(lesion, 'own') : '';
-    const planBit = (plan === 'further_management' || plan === 'plan_excision')
-        ? 'Needs further management.'
-        : (plan === 'no_followup' ? 'No further action.' : '');
-    let contactBit = 'Patient to be contacted.';
-    if (fileNoCall) contactBit = 'Filed. No call (agreed call-if-anything).';
-    else if (contact === 'advised_now') contactBit = 'Patient advised.';
-    else if (contact === 'appointment_requested') contactBit = 'Appointment requested to discuss the result.';
-    else if (contact === 'not_reached') contactBit = 'Not reached. Further contact attempts required.';
-    else if (lesion && lesion.contactUrgent) contactBit = 'Urgent contact.';
+    const urgent = !!(lesion && lesion.contactUrgent) || !!(draft && draft.urgent);
     const callNote = (draft && draft.callNote) || '';
-    const lines = [
-        site + (dx ? ' — ' + dx : '') + ': ' + result + (accession ? ' (Lab case ' + accession + ')' : '') + '.',
-        'Reviewed. ' + [planBit, contactBit].filter(Boolean).join(' '),
-        callNote
-    ].filter(Boolean);
-    return lines.join(' ');
+    const head = site + (dx ? ' — ' + dx : '') + ': ' + result + (accession ? ' (Lab case ' + accession + ')' : '') + '.';
+    let management = '';
+    if (!plan) {
+        management = 'Plan not set.' + (urgent ? ' Urgent contact.' : '');
+    } else {
+        const planBit = (plan === 'further_management' || plan === 'plan_excision')
+            ? 'Needs further management.'
+            : (plan === 'no_followup' ? 'No further action.' : '');
+        let contactBit = '';
+        if (fileNoCall) contactBit = 'Filed. No call (call-if-anything).';
+        else if (contact === 'advised_now') contactBit = 'Patient advised.';
+        else if (contact === 'appointment_requested') contactBit = 'Appointment requested to discuss the result.';
+        else if (contact === 'not_reached') contactBit = 'Not reached. Further contact attempts required.';
+        else if (urgent) contactBit = 'Urgent contact.';
+        else if (plan !== 'no_followup') contactBit = 'Patient to be contacted.';
+        management = 'Reviewed. ' + [planBit, contactBit].filter(Boolean).join(' ');
+    }
+    return [head, management, callNote].filter(Boolean).join(' ');
 }
 
 function generateResultReceptionMessage(lesion, draft) {
@@ -1304,7 +1321,9 @@ if (typeof module !== 'undefined' && module.exports) {
         formatChartReviewIdentityLines,
         formatChartReviewBackgroundBlock,
         formatChartReviewLesionBlock,
-        formatChartReviewLesionsSection
+        formatChartReviewLesionsSection,
+        generateResultIemrNote,
+        formatLesionPlanIemr
     };
 }
 
