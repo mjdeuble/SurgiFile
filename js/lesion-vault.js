@@ -149,15 +149,79 @@ function planRecordIdentityUpgrade(lesions, charts, options) {
         return id && chartById.has(id) ? id : '';
     }
 
+    function personLabel(record) {
+        if (!record) return '';
+        const explicit = composePatientName(record.firstName, record.lastName, '');
+        const fallback = String(record.name || record.patientName || '').trim();
+        let name = explicit;
+        if (!name && fallback.includes(',')) {
+            const bits = fallback.split(',');
+            name = composePatientName(bits.slice(1).join(','), bits[0], fallback);
+        } else if (!name) {
+            name = fallback;
+        }
+        const dob = String(record.dob || record.patientDob || '').trim();
+        if (!name && !dob) return '';
+        return dob ? (name || 'Unnamed patient') + ' · DOB ' + dob : name;
+    }
+
+    function lesionDateLabel(lesion) {
+        const raw = lesion?.procedureCompletedAt || lesion?.excisionFinalisedAt || lesion?.histologyAt || lesion?.createdAt || '';
+        const text = String(raw || '').trim();
+        if (!text) return '';
+        const parsed = new Date(text);
+        if (Number.isNaN(parsed.getTime())) return text.slice(0, 10);
+        const key = clinicCalendarDayKey(undefined, parsed);
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+        if (!match) return text.slice(0, 10);
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return Number(match[3]) + ' ' + months[Number(match[2]) - 1] + ' ' + match[1];
+    }
+
+    function describeSkippedLesion(lesion, reason) {
+        const chart = chartById.get(String(lesion?.chartId || ''));
+        const attachedTo = personLabel(chart);
+        const storedPatient = personLabel(lesion);
+        const priorId = String(lesion?.priorLesionId || '').trim();
+        const prior = priorId ? byId.get(priorId) : null;
+        let detailReason = reason;
+        if (priorId && !prior) {
+            detailReason = 'The earlier episode is not in the saved lesions.';
+        } else if (prior && String(prior.chartId || '') !== String(lesion.chartId || '')) {
+            const priorChart = chartById.get(String(prior.chartId || ''));
+            const priorWho = personLabel(priorChart || prior) || 'another chart';
+            const priorSite = String(prior.location || '').trim();
+            detailReason = 'The earlier episode' + (priorSite ? ', ' + priorSite + ',' : '') + ' is on ' + priorWho + '.';
+        } else if (prior && !chartIdOf(prior)) {
+            detailReason = 'The earlier episode is not attached to a chart.';
+        }
+        const statusWords = {
+            awaiting_histology: 'Awaiting results',
+            needs_contact: 'Needs contact',
+            planned_procedure: 'Planned procedure',
+            no_followup: 'No follow-up',
+            current_case: 'Current case',
+            awaiting_assessment: 'Awaiting assessment',
+            appointment_requested: 'Appointment requested'
+        };
+        return {
+            lesionId: String(lesion.id),
+            location: String(lesion.location || ''),
+            reason: detailReason,
+            attachedTo,
+            storedPatient: storedPatient && storedPatient !== attachedTo ? storedPatient : '',
+            diagnosis: String(lesion.histologyDiagnosis || lesion.impression || '').trim(),
+            caseNumber: String(lesion.histologyCaseNumber || '').trim(),
+            when: lesionDateLabel(lesion),
+            plan: String(lesion.currentPlan || '').trim() || statusWords[lesion.managementStatus] || ''
+        };
+    }
+
     const byChart = new Map();
     sourceLesions.forEach((lesion) => {
         const chartId = chartIdOf(lesion);
         if (!chartId) {
-            skipped.push({
-                lesionId: String(lesion.id),
-                location: String(lesion.location || ''),
-                reason: 'No chart yet'
-            });
+            skipped.push(describeSkippedLesion(lesion, 'This lesion is not attached to a chart.'));
             return;
         }
         if (!byChart.has(chartId)) byChart.set(chartId, []);
@@ -174,11 +238,9 @@ function planRecordIdentityUpgrade(lesions, charts, options) {
             const prior = byId.get(priorId);
             if (!prior || !idsOnChart.has(priorId) || chartIdOf(prior) !== chartId) {
                 blocked.add(String(lesion.id));
-                skipped.push({
-                    lesionId: String(lesion.id),
-                    location: String(lesion.location || ''),
-                    reason: 'The earlier episode is missing or on another chart'
-                });
+                if (!skipped.some((row) => row.lesionId === String(lesion.id))) {
+                    skipped.push(describeSkippedLesion(lesion, 'The earlier episode is missing or on another chart'));
+                }
                 return;
             }
             if (!childrenOf.has(priorId)) childrenOf.set(priorId, []);
@@ -189,11 +251,7 @@ function planRecordIdentityUpgrade(lesions, charts, options) {
             const id = String(lesion.id);
             blocked.add(id);
             if (!skipped.some((row) => row.lesionId === id)) {
-                skipped.push({
-                    lesionId: id,
-                    location: String(lesion.location || ''),
-                    reason
-                });
+                skipped.push(describeSkippedLesion(lesion, reason));
             }
         }
 

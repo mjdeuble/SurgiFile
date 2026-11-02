@@ -41,7 +41,7 @@ const lesions = [
     { id: 'cheek-extra', chartId: 'chart-a', location: 'Cheek', createdAt: '2022-03-01', priorLesionId: 'cheek' },
     { id: 'loop-a', chartId: 'chart-a', location: 'Back', priorLesionId: 'loop-b' },
     { id: 'loop-b', chartId: 'chart-a', location: 'Back', priorLesionId: 'loop-a' },
-    { id: 'orphan', chartId: 'chart-a', location: 'Shin', priorLesionId: 'missing' },
+    { id: 'orphan', chartId: 'chart-a', location: 'L Upper Back', priorLesionId: 'missing', patientName: 'Someone Else', patientDob: '03/03/1990', impression: 'BCC', histologyCaseNumber: 'S24-1', histologyDiagnosis: '', createdAt: '2024-03-12T00:00:00.000Z', currentPlan: 'Re-excision planned' },
     { id: 'other', chartId: 'chart-b', location: 'Ear', priorLesionId: 'arm' },
     { id: 'loose', location: 'Scalp' }
 ];
@@ -64,8 +64,20 @@ eq(assigned('cheek-2').episodeNumber, 2, 'the linked child is episode 2');
 eq(plan.skipped.some((row) => row.lesionId === 'cheek-extra'), true, 'an extra episode beside the link is left unchanged');
 eq(plan.skipped.some((row) => row.lesionId === 'loop-a' && /circle/.test(row.reason)), true, 'a circle is left unchanged');
 eq(plan.skipped.some((row) => row.lesionId === 'orphan'), true, 'a missing earlier episode is left unchanged');
-eq(plan.skipped.some((row) => row.lesionId === 'other'), true, 'a link to another chart is left unchanged');
-eq(plan.skipped.some((row) => row.lesionId === 'loose' && row.reason === 'No chart yet'), true, 'a lesion with no chart waits');
+const orphan = plan.skipped.find((row) => row.lesionId === 'orphan');
+eq(orphan.attachedTo, 'Jane Doe · DOB 01/01/1970', 'a skipped lesion names the chart it is on');
+eq(orphan.storedPatient, 'Someone Else · DOB 03/03/1990', 'a skipped lesion names the patient stored on it');
+eq(orphan.location, 'L Upper Back', 'a skipped lesion keeps the site');
+eq(orphan.diagnosis, 'BCC', 'a skipped lesion keeps the diagnosis');
+eq(orphan.caseNumber, 'S24-1', 'a skipped lesion keeps the lab case');
+eq(orphan.when, '12 Mar 2024', 'a skipped lesion keeps the date');
+eq(orphan.plan, 'Re-excision planned', 'a skipped lesion keeps the plan');
+eq(/not in the saved lesions/.test(orphan.reason), true, 'a missing earlier episode says it is not saved');
+const other = plan.skipped.find((row) => row.lesionId === 'other');
+eq(!!other, true, 'a link to another chart is left unchanged');
+eq(other.attachedTo, 'John Roe · DOB 02/02/1980', 'the other-chart lesion names who it is attached to');
+eq(other.reason.includes('Forearm') && other.reason.includes('Jane Doe'), true, 'the earlier episode names the other patient and site');
+eq(plan.skipped.some((row) => row.lesionId === 'loose' && row.reason === 'This lesion is not attached to a chart.'), true, 'a lesion with no chart waits');
 eq(plan.lesionAssignments.some((row) => row.lesionId === 'cheek-extra'), false, 'the extra episode is not numbered');
 
 const again = planRecordIdentityUpgrade(lesions.map((lesion) => {

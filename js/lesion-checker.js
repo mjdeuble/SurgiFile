@@ -194,20 +194,39 @@ function recordUpgradeSummary(plan) {
     return [summary, lesionLine, skippedLine].filter(Boolean).join(' ');
 }
 
+function renderSkippedUpgradeLesion(row) {
+    const title = row.attachedTo || 'Not attached to a chart';
+    const detail = [row.location, row.diagnosis, row.caseNumber ? 'Case ' + row.caseNumber : '', row.when]
+        .filter(Boolean)
+        .join(' · ') || 'Lesion';
+    const stored = row.storedPatient
+        ? '<p class="text-[11px] text-slate-600">Name on the lesion: ' + escapeHtml(row.storedPatient) + '</p>'
+        : '';
+    const plan = row.plan
+        ? '<p class="text-[11px] text-slate-600">' + escapeHtml(row.plan) + '</p>'
+        : '';
+    return '<li class="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">'
+        + '<p class="font-semibold text-slate-900">' + escapeHtml(title) + '</p>'
+        + '<p class="text-slate-800">' + escapeHtml(detail) + '</p>'
+        + stored
+        + plan
+        + '<p class="text-[11px] text-amber-900 mt-0.5">' + escapeHtml(row.reason || '') + '</p>'
+        + '</li>';
+}
+
 function renderRecordUpgradeResults(plan) {
     const host = document.getElementById('recordUpgradeResults');
     if (!host || !plan) return '';
     const skipped = plan.skipped || [];
-    const list = skipped.slice(0, 12).map((row) => {
-        const where = row.location || 'Lesion';
-        return '<li>' + escapeHtml(where + ': ' + row.reason) + '</li>';
-    }).join('');
-    const more = skipped.length > 12
-        ? '<li>And ' + (skipped.length - 12) + ' more.</li>'
-        : '';
     const summary = recordUpgradeSummary({ ...plan, skipped: [] });
+    const heading = skipped.length
+        ? '<p class="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Left unchanged</p>'
+        : '';
     host.innerHTML = '<p class="font-semibold text-slate-900">' + escapeHtml(summary) + '</p>'
-        + (list ? '<ul class="mt-1 space-y-1 list-disc pl-4">' + list + more + '</ul>' : '');
+        + heading
+        + (skipped.length
+            ? '<ul class="mt-1 space-y-2">' + skipped.map(renderSkippedUpgradeLesion).join('') + '</ul>'
+            : '');
     return recordUpgradeSummary(plan);
 }
 
@@ -308,5 +327,5 @@ if (typeof document !== 'undefined' && document.addEventListener) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { recordUpgradeSummary, upgradeRecordsFromSettings };
+    module.exports = { recordUpgradeSummary, renderRecordUpgradeResults, upgradeRecordsFromSettings };
 }

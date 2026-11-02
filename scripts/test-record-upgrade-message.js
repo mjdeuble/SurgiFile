@@ -29,7 +29,7 @@ global.managedLesions = [
 
 let savedCharts = 0;
 let savedLesions = 0;
-const { upgradeRecordsFromSettings, recordUpgradeSummary } = require('../js/lesion-checker.js');
+const { upgradeRecordsFromSettings, recordUpgradeSummary, renderRecordUpgradeResults } = require('../js/lesion-checker.js');
 
 let failed = 0;
 function eq(actual, expected, label) {
@@ -48,6 +48,25 @@ eq(recordUpgradeSummary({
     lesionAssignments: [{ lesionId: 'nose' }, { lesionId: 'nose-2' }],
     skipped: []
 }), 'Gave a person number to 1 patient. Numbered 2 lesions.', 'summary names the patients and lesions');
+
+renderRecordUpgradeResults({
+    personAssignments: [],
+    lesionAssignments: [],
+    skipped: [{
+        attachedTo: 'Jane Doe · DOB 01/01/1970',
+        storedPatient: 'John Roe · DOB 02/02/1980',
+        location: 'L Upper Back',
+        diagnosis: 'BCC',
+        caseNumber: 'S24-9',
+        when: '12 Mar 2024',
+        plan: 'Re-excision planned',
+        reason: 'The earlier episode, Forearm, is on John Roe · DOB 02/02/1980.'
+    }]
+});
+eq(host.innerHTML.includes('Jane Doe · DOB 01/01/1970'), true, 'the unchanged list names the chart');
+eq(host.innerHTML.includes('L Upper Back · BCC · Case S24-9 · 12 Mar 2024'), true, 'the unchanged list names the lesion');
+eq(host.innerHTML.includes('Name on the lesion: John Roe · DOB 02/02/1980'), true, 'the unchanged list names a different stored patient');
+eq(host.innerHTML.includes('The earlier episode, Forearm, is on John Roe'), true, 'the unchanged list says where the earlier episode is');
 
 upgradeRecordsFromSettings().then(() => {
     eq(savedCharts, 1, 'the patient chart is saved');
