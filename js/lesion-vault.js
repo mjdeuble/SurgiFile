@@ -1017,7 +1017,7 @@ function lesionReviewDispositionCopy(lesion) {
     if (kind === 'topical') {
         return {
             kind,
-            heading: 'Review plan',
+            heading: 'This review',
             nfa: 'Cleared / no further action',
             further: 'Needs further management',
             hint: 'Cleared at this review — no further action. The original topical episode stays on the history.',
@@ -1043,7 +1043,7 @@ function lesionReviewDispositionCopy(lesion) {
     if (kind === 'cancel_plan') {
         return {
             kind,
-            heading: 'Review plan',
+            heading: 'Plan',
             nfa: 'Cancel plan / no further action',
             further: 'Needs further management',
             hint: 'Cancels this planned procedure. The original plan stays on the history.',
@@ -1069,7 +1069,7 @@ function lesionReviewDispositionCopy(lesion) {
     if (kind === 'scheduled') {
         return {
             kind,
-            heading: 'Review plan',
+            heading: 'This review',
             nfa: 'Cleared / no further action',
             further: 'Needs further management',
             hint: 'Cleared at this review — no further action. The original plan stays on the history.',

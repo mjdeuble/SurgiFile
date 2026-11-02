@@ -135,6 +135,9 @@ const planned = {
 eq(vault.lesionReviewDispositionKind(planned), 'cancel_plan', 'undone planned procedure is cancel_plan');
 eq(vault.lesionCanOpenFurtherManagement(planned), true, 'cancelled plan can open further management');
 eq(vault.lesionReviewDispositionCopy(planned).nfa, 'Cancel plan / no further action', 'cancel plan NFA label');
+eq(vault.lesionReviewDispositionCopy(planned).heading, 'Plan', 'a booked procedure is not a second review plan');
+eq(vault.lesionReviewDispositionCopy(monitorOpen).heading, 'This review', 'a scheduled review is titled this review');
+eq(vault.lesionReviewDispositionCopy({ ...pdt, managementStatus: 'awaiting_assessment' }).heading, 'This review', 'a topical review is titled this review');
 
 const punch = {
     id: 'H1',
@@ -150,6 +153,15 @@ eq(vault.lesionReviewDispositionKind(punch), 'no_result', 'done procedure withou
 eq(vault.lesionAllowsReviewDisposition(punch), true, 'no-result episode can be closed');
 eq(vault.lesionCanOpenFurtherManagement(punch), false, 'no-result further management still needs histology');
 eq(vault.lesionReviewDispositionCopy(punch).nfa, 'Close without result', 'no-result NFA label');
+eq(vault.lesionReviewDispositionCopy(punch).heading, 'Review plan', 'a procedure without a report keeps Review plan');
+const signed = {
+    ...punch,
+    id: 'S1',
+    histologyResult: 'BCC, margins clear',
+    managementStatus: 'needs_contact'
+};
+eq(vault.lesionReviewDispositionKind(signed), 'result', 'saved histology is a result sign-off');
+eq(vault.lesionReviewDispositionCopy(signed).heading, 'Clinical plan', 'histology sign-off stays Clinical plan');
 eq(/lost/i.test(vault.lesionReviewDispositionCopy(punch).hint + vault.lesionReviewDispositionCopy(punch).confirmBody), false, 'close without result does not say the specimen was lost');
 eq(/booked/i.test(vault.lesionReviewDispositionCopy(planned).hint + vault.lesionReviewDispositionCopy(planned).confirmBody), false, 'cancel plan does not say the procedure was booked');
 

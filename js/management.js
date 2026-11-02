@@ -1197,6 +1197,10 @@ function renderInspectorPlanCard(lesion, options) {
     const changeBtn = options.changePlan !== false
         ? histoInlineButton('Change plan', `editChartLesionPlan('${id}')`)
         : '';
+    const cancelBtn = (typeof lesionReviewDispositionKind === 'function'
+        && lesionReviewDispositionKind(lesion) === 'cancel_plan')
+        ? histoInlineButton('Cancel plan', `cancelChartLesionPlan('${id}')`)
+        : '';
     const extraBtns = topical
         ? histoInlineButton('Comparison', 'openAkComparisonModal()')
             + histoInlineButton('Print', 'printAkComparisonChart()')
@@ -1223,7 +1227,7 @@ function renderInspectorPlanCard(lesion, options) {
     }
     const topicalLook = topical || (proposed && lesionProposedPlanKey(lesion) === 'topical');
     return `<article class="histo-report is-plan${topicalLook ? ' is-topical-plan' : ''}${decline ? ' is-decline-plan' : ''}" data-inspector-plan="1">
-        ${histoReportHead('Plan', '', extraBtns + changeBtn)}
+        ${histoReportHead('Plan', '', extraBtns + changeBtn + cancelBtn)}
         ${rows ? `<dl class="histo-report-dl">${rows}</dl>` : ''}
         ${pending}
     </article>`;
@@ -3171,6 +3175,7 @@ function syncHistologyFollowUpUi() {
 let manageLesionNfaConfirmed = false;
 let manageLesionPrevPlan = '';
 let manageLesionPendingSave = false;
+let manageLesionForcedAction = '';
 
 function lesionAlreadyClinicallyFinalised(lesion) {
     if (!lesion) return false;
@@ -3191,6 +3196,8 @@ function applyManageLesionReviewCopy(lesion) {
     const body = document.getElementById('manageLesionNfaBody');
     const btn = document.getElementById('btnConfirmManageLesionNfa');
     if (heading) heading.textContent = copy?.heading || 'Plan';
+    const furtherChoice = document.getElementById('manageLesionFurtherChoice');
+    if (furtherChoice) furtherChoice.classList.toggle('hidden', copy?.kind === 'cancel_plan');
     if (nfaLabel) nfaLabel.textContent = copy?.nfa || 'No further action';
     if (hint) hint.textContent = copy?.hint
         || 'Confirming no further action clinically finalises this lesion. You can reopen it later if more treatment is needed.';
@@ -3221,6 +3228,7 @@ function cancelManageLesionNfa() {
     closeManageLesionNfaConfirm();
     manageLesionNfaConfirmed = false;
     manageLesionPendingSave = false;
+    manageLesionForcedAction = '';
     const prev = manageLesionPrevPlan && manageLesionPrevPlan !== 'no_followup'
         ? manageLesionPrevPlan
         : '';
@@ -3296,7 +3304,9 @@ function openManageLesionModal(id) {
     if (noteEl) noteEl.value = '';
     manageLesionPendingSave = false;
     const alreadyNfa = lesionAlreadyClinicallyFinalised(lesion) || lesion?.resultPlan === 'no_followup';
-    const further = lesion?.resultPlan === 'further_management' || lesion?.resultPlan === 'plan_excision';
+    const bookedProcedure = typeof lesionReviewDispositionKind === 'function'
+        && lesionReviewDispositionKind(lesion) === 'cancel_plan';
+    const further = !bookedProcedure && (lesion?.resultPlan === 'further_management' || lesion?.resultPlan === 'plan_excision');
     manageLesionNfaConfirmed = alreadyNfa && !further;
     document.querySelectorAll('input[name="histologyNext"]').forEach((el) => { el.checked = false; });
     let planVal = '';
@@ -4225,6 +4235,8 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         formatLesionHistoryShareText,
         formatLesionEpisodePlainText,
-        formatLesionEpisodePlainLines
+        formatLesionEpisodePlainLines,
+        renderInspectorPlanCard,
+        lesionAlreadyClinicallyFinalised
     };
 }
