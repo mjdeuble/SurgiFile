@@ -180,18 +180,24 @@ async function assignLesionChartFromChecker(lesionId, chartId) {
     showToast('Assigned ' + (lesion.location || 'lesion') + ' to ' + name + '.');
 }
 
-function renderRecordUpgradeResults(plan) {
-    const host = document.getElementById('recordUpgradeResults');
-    if (!host || !plan) return;
-    const people = plan.personAssignments.length;
-    const numbered = plan.lesionAssignments.length;
-    const skipped = plan.skipped || [];
+function recordUpgradeSummary(plan) {
+    const people = (plan && plan.personAssignments && plan.personAssignments.length) || 0;
+    const numbered = (plan && plan.lesionAssignments && plan.lesionAssignments.length) || 0;
+    const skipped = (plan && plan.skipped && plan.skipped.length) || 0;
     const summary = people
         ? 'Gave a person number to ' + people + ' patient' + (people === 1 ? '' : 's') + '.'
         : 'Every patient already had a person number.';
     const lesionLine = numbered
         ? 'Numbered ' + numbered + ' lesion' + (numbered === 1 ? '' : 's') + '.'
         : 'No lesion needed a new spot number.';
+    const skippedLine = skipped ? skipped + ' left unchanged.' : '';
+    return [summary, lesionLine, skippedLine].filter(Boolean).join(' ');
+}
+
+function renderRecordUpgradeResults(plan) {
+    const host = document.getElementById('recordUpgradeResults');
+    if (!host || !plan) return '';
+    const skipped = plan.skipped || [];
     const list = skipped.slice(0, 12).map((row) => {
         const where = row.location || 'Lesion';
         return '<li>' + escapeHtml(where + ': ' + row.reason) + '</li>';
@@ -199,10 +205,10 @@ function renderRecordUpgradeResults(plan) {
     const more = skipped.length > 12
         ? '<li>And ' + (skipped.length - 12) + ' more.</li>'
         : '';
-    host.innerHTML = '<p>' + escapeHtml(summary) + '</p>'
-        + '<p class="mt-1">' + escapeHtml(lesionLine) + '</p>'
-        + (skipped.length ? '<p class="mt-1">' + escapeHtml(skipped.length + ' left unchanged.') + '</p>' : '')
+    const summary = recordUpgradeSummary({ ...plan, skipped: [] });
+    host.innerHTML = '<p class="font-semibold text-slate-900">' + escapeHtml(summary) + '</p>'
         + (list ? '<ul class="mt-1 space-y-1 list-disc pl-4">' + list + more + '</ul>' : '');
+    return recordUpgradeSummary(plan);
 }
 
 async function upgradeRecordsFromSettings() {
@@ -218,49 +224,59 @@ async function upgradeRecordsFromSettings() {
     }
     const ok = window.confirm('Number the patients and clean lesion chains now? Broken links are left as they are. The numbers are not written into the patient note.');
     if (!ok) return;
-    const run = async (progress) => {
-        const plan = planRecordIdentityUpgrade(managed, charts);
-        const chartById = new Map(charts.map((chart) => [String(chart.id), chart]));
-        const lesionById = new Map(managed.map((lesion) => [String(lesion.id), lesion]));
-        const total = Math.max(1, plan.personAssignments.length + plan.lesionAssignments.length);
-        let done = 0;
-        for (const row of plan.personAssignments) {
-            const chart = chartById.get(row.chartId);
-            if (chart) {
-                chart.personId = row.personId;
-                if (typeof currentPatient !== 'undefined' && currentPatient && String(currentPatient.chartId) === String(chart.id)) {
-                    currentPatient.personId = row.personId;
-                }
-                if (typeof saveManagedChartRecord === 'function') await saveManagedChartRecord(chart);
-            }
-            done += 1;
-            if (progress) progress('Saving patients', done / total);
-        }
-        for (const row of plan.lesionAssignments) {
-            const lesion = lesionById.get(row.lesionId);
-            if (lesion) {
-                lesion.personId = row.personId;
-                lesion.spotNumber = row.spotNumber;
-                lesion.episodeNumber = row.episodeNumber;
-                if (row.procedureId) lesion.procedureId = row.procedureId;
-                if (typeof lesions !== 'undefined' && Array.isArray(lesions)) {
-                    const session = lesions.find((item) => String(item.id) === String(lesion.id));
-                    if (session && session !== lesion) {
-                        session.personId = lesion.personId;
-                        session.spotNumber = lesion.spotNumber;
-                        session.episodeNumber = lesion.episodeNumber;
-                        if (lesion.procedureId) session.procedureId = lesion.procedureId;
+    const run = async ({ progress } = {}) => {
+        const status = document.getElementById('recordUpgradeResults');
+        try {
+            const plan = planRecordIdentityUpgrade(managed, charts);
+            if (status) status.textContent = 'Saving the new numbers…';
+            const chartById = new Map(charts.map((chart) => [String(chart.id), chart]));
+            const lesionById = new Map(managed.map((lesion) => [String(lesion.id), lesion]));
+            const total = Math.max(1, plan.personAssignments.length + plan.lesionAssignments.length);
+            let done = 0;
+            for (const row of plan.personAssignments) {
+                const chart = chartById.get(row.chartId);
+                if (chart) {
+                    chart.personId = row.personId;
+                    if (typeof currentPatient !== 'undefined' && currentPatient && String(currentPatient.chartId) === String(chart.id)) {
+                        currentPatient.personId = row.personId;
                     }
+                    if (typeof saveManagedChartRecord === 'function') await saveManagedChartRecord(chart);
                 }
-                if (typeof writeManagedLesion === 'function') await writeManagedLesion(lesion);
+                done += 1;
+                if (progress) progress('Saving patients', done / total);
             }
-            done += 1;
-            if (progress) progress('Saving lesions', done / total);
+            for (const row of plan.lesionAssignments) {
+                const lesion = lesionById.get(row.lesionId);
+                if (lesion) {
+                    lesion.personId = row.personId;
+                    lesion.spotNumber = row.spotNumber;
+                    lesion.episodeNumber = row.episodeNumber;
+                    if (row.procedureId) lesion.procedureId = row.procedureId;
+                    if (typeof lesions !== 'undefined' && Array.isArray(lesions)) {
+                        const session = lesions.find((item) => String(item.id) === String(lesion.id));
+                        if (session && session !== lesion) {
+                            session.personId = lesion.personId;
+                            session.spotNumber = lesion.spotNumber;
+                            session.episodeNumber = lesion.episodeNumber;
+                            if (lesion.procedureId) session.procedureId = lesion.procedureId;
+                        }
+                    }
+                    if (typeof writeManagedLesion === 'function') await writeManagedLesion(lesion);
+                }
+                done += 1;
+                if (progress) progress('Saving lesions', done / total);
+            }
+            const message = renderRecordUpgradeResults(plan);
+            if (typeof renderManagedLesions === 'function') renderManagedLesions();
+            if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+            showToast(message || 'Records upgraded.');
+        } catch (err) {
+            const detail = (err && err.message) ? err.message : 'Something stopped the save.';
+            if (status) {
+                status.textContent = 'The upgrade stopped before it finished. Run Upgrade records again. ' + detail;
+            }
+            showToast('The upgrade stopped. Run it again.');
         }
-        renderRecordUpgradeResults(plan);
-        if (typeof renderManagedLesions === 'function') renderManagedLesions();
-        if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
-        showToast('Records upgraded.');
     };
     if (typeof runBusyAction === 'function') {
         return runBusyAction('Upgrading records…', run, {
@@ -286,5 +302,11 @@ function bindLesionCheckerActions() {
     });
 }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindLesionCheckerActions);
-else bindLesionCheckerActions();
+if (typeof document !== 'undefined' && document.addEventListener) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindLesionCheckerActions);
+    else bindLesionCheckerActions();
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { recordUpgradeSummary, upgradeRecordsFromSettings };
+}
