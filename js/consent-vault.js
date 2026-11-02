@@ -130,6 +130,9 @@ async function saveGeneratedConsentDoc(data, plainText, printHtml) {
     if (!chartId) return null;
     const now = new Date().toISOString();
     const procedures = Array.isArray(data?.procedures) ? data.procedures : [];
+    const episodeRefs = typeof consentEpisodeRefs === 'function'
+        ? consentEpisodeRefs(procedures, typeof managedLesions !== 'undefined' ? managedLesions : [])
+        : [];
     const doc = {
         id: (typeof newOpaqueRecordId === 'function' ? newOpaqueRecordId('consent') : 'consent-' + Date.now()),
         chartId,
@@ -141,6 +144,8 @@ async function saveGeneratedConsentDoc(data, plainText, printHtml) {
         plainText: text,
         printHtml: String(printHtml || ''),
         lesionIds: [...new Set(procedures.map((p) => p.lesionId).filter(Boolean).map(String))],
+        episodeRefs,
+        procedureId: episodeRefs.map((ref) => ref.procedureId).find(Boolean) || '',
         procedures: procedures.map((p) => ({
             lesionId: p.lesionId || '',
             procedureKind: p.procedureKind || '',

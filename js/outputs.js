@@ -520,20 +520,81 @@ function formatChartReviewBackgroundBlock(lesion) {
     return lines.map((line) => '    - ' + line).join('\n');
 }
 
-function formatChartReviewLesionBlock(lesion, index, now) {
+function reviewNoteLesionHeading(index, lesion) {
     const loc = String(lesion?.location || 'site').trim() || 'site';
-    const actions = formatChartReviewLesionLines(lesion, now);
-    if (!actions.length) return '';
-    const parts = ['Lesion #' + index + ': ' + loc];
-    const background = formatChartReviewBackgroundBlock(lesion);
+    return 'Lesion #' + index + ': ' + loc;
+}
+
+function groupLesionsForReviewNote(list) {
+    const items = (Array.isArray(list) ? list : []).filter((item) => item && item.id);
+    const byId = new Map(items.map((item) => [String(item.id), item]));
+    function keyOf(lesion) {
+        let current = lesion;
+        const seen = new Set();
+        while (current && !seen.has(String(current.id))) {
+            seen.add(String(current.id));
+            const person = String(current.personId || '').trim();
+            const spot = Number(current.spotNumber) || 0;
+            if (person && spot > 0) return 'spot:' + person + ':' + spot;
+            const priorId = String(current.priorLesionId || '').trim();
+            if (!priorId || !byId.has(priorId)) break;
+            current = byId.get(priorId);
+        }
+        return 'chain:' + String((current && current.id) || lesion.id);
+    }
+    const groups = new Map();
+    const order = [];
+    items.forEach((lesion) => {
+        const key = keyOf(lesion);
+        if (!groups.has(key)) {
+            groups.set(key, []);
+            order.push(key);
+        }
+        groups.get(key).push(lesion);
+    });
+    return order.map((key) => {
+        const members = groups.get(key);
+        const ranked = members.slice().sort((a, b) => {
+            const episode = (Number(b.episodeNumber) || 0) - (Number(a.episodeNumber) || 0);
+            if (episode) return episode;
+            const created = String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+            if (created) return created;
+            return String(b.id).localeCompare(String(a.id));
+        });
+        return { key, latest: ranked[0], earlier: ranked.slice(1), members };
+    });
+}
+
+function formatChartReviewLesionBlock(lesion, index, now) {
+    return formatChartReviewLesionGroup({ latest: lesion, earlier: [] }, index, now);
+}
+
+function formatChartReviewLesionGroup(group, index, now) {
+    const latest = group?.latest;
+    if (!latest) return '';
+    const lines = [];
+    const seen = new Set();
+    function addLines(lesion) {
+        formatChartReviewLesionLines(lesion, now).forEach((line) => {
+            if (!line || seen.has(line)) return;
+            seen.add(line);
+            lines.push(line);
+        });
+    }
+    addLines(latest);
+    (group.earlier || []).forEach(addLines);
+    if (!lines.length) return '';
+    const parts = [reviewNoteLesionHeading(index, latest)];
+    const background = formatChartReviewBackgroundBlock(latest);
     if (background) parts.push(background);
-    actions.forEach((line) => parts.push('    - ' + line));
+    lines.forEach((line) => parts.push('    - ' + line));
     return parts.join('\n');
 }
 
 function formatChartReviewLesionsSection(list, now) {
-    const rows = (Array.isArray(list) ? list : [])
-        .map((lesion, idx) => formatChartReviewLesionBlock(lesion, idx + 1, now))
+    const groups = groupLesionsForReviewNote(list);
+    const rows = groups
+        .map((group, idx) => formatChartReviewLesionGroup(group, idx + 1, now))
         .filter(Boolean);
     if (!rows.length) return '';
     return '=== LESIONS REVIEWED TODAY ===\n\n' + rows.join('\n\n') + '\n\n';

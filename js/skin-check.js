@@ -1108,6 +1108,11 @@ function commitLesionRecordToSession(editId, lesionRecord, options) {
             id: newLesionId(),
             ...lesionRecord
         });
+        if (typeof assignFreshSpotIdentity === 'function') {
+            const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
+            const pool = (typeof managedLesions !== 'undefined' ? managedLesions : []).concat(lesions);
+            assignFreshSpotIdentity(lesions[lesions.length - 1], chart, pool);
+        }
     }
 
     const saved = lesions.find(l => editId ? String(l.id) === String(editId) : l.id === lesions[lesions.length - 1].id);

@@ -51,6 +51,294 @@ function newLesionId() {
     return 'lesion-' + Date.now() + '-' + Math.random().toString(16).slice(2);
 }
 
+function newPersonId() {
+    if (typeof newOpaqueRecordId === 'function') return newOpaqueRecordId('person');
+    const token = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : (Date.now() + '-' + Math.random().toString(16).slice(2));
+    return 'person-' + token;
+}
+
+function chartIdForPerson(personId) {
+    const wanted = String(personId || '').trim();
+    if (!wanted) return '';
+    const charts = typeof managedCharts !== 'undefined' && Array.isArray(managedCharts) ? managedCharts : [];
+    const matches = charts.filter((chart) => chart && String(chart.personId || '') === wanted);
+    return matches.length === 1 ? String(matches[0].id) : '';
+}
+
+function nextSpotNumberForChart(chartId, lesions) {
+    const id = String(chartId || '');
+    let max = 0;
+    (Array.isArray(lesions) ? lesions : []).forEach((lesion) => {
+        if (!lesion || String(lesion.chartId || '') !== id) return;
+        const spot = Number(lesion.spotNumber) || 0;
+        if (spot > max) max = spot;
+    });
+    return max + 1;
+}
+
+function copySpotIdentityFromPrior(child, prior) {
+    if (!child || !prior) return child;
+    if (prior.personId) child.personId = prior.personId;
+    const spot = Number(prior.spotNumber) || 0;
+    if (spot > 0) {
+        child.spotNumber = spot;
+        child.episodeNumber = (Number(prior.episodeNumber) || 1) + 1;
+    }
+    return child;
+}
+
+function assignFreshSpotIdentity(lesion, chart, lesions) {
+    if (!lesion || !chart || !String(chart.personId || '').trim()) return lesion;
+    lesion.personId = chart.personId;
+    if (!lesion.chartId) lesion.chartId = chart.id;
+    if (!(Number(lesion.spotNumber) > 0)) {
+        lesion.spotNumber = nextSpotNumberForChart(chart.id, lesions);
+        lesion.episodeNumber = 1;
+    }
+    return lesion;
+}
+
+function retargetLesionIdentity(lesion, chart, allLesions) {
+    if (!lesion || !chart) return { chartChanged: false };
+    let chartChanged = false;
+    if (!String(chart.personId || '').trim()) {
+        chart.personId = newPersonId();
+        chartChanged = true;
+    }
+    lesion.personId = chart.personId;
+    const others = (Array.isArray(allLesions) ? allLesions : []).filter((item) => item && String(item.id) !== String(lesion.id));
+    const parent = others.find((item) => String(item.id) === String(lesion.priorLesionId || '')
+        && String(item.chartId) === String(chart.id));
+    if (parent && Number(parent.spotNumber) > 0) {
+        lesion.spotNumber = Number(parent.spotNumber);
+        lesion.episodeNumber = (Number(parent.episodeNumber) || 1) + 1;
+    } else {
+        lesion.spotNumber = nextSpotNumberForChart(chart.id, others);
+        lesion.episodeNumber = 1;
+    }
+    return { chartChanged };
+}
+
+function planRecordIdentityUpgrade(lesions, charts, options) {
+    const nextId = (options && options.nextPersonId) || newPersonId;
+    const sourceLesions = (Array.isArray(lesions) ? lesions : []).filter((item) => item && item.id);
+    const sourceCharts = (Array.isArray(charts) ? charts : []).filter((item) => item && item.id);
+    const chartById = new Map(sourceCharts.map((chart) => [String(chart.id), chart]));
+    const personByChart = new Map();
+    const personAssignments = [];
+    sourceCharts.forEach((chart) => {
+        const existing = String(chart.personId || '').trim();
+        if (existing) {
+            personByChart.set(String(chart.id), existing);
+            return;
+        }
+        const personId = nextId();
+        personByChart.set(String(chart.id), personId);
+        personAssignments.push({ chartId: String(chart.id), personId });
+    });
+
+    const byId = new Map(sourceLesions.map((lesion) => [String(lesion.id), lesion]));
+    const skipped = [];
+    const lesionAssignments = [];
+    const claimed = new Set();
+
+    function chartIdOf(lesion) {
+        const id = String(lesion?.chartId || '').trim();
+        return id && chartById.has(id) ? id : '';
+    }
+
+    const byChart = new Map();
+    sourceLesions.forEach((lesion) => {
+        const chartId = chartIdOf(lesion);
+        if (!chartId) {
+            skipped.push({
+                lesionId: String(lesion.id),
+                location: String(lesion.location || ''),
+                reason: 'No chart yet'
+            });
+            return;
+        }
+        if (!byChart.has(chartId)) byChart.set(chartId, []);
+        byChart.get(chartId).push(lesion);
+    });
+
+    byChart.forEach((group, chartId) => {
+        const idsOnChart = new Set(group.map((lesion) => String(lesion.id)));
+        const childrenOf = new Map();
+        const blocked = new Set();
+        group.forEach((lesion) => {
+            const priorId = String(lesion.priorLesionId || '').trim();
+            if (!priorId) return;
+            const prior = byId.get(priorId);
+            if (!prior || !idsOnChart.has(priorId) || chartIdOf(prior) !== chartId) {
+                blocked.add(String(lesion.id));
+                skipped.push({
+                    lesionId: String(lesion.id),
+                    location: String(lesion.location || ''),
+                    reason: 'The earlier episode is missing or on another chart'
+                });
+                return;
+            }
+            if (!childrenOf.has(priorId)) childrenOf.set(priorId, []);
+            childrenOf.get(priorId).push(lesion);
+        });
+
+        function markSkipped(lesion, reason) {
+            const id = String(lesion.id);
+            blocked.add(id);
+            if (!skipped.some((row) => row.lesionId === id)) {
+                skipped.push({
+                    lesionId: id,
+                    location: String(lesion.location || ''),
+                    reason
+                });
+            }
+        }
+
+        const cycleIds = new Set();
+        group.forEach((start) => {
+            if (blocked.has(String(start.id))) return;
+            const seen = [];
+            const local = new Set();
+            let current = start;
+            while (current && !blocked.has(String(current.id))) {
+                const id = String(current.id);
+                if (local.has(id)) {
+                    seen.slice(seen.indexOf(id)).forEach((item) => cycleIds.add(item));
+                    return;
+                }
+                local.add(id);
+                seen.push(id);
+                const kids = (childrenOf.get(id) || []).filter((kid) => !blocked.has(String(kid.id)));
+                if (kids.length !== 1) return;
+                current = kids[0];
+            }
+        });
+        cycleIds.forEach((id) => {
+            const lesion = byId.get(id);
+            if (lesion) markSkipped(lesion, 'The episodes point in a circle');
+        });
+
+        function walkChain(root) {
+            const chain = [];
+            const seen = new Set();
+            let current = root;
+            while (current) {
+                const id = String(current.id);
+                if (seen.has(id)) return { error: 'The episodes point in a circle', chain };
+                seen.add(id);
+                chain.push(current);
+                const kids = (childrenOf.get(id) || []).filter((kid) => !blocked.has(String(kid.id)));
+                if (!kids.length) return { chain };
+                const linkedId = String(current.linkedReexcisionId || current.linkedChildId || '').trim();
+                let child = null;
+                if (linkedId) {
+                    child = kids.find((kid) => String(kid.id) === linkedId) || null;
+                    if (!child) return { error: 'The linked next episode does not match', chain };
+                    kids.filter((kid) => String(kid.id) !== linkedId).forEach((orphan) => {
+                        markSkipped(orphan, 'An extra episode sits beside the linked one');
+                    });
+                } else if (kids.length > 1) {
+                    return { error: 'More than one next episode and no single link', chain, orphans: kids };
+                } else {
+                    child = kids[0];
+                }
+                current = child;
+            }
+            return { chain };
+        }
+
+        const roots = group.filter((lesion) => {
+            if (blocked.has(String(lesion.id))) return false;
+            const priorId = String(lesion.priorLesionId || '').trim();
+            return !priorId || !idsOnChart.has(priorId) || blocked.has(priorId);
+        });
+        roots.sort((a, b) => {
+            const created = String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+            if (created) return created;
+            const location = String(a.location || '').localeCompare(String(b.location || ''), 'en', { sensitivity: 'base' });
+            if (location) return location;
+            return String(a.id).localeCompare(String(b.id));
+        });
+
+        const usedSpots = new Set();
+        group.forEach((lesion) => {
+            const spot = Number(lesion.spotNumber) || 0;
+            if (spot > 0) usedSpots.add(spot);
+        });
+        let nextSpot = usedSpots.size ? Math.max(...usedSpots) + 1 : 1;
+        const allocatedSpots = new Set();
+
+        roots.forEach((root) => {
+            if (claimed.has(String(root.id)) || blocked.has(String(root.id))) return;
+            const walked = walkChain(root);
+            if (walked.error) {
+                walked.chain.forEach((lesion) => markSkipped(lesion, walked.error));
+                (walked.orphans || []).forEach((lesion) => markSkipped(lesion, walked.error));
+                return;
+            }
+            const chain = walked.chain.filter((lesion) => !blocked.has(String(lesion.id)) && !claimed.has(String(lesion.id)));
+            if (!chain.length) return;
+            const existingSpots = [...new Set(chain.map((lesion) => Number(lesion.spotNumber) || 0).filter((spot) => spot > 0))];
+            const disagrees = existingSpots.length > 1 || chain.some((lesion, index) => {
+                const episode = Number(lesion.episodeNumber) || 0;
+                return episode > 0 && episode !== index + 1;
+            });
+            if (disagrees || (existingSpots[0] && allocatedSpots.has(existingSpots[0]))) {
+                chain.forEach((lesion) => {
+                    claimed.add(String(lesion.id));
+                    markSkipped(lesion, 'The spot number already disagrees');
+                });
+                return;
+            }
+            const spotNumber = existingSpots[0] || nextSpot++;
+            allocatedSpots.add(spotNumber);
+            const personId = personByChart.get(chartId) || '';
+            chain.forEach((lesion, index) => {
+                claimed.add(String(lesion.id));
+                const episodeNumber = index + 1;
+                const procedureId = String(lesion.procedureId || '').trim() || String(lesion.histologyBatchId || '').trim();
+                const changed = String(lesion.personId || '') !== personId
+                    || Number(lesion.spotNumber) !== spotNumber
+                    || Number(lesion.episodeNumber) !== episodeNumber
+                    || (procedureId && String(lesion.procedureId || '') !== procedureId);
+                if (!changed) return;
+                lesionAssignments.push({
+                    lesionId: String(lesion.id),
+                    personId,
+                    spotNumber,
+                    episodeNumber,
+                    procedureId
+                });
+            });
+        });
+
+        group.forEach((lesion) => {
+            const id = String(lesion.id);
+            if (claimed.has(id) || skipped.some((row) => row.lesionId === id)) return;
+            markSkipped(lesion, 'Left unchanged because the episode link is uncertain');
+        });
+    });
+
+    return { personAssignments, lesionAssignments, skipped };
+}
+
+function consentEpisodeRefs(procedures, lesions) {
+    const byId = new Map((Array.isArray(lesions) ? lesions : []).filter((item) => item && item.id).map((item) => [String(item.id), item]));
+    return (Array.isArray(procedures) ? procedures : []).map((procedure) => {
+        const lesion = byId.get(String(procedure?.lesionId || ''));
+        return {
+            lesionId: String(procedure?.lesionId || ''),
+            personId: String(lesion?.personId || ''),
+            spotNumber: Number(lesion?.spotNumber) || 0,
+            episodeNumber: Number(lesion?.episodeNumber) || 0,
+            procedureId: String(lesion?.procedureId || '')
+        };
+    });
+}
+
 function newTimelineId() {
     if (crypto.randomUUID) return crypto.randomUUID();
     return 'evt-' + Date.now() + '-' + Math.random().toString(16).slice(2);
@@ -996,8 +1284,10 @@ function stampHistologyBatchForProcedure(lesionList) {
     if (!items.length) return '';
     const existing = items.map((item) => histologyBatchIdOf(item)).filter(Boolean);
     const batchId = existing[0] || newHistologyBatchId();
+    const procedureId = items.map((item) => String(item.procedureId || '').trim()).find(Boolean) || batchId;
     items.forEach((lesion, idx) => {
         lesion.histologyBatchId = batchId;
+        if (!String(lesion.procedureId || '').trim()) lesion.procedureId = procedureId;
         if (!normalizeHistologyPot(lesion.histologyPot)) {
             lesion.histologyPot = String(idx + 1);
         }
@@ -1006,12 +1296,14 @@ function stampHistologyBatchForProcedure(lesionList) {
             : null;
         if (session && session !== lesion) {
             session.histologyBatchId = batchId;
+            if (!String(session.procedureId || '').trim()) session.procedureId = lesion.procedureId;
             if (!normalizeHistologyPot(session.histologyPot)) session.histologyPot = lesion.histologyPot;
         }
         const managed = (typeof managedLesions !== 'undefined' ? managedLesions : [])
             .find((row) => String(row.id) === String(lesion.id));
         if (managed && managed !== lesion) {
             managed.histologyBatchId = batchId;
+            if (!String(managed.procedureId || '').trim()) managed.procedureId = lesion.procedureId;
             if (!normalizeHistologyPot(managed.histologyPot)) managed.histologyPot = lesion.histologyPot;
         }
     });
@@ -1278,6 +1570,7 @@ function buildReexcisionLesionFromPrior(prior, extras) {
         chartId: extras.chartId || prior.chartId || patient.chartId || '',
         phone: extras.phone || prior.phone || patient.patientPhone || ''
     };
+    copySpotIdentityFromPrior(child, prior);
     if (typeof applyInferredBillingLesionType === 'function') {
         applyInferredBillingLesionType(child);
     }
@@ -1340,6 +1633,7 @@ function buildManagementChildFromPrior(prior, extras) {
         chartId: extras.chartId || prior.chartId || patient.chartId || '',
         phone: extras.phone || prior.phone || patient.patientPhone || ''
     };
+    copySpotIdentityFromPrior(child, prior);
     if (typeof applyInferredBillingLesionType === 'function') {
         applyInferredBillingLesionType(child);
     }
@@ -1968,6 +2262,8 @@ function identityChartId(record) {
     const named = chartIdForName(record.patientName || record.name, record.patientDob || record.dob);
     if (stored && findChartById(stored)) return stored;
     if (named && findChartById(named)) return named;
+    const byPerson = chartIdForPerson(record.personId);
+    if (byPerson) return byPerson;
     return stored || named || '';
 }
 
@@ -2110,6 +2406,7 @@ function applyChildChartIdentity(child) {
     if (ident.patientDob) child.patientDob = ident.patientDob;
     if (ident.phone) child.phone = ident.phone;
     if (ident.clinician) child.clinician = child.clinician || ident.clinician;
+    if (prior) copySpotIdentityFromPrior(child, prior);
     return child;
 }
 
@@ -2386,13 +2683,15 @@ function patientIdentityFromRecord(source) {
 
 function sessionPatientSnapshot() {
     const clinician = (typeof loggedInDoctorName === 'function' && loggedInDoctorName()) || '';
+    const openChart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
     if (!hasCurrentPatient()) {
         return {
             patientName: '',
             patientDob: '',
             patientPhone: '',
             clinician,
-            chartId: ''
+            chartId: '',
+            personId: ''
         };
     }
     return {
@@ -2400,7 +2699,8 @@ function sessionPatientSnapshot() {
         patientDob: currentPatient.dob,
         patientPhone: currentPatient.phone || '',
         clinician: clinician || currentPatient.clinician || '',
-        chartId: currentPatient.chartId
+        chartId: currentPatient.chartId,
+        personId: currentPatient.personId || openChart?.personId || ''
     };
 }
 
@@ -2533,6 +2833,7 @@ function setCurrentPatient(patient, options) {
         return;
     }
     const changed = chartId !== (currentPatient.chartId || '');
+    const chart = typeof findChartById === 'function' ? findChartById(chartId) : null;
     currentPatient = {
         name,
         firstName: identity.firstName,
@@ -2540,7 +2841,8 @@ function setCurrentPatient(patient, options) {
         dob,
         phone: identity.phone,
         clinician,
-        chartId
+        chartId,
+        personId: String(patient?.personId || chart?.personId || '').trim()
     };
     if (changed && !options?.silentRestore) {
         isBedSanitised = false;
@@ -3946,6 +4248,15 @@ if (typeof module !== 'undefined' && module.exports) {
         comparePracticeLesions,
         practiceLesionTreeNumber,
         patientChartId,
+        newPersonId,
+        chartIdForPerson,
+        nextSpotNumberForChart,
+        copySpotIdentityFromPrior,
+        assignFreshSpotIdentity,
+        retargetLesionIdentity,
+        planRecordIdentityUpgrade,
+        consentEpisodeRefs,
+        identityChartId,
         canonicalPatientChartId,
         chartIdForName,
         lesionChartId,

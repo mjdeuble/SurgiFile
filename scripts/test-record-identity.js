@@ -1,0 +1,119 @@
+/* Node checks: person, spot, and procedure numbers, plus the record upgrade. */
+const {
+    planRecordIdentityUpgrade,
+    copySpotIdentityFromPrior,
+    assignFreshSpotIdentity,
+    nextSpotNumberForChart,
+    consentEpisodeRefs,
+    identityChartId,
+    retargetLesionIdentity
+} = require('../js/lesion-vault.js');
+
+let failed = 0;
+function eq(actual, expected, label) {
+    const ok = Object.is(actual, expected)
+        || (actual && expected && typeof actual === 'object' && JSON.stringify(actual) === JSON.stringify(expected));
+    if (!ok) {
+        failed += 1;
+        console.error('FAIL', label, { actual, expected });
+    } else {
+        console.log('ok', label);
+    }
+}
+
+let personSeq = 0;
+function nextPersonId() {
+    personSeq += 1;
+    return 'person-' + personSeq;
+}
+
+const charts = [
+    { id: 'chart-a', name: 'Jane Doe', dob: '01/01/1970' },
+    { id: 'chart-b', name: 'John Roe', dob: '02/02/1980', personId: 'person-kept' }
+];
+const lesions = [
+    { id: 'nose-a', chartId: 'chart-a', location: 'Left nose', createdAt: '2020-01-01' },
+    { id: 'nose-b', chartId: 'chart-a', location: 'Right nose', createdAt: '2020-01-02' },
+    { id: 'arm', chartId: 'chart-a', location: 'Forearm', createdAt: '2021-01-01', histologyBatchId: 'hb-1' },
+    { id: 'arm-2', chartId: 'chart-a', location: 'Forearm', createdAt: '2021-06-01', priorLesionId: 'arm', histologyBatchId: 'hb-1' },
+    { id: 'cheek', chartId: 'chart-a', location: 'Cheek', createdAt: '2022-01-01', linkedChildId: 'cheek-2', linkedReexcisionId: 'cheek-2' },
+    { id: 'cheek-2', chartId: 'chart-a', location: 'Cheek', createdAt: '2022-02-01', priorLesionId: 'cheek' },
+    { id: 'cheek-extra', chartId: 'chart-a', location: 'Cheek', createdAt: '2022-03-01', priorLesionId: 'cheek' },
+    { id: 'loop-a', chartId: 'chart-a', location: 'Back', priorLesionId: 'loop-b' },
+    { id: 'loop-b', chartId: 'chart-a', location: 'Back', priorLesionId: 'loop-a' },
+    { id: 'orphan', chartId: 'chart-a', location: 'Shin', priorLesionId: 'missing' },
+    { id: 'other', chartId: 'chart-b', location: 'Ear', priorLesionId: 'arm' },
+    { id: 'loose', location: 'Scalp' }
+];
+
+const plan = planRecordIdentityUpgrade(lesions, charts, { nextPersonId });
+eq(plan.personAssignments.map((row) => row.chartId), ['chart-a'], 'only a chart without a person number is numbered');
+eq(charts.find((chart) => chart.id === 'chart-b').personId, 'person-kept', 'an existing person number is not replaced');
+
+function assigned(id) {
+    return plan.lesionAssignments.find((row) => row.lesionId === id);
+}
+eq(assigned('nose-a').spotNumber === assigned('nose-b').spotNumber, false, 'the same site words stay separate spots');
+eq(assigned('arm').spotNumber, assigned('arm-2').spotNumber, 'a linked episode keeps the spot');
+eq(assigned('arm').episodeNumber, 1, 'the first episode is 1');
+eq(assigned('arm-2').episodeNumber, 2, 'the next episode is 2');
+eq(assigned('arm').procedureId, 'hb-1', 'a shared lab batch becomes the procedure number');
+eq(assigned('arm-2').procedureId, 'hb-1', 'both episodes in that sitting share the procedure number');
+eq(assigned('cheek').spotNumber, assigned('cheek-2').spotNumber, 'the linked child is the next episode');
+eq(assigned('cheek-2').episodeNumber, 2, 'the linked child is episode 2');
+eq(plan.skipped.some((row) => row.lesionId === 'cheek-extra'), true, 'an extra episode beside the link is left unchanged');
+eq(plan.skipped.some((row) => row.lesionId === 'loop-a' && /circle/.test(row.reason)), true, 'a circle is left unchanged');
+eq(plan.skipped.some((row) => row.lesionId === 'orphan'), true, 'a missing earlier episode is left unchanged');
+eq(plan.skipped.some((row) => row.lesionId === 'other'), true, 'a link to another chart is left unchanged');
+eq(plan.skipped.some((row) => row.lesionId === 'loose' && row.reason === 'No chart yet'), true, 'a lesion with no chart waits');
+eq(plan.lesionAssignments.some((row) => row.lesionId === 'cheek-extra'), false, 'the extra episode is not numbered');
+
+const again = planRecordIdentityUpgrade(lesions.map((lesion) => {
+    const row = assigned(lesion.id);
+    if (!row) return lesion;
+    return { ...lesion, personId: row.personId, spotNumber: row.spotNumber, episodeNumber: row.episodeNumber, procedureId: row.procedureId || lesion.procedureId };
+}), charts.map((chart) => ({ ...chart, personId: chart.personId || plan.personAssignments.find((row) => row.chartId === chart.id)?.personId })), { nextPersonId });
+eq(again.personAssignments.length, 0, 'a second upgrade does not give new person numbers');
+eq(again.lesionAssignments.length, 0, 'a second upgrade does not renumber clean spots');
+
+const child = copySpotIdentityFromPrior({ id: 'new' }, { personId: 'person-1', spotNumber: 4, episodeNumber: 2 });
+eq(child.spotNumber, 4, 'a new episode keeps the spot');
+eq(child.episodeNumber, 3, 'a new episode takes the next number');
+eq(child.procedureId, undefined, 'a new episode does not keep the old procedure');
+
+const fresh = assignFreshSpotIdentity({ id: 'fresh', chartId: 'chart-a' }, { id: 'chart-a', personId: 'person-1' }, [
+    { id: 'old', chartId: 'chart-a', spotNumber: 4 }
+]);
+eq(fresh.personId, 'person-1', 'a new spot takes the person number');
+eq(fresh.spotNumber, 5, 'a new spot takes the next spot number');
+eq(fresh.episodeNumber, 1, 'a new spot starts at episode 1');
+eq(nextSpotNumberForChart('chart-a', [{ chartId: 'chart-a', spotNumber: 4 }]), 5, 'the next spot is one higher than the highest');
+
+const refs = consentEpisodeRefs(
+    [{ lesionId: 'arm' }, { lesionId: 'nose-a' }],
+    [{ id: 'arm', personId: 'person-1', spotNumber: 3, episodeNumber: 2, procedureId: 'hb-1' }]
+);
+eq(refs[0].procedureId, 'hb-1', 'consent stores the procedure number beside the text');
+eq(refs[0].spotNumber, 3, 'consent stores the spot number beside the text');
+eq(refs[1].spotNumber, 0, 'a consent row without a match stores no spot');
+
+global.managedCharts = [{ id: 'chart-new', personId: 'person-9', name: 'Jane Smith' }];
+eq(identityChartId({
+    chartId: 'jane doe|01011970',
+    personId: 'person-9',
+    patientName: 'Someone Else',
+    patientDob: '03/03/1990'
+}), 'chart-new', 'a missing chart id can still find the person');
+
+const movedChart = { id: 'chart-b', personId: '' };
+const moved = { id: 'moved', chartId: 'chart-b', priorLesionId: 'arm' };
+const placed = retargetLesionIdentity(moved, movedChart, lesions);
+eq(placed.chartChanged, true, 'moving onto a chart without a person number adds one');
+eq(moved.personId, movedChart.personId, 'the moved lesion keeps that person number');
+eq(moved.episodeNumber, 1, 'a moved lesion with no parent on that chart starts a spot');
+
+if (failed) {
+    console.error('\n' + failed + ' failing check(s)');
+    process.exit(1);
+}
+console.log('\nall record identity checks passed');

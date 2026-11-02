@@ -442,6 +442,7 @@ function newChartRecord(patient) {
     const id = identity.chartId || patientChartId(identity.name, identity.dob);
     return {
         id,
+        personId: String(patient?.personId || '').trim() || (typeof newPersonId === 'function' ? newPersonId() : ''),
         name: identity.name,
         firstName: identity.firstName,
         lastName: identity.lastName,
@@ -1064,6 +1065,7 @@ async function saveCurrentChartFromDom(options) {
     if (screening.filled) screening.collectedAt = new Date().toISOString();
     else screening.collectedAt = chart.screening?.collectedAt || '';
     chart.name = currentPatient.name;
+    if (chart.personId) currentPatient.personId = chart.personId;
     chart.firstName = currentPatient.firstName || chart.firstName || '';
     chart.lastName = currentPatient.lastName || chart.lastName || '';
     chart.dob = currentPatient.dob;

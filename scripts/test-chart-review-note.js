@@ -136,6 +136,33 @@ eq(section.includes('6mm nodule'), true, 'section includes macroscopic');
 eq(section.includes('Note: Morning review — desk to phone after 10'), true, 'section includes today note');
 eq(section.includes('Plan: No further action'), true, 'section includes today plan');
 
+const signedParent = {
+    id: 'P4',
+    personId: 'person-1',
+    spotNumber: 4,
+    episodeNumber: 1,
+    location: 'Left forearm',
+    currentPlan: 'Episode complete · re-excision booked',
+    timeline: [{ type: 'plan', at: now, planAfter: 'Episode complete · re-excision booked' }]
+};
+const bookedChild = {
+    id: 'C4',
+    personId: 'person-1',
+    spotNumber: 4,
+    episodeNumber: 2,
+    priorLesionId: 'P4',
+    location: 'Left forearm',
+    createdAt: '2026-10-20T09:30:00.000Z',
+    currentPlan: 'Re-excision planned',
+    timeline: [{ type: 'plan', at: now, planAfter: 'Re-excision planned' }]
+};
+const grouped = formatChartReviewLesionsSection([signedParent, bookedChild, noted], now);
+eq((grouped.match(/Lesion #/g) || []).length, 2, 'a reviewed spot is one lesion in the note');
+eq(grouped.includes('Episode complete · re-excision booked'), true, 'the signed decision stays under that lesion');
+eq(grouped.includes('Plan: Re-excision'), true, 'the latest episode plan stays under that lesion');
+eq(grouped.includes('Spot'), false, 'the spot number is not written in the note');
+eq(grouped.includes('4.00'), false, 'the episode code is not written in the note');
+
 if (failed) {
     console.error('\n' + failed + ' failing check(s)');
     process.exit(1);
