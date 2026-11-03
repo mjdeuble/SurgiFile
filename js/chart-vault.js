@@ -713,7 +713,9 @@ async function deleteManagedChartFile(chart) {
     if (!isVaultLoggedIn() || !chart) return false;
     if (!chart.fileName) return true;
     const dir = await getUserChartsDir(vaultAuth.username, true);
-    return await deleteTextFile(dir, chart.fileName);
+    const ok = await deleteTextFile(dir, chart.fileName);
+    if (ok && chart.id && typeof vaultWriteForget === 'function') vaultWriteForget('chart', chart.id);
+    return ok;
 }
 
 function abandonOpenChartAfterPurge() {
@@ -1707,6 +1709,8 @@ async function closePatientChart(options) {
         return;
     }
     closeFinaliseVisitModal();
+    if (typeof cancelScheduledChartSave === 'function') cancelScheduledChartSave();
+    if (typeof cancelScheduledVisitNoteSave === 'function') cancelScheduledVisitNoteSave();
     await saveCurrentChartFromDom({ endVisit: true });
     if (typeof saveCurrentVisitNotes === 'function') await saveCurrentVisitNotes();
     if (typeof clearStoredProcedureSession === 'function') {
@@ -1761,7 +1765,7 @@ function setFinaliseCopyButton(id, copied, idleLabel, doneLabel, idleClass, done
 }
 
 function refreshFinaliseVisitModal() {
-    if (typeof updateOutput === 'function') updateOutput();
+    if (typeof updateOutput === 'function') updateOutput({ skipScheduledSave: true });
     const iemr = typeof generateCompleteInteractionNote === 'function'
         ? generateCompleteInteractionNote()
         : (typeof generateEMRNotePlainText === 'function' ? generateEMRNotePlainText() : '');

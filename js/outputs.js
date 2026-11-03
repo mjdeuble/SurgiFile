@@ -1291,7 +1291,7 @@ function updateActionCardStatuses() {
     if (typeof updateAkComparisonControls === 'function') updateAkComparisonControls();
 }
 
-function updateOutput() {
+function updateOutput(options) {
     if (typeof updateExamRequiredFields === 'function') updateExamRequiredFields();
     const plainContainer = document.getElementById('emrNoteTextContainer');
     const pathEl = document.getElementById('pathologyRequestText');
@@ -1319,6 +1319,7 @@ function updateOutput() {
     syncCopyFlag('rec', recEl?.value || '');
 
     updateActionCardStatuses();
+    if (options?.skipScheduledSave) return;
     if (typeof scheduleChartSave === 'function') scheduleChartSave();
     if (typeof scheduleVisitNoteSave === 'function') scheduleVisitNoteSave();
 }
