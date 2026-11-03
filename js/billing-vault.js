@@ -130,8 +130,7 @@ function upsertManagedBillingMemory(bill) {
 async function writeManagedBilling(bill) {
     if (!isVaultLoggedIn()) return;
     const dir = await getUserBillingDir(vaultAuth.username, true);
-    const payload = await encryptJson(vaultAuth.key, bill);
-    await writeTextFile(dir, bill.id + '.json.enc', JSON.stringify(payload));
+    await writeEncryptedJsonFile(dir, bill.id + '.json.enc', bill, 'billing', vaultAuth.key);
 }
 
 async function saveManagedBillingRecord(bill, action, note) {
@@ -151,7 +150,9 @@ async function saveManagedBillingRecord(bill, action, note) {
 async function deleteManagedBillingFile(bill) {
     if (!isVaultLoggedIn() || !bill?.id) return false;
     const dir = await getUserBillingDir(vaultAuth.username, true);
-    return await deleteTextFile(dir, bill.id + '.json.enc');
+    const ok = await deleteTextFile(dir, bill.id + '.json.enc');
+    if (ok && typeof vaultWriteForget === 'function') vaultWriteForget('billing', bill.id);
+    return ok;
 }
 
 async function stampLesionBillingProcessed(lesionId, processedAt) {

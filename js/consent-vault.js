@@ -56,7 +56,9 @@ async function writeManagedConsentDoc(doc) {
 async function deleteManagedConsentDocFile(doc) {
     if (!isVaultLoggedIn() || !doc?.fileName) return false;
     const dir = await getUserConsentsDir(vaultAuth.username, true);
-    return await deleteTextFile(dir, doc.fileName);
+    const ok = await deleteTextFile(dir, doc.fileName);
+    if (ok && doc.id && typeof vaultWriteForget === 'function') vaultWriteForget('consent', doc.id);
+    return ok;
 }
 
 async function deleteManagedConsentDoc(id) {

@@ -127,7 +127,9 @@ async function writeManagedVisitNote(note) {
 async function deleteManagedVisitNoteFile(note) {
     if (!isVaultLoggedIn() || !note?.fileName) return false;
     const dir = await getUserNotesDir(vaultAuth.username, true);
-    return await deleteTextFile(dir, note.fileName);
+    const ok = await deleteTextFile(dir, note.fileName);
+    if (ok && note.id && typeof vaultWriteForget === 'function') vaultWriteForget('visit', note.id);
+    return ok;
 }
 
 async function pruneExpiredVisitNotes() {
@@ -294,6 +296,11 @@ async function saveCurrentVisitNotes(options) {
         renderChartTreeSavedDocs();
     }
     return note;
+}
+
+function cancelScheduledVisitNoteSave() {
+    clearTimeout(visitNoteSaveTimer);
+    visitNoteSaveTimer = null;
 }
 
 function scheduleVisitNoteSave() {

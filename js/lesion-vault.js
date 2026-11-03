@@ -3309,15 +3309,16 @@ async function writeManagedLesion(lesion) {
     upsertManagedLesionMemory(lesion);
     if (!isVaultLoggedIn()) return;
     const dir = await getUserLesionsDir(vaultAuth.username, true);
-    const payload = await encryptJson(vaultAuth.key, lesion);
-    await writeTextFile(dir, lesion.id + '.json.enc', JSON.stringify(payload));
+    await writeEncryptedJsonFile(dir, lesion.id + '.json.enc', lesion, 'lesion', vaultAuth.key);
 }
 
 async function deleteManagedLesionFile(id) {
     if (!isVaultLoggedIn() || !id) return false;
     try {
         const dir = await getUserLesionsDir(vaultAuth.username, false);
-        return await deleteTextFile(dir, id + '.json.enc');
+        const ok = await deleteTextFile(dir, id + '.json.enc');
+        if (ok && typeof vaultWriteForget === 'function') vaultWriteForget('lesion', id);
+        return ok;
     } catch (err) {
         console.warn('Could not delete lesion file', id, err);
         return false;

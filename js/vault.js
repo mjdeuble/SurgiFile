@@ -124,26 +124,63 @@ async function closeWritableSafely(writable) {
 }
 
 async function writeTextFileNow(dirHandle, name, text) {
-    const tmpName = String(name) + '.tmp';
-    const tmpHandle = await dirHandle.getFileHandle(tmpName, { create: true });
-    const tmpWritable = await tmpHandle.createWritable();
+    const handle = await dirHandle.getFileHandle(name, { create: true });
+    const writable = await handle.createWritable();
     try {
-        await tmpWritable.write(text);
-        await closeWritableSafely(tmpWritable);
+        await writable.write(text);
+        await closeWritableSafely(writable);
     } catch (err) {
-        try { await tmpWritable.abort(); } catch (abortErr) { /* tmp left for recovery */ }
+        try { await writable.abort(); } catch (abortErr) { /* previous file stays until close finishes */ }
         throw err;
     }
-    const destHandle = await dirHandle.getFileHandle(name, { create: true });
-    const destWritable = await destHandle.createWritable();
-    try {
-        await destWritable.write(text);
-        await closeWritableSafely(destWritable);
-    } catch (err) {
-        try { await destWritable.abort(); } catch (abortErr) { /* dest may be truncated; tmp is complete */ }
-        throw err;
-    }
-    await deleteTextFile(dirHandle, tmpName);
+}
+
+const vaultWrittenStamps = new Map();
+
+function vaultWriteKey(kind, id) {
+    return String(kind || '') + '\0' + String(id || '');
+}
+
+function vaultRecordPlaintext(record) {
+    if (!record || typeof record !== 'object') return '';
+    const copy = {};
+    Object.keys(record).forEach((key) => {
+        if (key === 'updatedAt' || key === 'fileName') return;
+        copy[key] = record[key];
+    });
+    return JSON.stringify(copy);
+}
+
+async function vaultPlaintextStamp(plaintext) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(plaintext || '')));
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function vaultWriteIsCurrent(kind, id, stamp) {
+    if (!id || !stamp) return false;
+    return vaultWrittenStamps.get(vaultWriteKey(kind, id)) === stamp;
+}
+
+function vaultWriteRemember(kind, id, stamp) {
+    if (!id || !stamp) return;
+    vaultWrittenStamps.set(vaultWriteKey(kind, id), stamp);
+}
+
+function vaultWriteForget(kind, id) {
+    if (!id) return;
+    vaultWrittenStamps.delete(vaultWriteKey(kind, id));
+}
+
+async function writeEncryptedJsonFile(dirHandle, fileName, record, kind, key, options) {
+    if (!dirHandle || !record || !fileName) return false;
+    const force = !!(options && options.force);
+    const id = String(record.id || '');
+    const stamp = id ? await vaultPlaintextStamp(vaultRecordPlaintext(record)) : '';
+    if (!force && id && vaultWriteIsCurrent(kind, id, stamp)) return false;
+    const payload = await encryptJson(key, record);
+    await writeTextFile(dirHandle, fileName, JSON.stringify(payload));
+    if (id && stamp) vaultWriteRemember(kind, id, stamp);
+    return true;
 }
 
 async function writeTextFile(dirHandle, name, text) {
@@ -453,12 +490,10 @@ async function dedupeVaultRecordsById(records, prefix, dirHandle) {
 async function writeOpaqueEncryptedJson(dirHandle, record, prefix, key) {
     if (!dirHandle || !record) return '';
     const oldName = record.fileName;
-    if (!isOpaqueEncFileName(oldName, prefix)) {
-        record.fileName = newOpaqueEncFileName(prefix);
-    }
-    const payload = await encryptJson(key, record);
-    await writeTextFile(dirHandle, record.fileName, JSON.stringify(payload));
-    if (oldName && oldName !== record.fileName) {
+    const needsRename = !isOpaqueEncFileName(oldName, prefix);
+    if (needsRename) record.fileName = newOpaqueEncFileName(prefix);
+    const wrote = await writeEncryptedJsonFile(dirHandle, record.fileName, record, prefix, key, { force: needsRename });
+    if (wrote && oldName && oldName !== record.fileName) {
         await deleteTextFile(dirHandle, oldName);
     }
     return record.fileName;
@@ -476,4 +511,13 @@ async function migrateIdentifyingEncFilenames(records, prefix, dirHandle, key) {
         }
     }
     return changed;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        writeTextFileNow,
+        writeEncryptedJsonFile,
+        vaultRecordPlaintext,
+        vaultWriteForget
+    };
 }
