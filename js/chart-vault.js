@@ -1722,6 +1722,7 @@ async function closePatientChart(options) {
 }
 
 function requestClosePatientChart() {
+    if (finaliseCloseInFlight) return;
     if (!hasCurrentPatient()) {
         closePatientChart({ force: true });
         return;
@@ -1749,7 +1750,10 @@ function closeFinaliseVisitModal() {
     if (modal) modal.classList.add('hidden');
 }
 
+let finaliseCloseInFlight = false;
+
 function stayOnPatientChart() {
+    if (finaliseCloseInFlight) return;
     closeFinaliseVisitModal();
 }
 
@@ -1909,26 +1913,38 @@ function copyFinaliseVisitBilling() {
 
 async function submitFinaliseVisit() {
     const work = async ({ progress }) => {
-        if (progress) progress('Finalising visit…', 0.15);
-        await submitFinaliseVisitWork();
-        if (progress) progress('Visit closed', 1);
+        finaliseCloseInFlight = true;
+        try {
+            if (progress) progress('Closing the chart…', 0.2);
+            await submitFinaliseVisitWork(progress);
+            if (progress) progress('Visit closed', 1);
+        } catch (err) {
+            console.warn('Could not finalise visit', err);
+            if (typeof showToast === 'function') showToast('The chart is still open. The save did not finish.');
+            if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) openFinaliseVisitModal();
+        } finally {
+            finaliseCloseInFlight = false;
+        }
     };
     if (typeof runBusyAction === 'function') {
-        return runBusyAction('Finalising visit…', work, {
+        return runBusyAction('Closing the chart…', work, {
             button: document.getElementById('btnFinaliseVisitClose'),
-            buttonText: 'Finalising…'
+            buttonText: 'Closing…'
         });
     }
-    return submitFinaliseVisitWork();
+    return work({});
 }
 
-async function submitFinaliseVisitWork() {
+async function submitFinaliseVisitWork(progress) {
     const lesions = typeof visitProcedureLesionsForFinalise === 'function' ? visitProcedureLesionsForFinalise() : [];
     const state = typeof visitFinaliseBillingState === 'function'
         ? visitFinaliseBillingState(lesions)
         : { mode: lesions.length ? 'hold' : 'close' };
+    closeFinaliseVisitModal();
     if (state.mode === 'process' && typeof markVisitLesionsBillingProcessed === 'function') {
+        if (progress) progress('Marking billing processed…', 0.45);
         const result = await markVisitLesionsBillingProcessed(state.lesions || lesions);
+        if (progress) progress('Saving the chart…', 0.75);
         await closePatientChart({ force: true, silent: true });
         const codes = (result.codes || []).filter(Boolean).join(' · ');
         showToast(codes
@@ -1936,6 +1952,7 @@ async function submitFinaliseVisitWork() {
             : 'Billing marked processed. Chart closed.');
         return;
     }
+    if (progress) progress('Saving the chart…', 0.6);
     if (state.mode === 'hold') {
         await closePatientChart({ force: true, silent: true });
         showToast('Billing held. Chart closed.');
