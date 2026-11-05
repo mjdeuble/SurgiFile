@@ -6,7 +6,10 @@ const {
     nextSpotNumberForChart,
     consentEpisodeRefs,
     identityChartId,
-    retargetLesionIdentity
+    retargetLesionIdentity,
+    personRecordMatches,
+    conflictingChartForIdentity,
+    stampLinkedPersonRecords
 } = require('../js/lesion-vault.js');
 
 let failed = 0;
@@ -123,6 +126,54 @@ const placed = retargetLesionIdentity(moved, movedChart, lesions);
 eq(placed.chartChanged, true, 'moving onto a chart without a person number adds one');
 eq(moved.personId, movedChart.personId, 'the moved lesion keeps that person number');
 eq(moved.episodeNumber, 1, 'a moved lesion with no parent on that chart starts a spot');
+
+const personChart = { id: 'chart-a', personId: 'person-1', name: 'Jane Doe', dob: '01/01/1970' };
+const twin = { id: 'chart-twin', personId: 'person-8', firstName: 'Jane', lastName: 'Doe', dob: '01/01/1970' };
+eq(!!conflictingChartForIdentity(personChart, [personChart, twin], 'Jane Doe', '01/01/1970'), true, 'another chart with the same name and date of birth is blocked');
+eq(conflictingChartForIdentity(personChart, [personChart], 'Jane Doe', '02/02/1971'), null, 'the same chart can keep its own name and date of birth');
+
+const linkedLesion = {
+    id: 'cheek',
+    chartId: 'chart-a',
+    personId: 'person-1',
+    patientName: 'Jane Doe',
+    patientDob: '01/01/1970',
+    patientPhone: '0400 000 000',
+    spotNumber: 2,
+    episodeNumber: 1,
+    procedureId: 'proc-1',
+    location: 'Left cheek'
+};
+const otherPerson = {
+    id: 'other',
+    chartId: 'chart-z',
+    personId: 'person-z',
+    patientName: 'Sam Lee',
+    spotNumber: 1
+};
+global.managedLesions = [linkedLesion, otherPerson];
+global.managedBillings = [{ id: 'bill-1', chartId: 'chart-a', personId: 'person-1', patientName: 'Jane Doe', patientDob: '01/01/1970', patientPhone: '0400 000 000' }];
+global.managedVisitNotes = [];
+global.managedConsents = [];
+global.lesions = [];
+const stamped = stampLinkedPersonRecords(personChart, {
+    personId: 'person-1',
+    name: 'Janet Doe',
+    firstName: 'Janet',
+    lastName: 'Doe',
+    dob: '02/02/1971',
+    phone: '0411 111 111'
+});
+eq(stamped.length, 2, 'the lesion and the bill are updated');
+eq(linkedLesion.patientName, 'Janet Doe', 'the linked lesion takes the new name');
+eq(linkedLesion.patientDob, '02/02/1971', 'the linked lesion takes the new date of birth');
+eq(linkedLesion.patientPhone, '0411 111 111', 'the linked lesion takes the new phone');
+eq(linkedLesion.personId, 'person-1', 'the person number stays the same');
+eq(linkedLesion.spotNumber, 2, 'the spot number stays the same');
+eq(linkedLesion.procedureId, 'proc-1', 'the procedure number stays the same');
+eq(linkedLesion.chartId, 'chart-a', 'the chart link stays the same');
+eq(otherPerson.patientName, 'Sam Lee', 'a different person is left alone');
+eq(personRecordMatches({ personId: 'person-1', chartId: 'somewhere-else' }, personChart), true, 'a person number still matches after the chart id on a copy differs');
 
 if (failed) {
     console.error('\n' + failed + ' failing check(s)');

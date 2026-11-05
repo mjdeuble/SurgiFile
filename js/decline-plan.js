@@ -1,6 +1,7 @@
-/* Informed refusal / other disposition — medicolegal documentation for Declines Treatment / Other */
+/* Informed refusal for Declines treatment. Other is a separate plan for non-cancer skin conditions. */
 
-const DECLINE_TREATMENT_PLAN = 'Declines Treatment / Other';
+const DECLINE_TREATMENT_PLAN = 'Declines treatment';
+const OTHER_CLINICAL_PLAN = 'Other';
 
 const DECLINE_RECOMMENDED_OPTIONS = [
     { id: 'biopsy', label: 'Punch / shave biopsy' },
@@ -22,7 +23,28 @@ const DECLINE_RISK_OPTIONS = [
 const DECLINE_DEFAULT_SAFETY_NET = 'Return sooner if the lesion changes in size, colour or shape, bleeds, becomes tender, or new lesions appear. Treatment can still be arranged later.';
 
 function isDeclineTreatmentPlan(plan) {
-    return String(plan || '').includes('Declines Treatment');
+    return /declines treatment/i.test(String(plan || ''));
+}
+
+function isOtherClinicalPlan(plan) {
+    return String(plan || '').trim() === OTHER_CLINICAL_PLAN;
+}
+
+function readOtherPlanNote(prefix) {
+    const id = prefix === 'insp' ? 'inspOtherPlanNote' : 'otherPlanNote';
+    return String(document.getElementById(id)?.value || '').trim();
+}
+
+function otherPlanNoteError(note) {
+    if (!String(note || '').trim()) {
+        return 'Describe the skin condition and what you are doing for it. Declined cancer treatment belongs under Declines treatment.';
+    }
+    return '';
+}
+
+function formatOtherPlanSummary(lesion) {
+    if (!isOtherClinicalPlan(lesion?.plan)) return '';
+    return String(lesion?.otherPlanNote || '').trim() || 'Other skin condition';
 }
 
 function declineNs(prefix) {
@@ -79,14 +101,16 @@ function renderDeclinePlanFieldsHtml(prefix, lesion, disabled) {
     const riskBoxes = DECLINE_RISK_OPTIONS.map((opt) => (
         `<label class="insp-choice"><input type="checkbox" name="${ns}Risks" value="${opt.id}"${declineChecked(risks, opt.id)} onchange="syncDeclinePlanUi('${prefix}')"${off}> ${opt.label}</label>`
     )).join('');
+    const legacyOther = kind === 'other';
     return `
-        <p class="insp-label" style="margin:0">Informed refusal / other disposition</p>
-        <p class="insp-hint">NSW Health and Avant: a valid refusal is freely given, specific, and informed. Record what was recommended, what was explained, the patient’s reason, capacity, and the safety-net. This is not a substitute for a signed hospital refusal form if the risk of harm is high.</p>
-        <p class="insp-label">Disposition</p>
+        <p class="insp-label" style="margin:0">Informed refusal</p>
+        <p class="insp-hint">Use this when the patient declines a recommended skin-cancer treatment. A valid refusal is freely given, specific, and informed. Record what was recommended, what was explained, the patient’s reason, capacity, and the safety-net. Skin conditions that are not a cancer plan, such as dermatitis, belong under Other.</p>
+        ${legacyOther ? `
+        <p class="insp-label">Older record</p>
         <div class="insp-choice-row">
-            <label class="insp-choice"><input type="radio" name="${ns}Kind" value="declines"${kind === 'declines' || !kind ? ' checked' : ''} onchange="syncDeclinePlanUi('${prefix}')"${off}> Patient declines recommended treatment</label>
-            <label class="insp-choice"><input type="radio" name="${ns}Kind" value="other"${kind === 'other' ? ' checked' : ''} onchange="syncDeclinePlanUi('${prefix}')"${off}> Other (document)</label>
-        </div>
+            <label class="insp-choice"><input type="radio" name="${ns}Kind" value="declines" onchange="syncDeclinePlanUi('${prefix}')"${off}> Patient declines recommended treatment</label>
+            <label class="insp-choice"><input type="radio" name="${ns}Kind" value="other" checked onchange="syncDeclinePlanUi('${prefix}')"${off}> Other plan already documented on this lesion</label>
+        </div>` : ''}
         <div id="${ns}RecommendedWrap" class="${kind === 'other' ? 'hidden' : ''}">
             <p class="insp-label">Recommended treatment declined</p>
             <div class="insp-choice-list">${recommendedBoxes}</div>

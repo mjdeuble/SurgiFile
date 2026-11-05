@@ -89,6 +89,18 @@ const declineReview = {
 eq(vault.deriveLesionStatusFromPlan(declineReview), 'awaiting_assessment', 'decline with offered review stays open');
 eq(vault.lesionReviewDispositionKind(declineReview), 'scheduled', 'decline review kind is scheduled');
 eq(vault.deriveLesionStatusFromPlan({ ...declineReview, declineReview: 'none' }), 'no_followup', 'decline without review still completes');
+eq(vault.deriveLesionStatusFromPlan({ plan: 'Declines treatment', declineReview: '3 months' }), 'awaiting_assessment', 'the separate decline plan with a review stays open');
+
+const otherSkin = {
+    id: 'O1',
+    plan: 'Other',
+    type: 'none',
+    otherPlanNote: 'Seborrhoeic dermatitis — shampoo',
+    managementStatus: 'no_followup'
+};
+eq(vault.deriveLesionStatusFromPlan(otherSkin), 'no_followup', 'other skin condition is not an open cancer plan');
+eq(vault.defaultPlanLine(otherSkin), 'Seborrhoeic dermatitis — shampoo', 'other plan line is the condition note');
+eq(vault.isScheduledReviewLesion(otherSkin), false, 'other is not a decline review');
 
 const pdt = {
     id: 'P1',

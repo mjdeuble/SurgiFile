@@ -1164,8 +1164,11 @@ function inspectorDocPlanValue(lesion) {
     }
     if (!planElValue && String(lesion?.proposedPlan || '') === 'refer') return 'Refer / Specialist';
     if (!planElValue && String(lesion?.proposedPlan || '') === 'monitor') return 'Monitor / Reassure (Benign)';
+    if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(planElValue)) {
+        return typeof OTHER_CLINICAL_PLAN === 'string' ? OTHER_CLINICAL_PLAN : 'Other';
+    }
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(planElValue)) {
-        return typeof DECLINE_TREATMENT_PLAN === 'string' ? DECLINE_TREATMENT_PLAN : 'Declines Treatment / Other';
+        return typeof DECLINE_TREATMENT_PLAN === 'string' ? DECLINE_TREATMENT_PLAN : 'Declines treatment';
     }
     if (typeof isConfirmedHistologyExcisionPlan === 'function' && isConfirmedHistologyExcisionPlan(planElValue)) {
         return typeof FORMAL_EXCISION_PLAN === 'string'
@@ -1234,7 +1237,8 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                     <option value="Formally Book Excision Procedure"${inspectorOpt(plan, 'Formally Book Excision Procedure')}>Formally Book Excision Procedure</option>
                     <option value="Topical / Field Treatment"${inspectorOpt(plan, 'Topical / Field Treatment')}>Topical / Field Treatment</option>
                     <option value="Refer / Specialist"${inspectorOpt(plan, 'Refer / Specialist')}>Refer / Specialist</option>
-                    <option value="Declines Treatment / Other"${inspectorOpt(plan, 'Declines Treatment / Other')}>Declines Treatment / Other</option>
+                    <option value="Declines treatment"${inspectorOpt(plan, 'Declines treatment')}>Declines treatment</option>
+                    <option value="Other"${inspectorOpt(plan, 'Other')}>Other</option>
                 </select>
                 <label class="insp-choice" style="margin-top:0.35rem">
                     <input type="checkbox" id="inspPriorHistologyEnabled" onchange="syncInspectorPriorHistologyFieldsUi()"${priorOn ? ' checked' : ''}${disabled}>
@@ -1410,6 +1414,12 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                 ${typeof renderDeclinePlanFieldsHtml === 'function'
                     ? renderDeclinePlanFieldsHtml('insp', lesion, !unlocked)
                     : ''}
+            </div>
+            <div id="inspPlanOtherFields" class="insp-sub hidden">
+                <p class="insp-label" style="margin:0">Other skin condition</p>
+                <p class="insp-hint">For a presentation that is not a skin-cancer plan, such as dermatitis. This does not record an informed refusal.</p>
+                <label class="insp-label" for="inspOtherPlanNote">Condition and plan</label>
+                <textarea id="inspOtherPlanNote" rows="3" class="insp-textarea" placeholder="e.g. Seborrhoeic dermatitis of the scalp — ketoconazole shampoo"${disabled}>${escapeHtml(lesion.otherPlanNote || '')}</textarea>
             </div>
             <div id="inspPlanConfirmedHistoFields" class="insp-sub is-histo${priorOn ? '' : ' hidden'}">
                 <p class="insp-label" style="margin:0">Previous biopsy / histology</p>
@@ -1709,11 +1719,13 @@ function handleInspectorPlanChange() {
     const eFields = document.getElementById('inspPlanExcisionFields');
     const tFields = document.getElementById('inspPlanTopicalFields');
     const dFields = document.getElementById('inspPlanDeclineFields');
+    const oFields = document.getElementById('inspPlanOtherFields');
     const mFields = document.getElementById('inspPlanMonitorFields');
     if (bFields) bFields.classList.add('hidden');
     if (eFields) eFields.classList.add('hidden');
     if (tFields) tFields.classList.add('hidden');
     if (dFields) dFields.classList.add('hidden');
+    if (oFields) oFields.classList.add('hidden');
     if (mFields) mFields.classList.add('hidden');
     if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(plan) : /Monitor/i.test(plan)) {
         if (mFields) mFields.classList.remove('hidden');
@@ -1741,6 +1753,8 @@ function handleInspectorPlanChange() {
     } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
         if (dFields) dFields.classList.remove('hidden');
         if (typeof syncDeclinePlanUi === 'function') syncDeclinePlanUi('insp');
+    } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan)) {
+        if (oFields) oFields.classList.remove('hidden');
     }
     syncInspectorPriorHistologyFieldsUi();
 }
@@ -1916,6 +1930,7 @@ function saveInspectorLesionDocumentation() {
     let graftType = '';
     let topicalFields = typeof emptyTopicalFields === 'function' ? emptyTopicalFields() : {};
     let declineFields = typeof emptyDeclineFields === 'function' ? emptyDeclineFields() : {};
+    let lesionOtherNote = '';
     let length = '';
     let width = '';
     let margin = '';
@@ -1977,6 +1992,14 @@ function saveInspectorLesionDocumentation() {
             showToast(declineError);
             return;
         }
+    } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan)) {
+        const otherNote = typeof readOtherPlanNote === 'function' ? readOtherPlanNote('insp') : '';
+        const otherError = typeof otherPlanNoteError === 'function' ? otherPlanNoteError(otherNote) : '';
+        if (otherError) {
+            showToast(otherError);
+            return;
+        }
+        lesionOtherNote = otherNote;
     }
     pendingLesionSaveSource = '';
     inspectorPaneMode = 'view';
@@ -2040,20 +2063,28 @@ function saveInspectorLesionDocumentation() {
         lesionRecord.type = 'topical';
     } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
         lesionRecord.type = 'none';
+        lesionRecord.otherPlanNote = '';
         lesionRecord.currentPlan = typeof formatDeclinePlanSummary === 'function'
             ? formatDeclinePlanSummary(lesionRecord)
             : 'Declined recommended treatment';
         if (typeof deriveLesionStatusFromPlan === 'function') {
             lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
         }
+    } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan)) {
+        lesionRecord.type = 'none';
+        lesionRecord.otherPlanNote = lesionOtherNote;
+        lesionRecord.currentPlan = lesionOtherNote;
+        lesionRecord.managementStatus = 'no_followup';
     } else if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(plan) : /Monitor/i.test(plan)) {
         lesionRecord.type = 'none';
+        lesionRecord.otherPlanNote = '';
         lesionRecord.monitorFollowUp = document.getElementById('inspMonitorFollowUp')?.value || 'none';
         if (typeof deriveLesionStatusFromPlan === 'function') {
             lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
         }
     } else {
         lesionRecord.type = 'none';
+        lesionRecord.otherPlanNote = '';
     }
     if (typeof currentPlanAfterCopiedPrior === 'function') {
         const nextCurrentPlan = currentPlanAfterCopiedPrior(
@@ -2064,7 +2095,8 @@ function saveInspectorLesionDocumentation() {
             existingLesion?.currentPlan || lesionRecord.currentPlan
         );
         if (nextCurrentPlan !== undefined
-            && !(typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan))) {
+            && !(typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan))
+            && !(typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan))) {
             lesionRecord.currentPlan = nextCurrentPlan;
         }
     }

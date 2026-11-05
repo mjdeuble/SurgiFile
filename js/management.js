@@ -1148,7 +1148,7 @@ function renderInspectorDeclinePlanRows(lesion) {
     const risks = typeof formatDeclineRisksText === 'function' ? formatDeclineRisksText(lesion) : '';
     const form = typeof formatDeclineFormLabel === 'function' ? formatDeclineFormLabel(lesion?.declineForm) : '';
     return [
-        histoReportRow('Disposition', summary || 'Declines Treatment / Other'),
+        histoReportRow('Disposition', summary || 'Declines treatment'),
         histoReportRow('Reason', lesion?.declineReason || ''),
         histoReportRow('Alternatives', lesion?.declineAlternatives || ''),
         histoReportRow('Risks explained', risks),
@@ -1505,7 +1505,7 @@ function formatLesionPlanPlainLines(lesion) {
         const summary = typeof formatDeclinePlanSummary === 'function' ? formatDeclinePlanSummary(lesion) : '';
         const risks = typeof formatDeclineRisksText === 'function' ? formatDeclineRisksText(lesion) : '';
         const form = typeof formatDeclineFormLabel === 'function' ? formatDeclineFormLabel(lesion.declineForm) : '';
-        push('Disposition', summary || 'Declines Treatment / Other');
+        push('Disposition', summary || 'Declines treatment');
         push('Reason', lesion.declineReason);
         push('Alternatives', lesion.declineAlternatives);
         push('Risks explained', risks);
@@ -1516,6 +1516,8 @@ function formatLesionPlanPlainLines(lesion) {
         push('Safety-net', lesion.declineSafetyNetAdvice);
         push('Review', lesion.declineReview && lesion.declineReview !== 'none' ? lesion.declineReview : '');
         push('Notes', lesion.declineNotes);
+    } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(lesion.plan)) {
+        push('Condition', lesion.otherPlanNote || 'Other skin condition');
     } else if (monitor) {
         push('Plan', 'Monitor / Reassure (Benign)');
         push('Follow-up', lesion.monitorFollowUp && lesion.monitorFollowUp !== 'none' ? lesion.monitorFollowUp : 'None scheduled');
