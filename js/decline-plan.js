@@ -35,6 +35,11 @@ function readOtherPlanNote(prefix) {
     return String(document.getElementById(id)?.value || '').trim();
 }
 
+function readOtherFollowUp(prefix) {
+    const id = prefix === 'insp' ? 'inspOtherFollowUp' : 'otherFollowUp';
+    return document.getElementById(id)?.value || 'none';
+}
+
 function otherPlanNoteError(note) {
     if (!String(note || '').trim()) {
         return 'Describe the skin condition and what you are doing for it. Declined cancer treatment belongs under Declines treatment.';
@@ -44,7 +49,10 @@ function otherPlanNoteError(note) {
 
 function formatOtherPlanSummary(lesion) {
     if (!isOtherClinicalPlan(lesion?.plan)) return '';
-    return String(lesion?.otherPlanNote || '').trim() || 'Other skin condition';
+    const note = String(lesion?.otherPlanNote || '').trim() || 'Other skin condition';
+    const follow = String(lesion?.otherFollowUp || '').trim();
+    if (follow && follow !== 'none') return note + ' — review in ' + follow;
+    return note;
 }
 
 function declineNs(prefix) {

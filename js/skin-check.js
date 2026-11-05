@@ -766,6 +766,8 @@ function openLesionModal(lesionId = null) {
             if (typeof mountDeclinePlanFields === 'function') mountDeclinePlanFields('planDeclineFields', '', item);
             const otherNoteEl = document.getElementById('otherPlanNote');
             if (otherNoteEl) otherNoteEl.value = item.otherPlanNote || '';
+            const otherFollowEl = document.getElementById('otherFollowUp');
+            if (otherFollowEl) otherFollowEl.value = item.otherFollowUp || 'none';
         }
     } else {
         document.getElementById('lesionModalTitle').innerText = "Document Skin Lesion";
@@ -797,6 +799,8 @@ function openLesionModal(lesionId = null) {
         if (typeof mountDeclinePlanFields === 'function') mountDeclinePlanFields('planDeclineFields', '', emptyDeclineFields());
         const otherNoteEl = document.getElementById('otherPlanNote');
         if (otherNoteEl) otherNoteEl.value = '';
+        const otherFollowEl = document.getElementById('otherFollowUp');
+        if (otherFollowEl) otherFollowEl.value = 'none';
     }
 
     handlePlanChange();
@@ -941,6 +945,7 @@ function saveLesion() {
     let topicalFields = emptyTopicalFields();
     let declineFields = typeof emptyDeclineFields === 'function' ? emptyDeclineFields() : {};
     let lesionOtherNote = '';
+    let lesionOtherFollow = 'none';
     let length = '';
     let width = '';
     let margin = '';
@@ -1014,6 +1019,7 @@ function saveLesion() {
         }
     } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan)) {
         lesionOtherNote = typeof readOtherPlanNote === 'function' ? readOtherPlanNote('') : '';
+        lesionOtherFollow = typeof readOtherFollowUp === 'function' ? readOtherFollowUp('') : 'none';
         const otherError = typeof otherPlanNoteError === 'function' ? otherPlanNoteError(lesionOtherNote) : '';
         if (otherError) {
             showToast(otherError);
@@ -1076,6 +1082,7 @@ function saveLesion() {
     }
     pendingShaveConsentAction = '';
 
+    lesionRecord.otherFollowUp = '';
     if (isPunchShaveBiopsyPlan(plan)) {
         lesionRecord.type = biopsyType.includes('Punch') ? 'punch' : 'shave';
     } else if (isExcisionBookingPlan(plan)) {
@@ -1086,6 +1093,7 @@ function saveLesion() {
     } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
         lesionRecord.type = 'none';
         lesionRecord.otherPlanNote = '';
+        lesionRecord.otherFollowUp = '';
         lesionRecord.currentPlan = typeof formatDeclinePlanSummary === 'function'
             ? formatDeclinePlanSummary(lesionRecord)
             : 'Declined recommended treatment';
@@ -1095,11 +1103,17 @@ function saveLesion() {
     } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan)) {
         lesionRecord.type = 'none';
         lesionRecord.otherPlanNote = lesionOtherNote;
-        lesionRecord.currentPlan = lesionOtherNote;
-        lesionRecord.managementStatus = 'no_followup';
+        lesionRecord.otherFollowUp = lesionOtherFollow || 'none';
+        lesionRecord.currentPlan = typeof formatOtherPlanSummary === 'function'
+            ? formatOtherPlanSummary(lesionRecord)
+            : lesionOtherNote;
+        if (typeof deriveLesionStatusFromPlan === 'function') {
+            lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
+        }
     } else if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(plan) : /Monitor/i.test(plan)) {
         lesionRecord.type = 'none';
         lesionRecord.otherPlanNote = '';
+        lesionRecord.otherFollowUp = '';
         lesionRecord.monitorFollowUp = document.getElementById('monitorFollowUp')?.value || 'none';
         if (typeof deriveLesionStatusFromPlan === 'function') {
             lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
@@ -1107,6 +1121,7 @@ function saveLesion() {
     } else {
         lesionRecord.type = 'none';
         lesionRecord.otherPlanNote = '';
+        lesionRecord.otherFollowUp = '';
     }
     const nextCurrentPlan = currentPlanAfterCopiedPrior(
         plan,

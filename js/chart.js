@@ -93,6 +93,10 @@ function lesionStatusLabel(lesion) {
         && isDeclineTreatmentPlan(lesion.plan) && lesion.declineReview && lesion.declineReview !== 'none') {
         label = 'Declined · review in ' + lesion.declineReview;
     }
+    else if (status === 'awaiting_assessment' && typeof isOtherClinicalPlan === 'function'
+        && isOtherClinicalPlan(lesion.plan) && lesion.otherFollowUp && lesion.otherFollowUp !== 'none') {
+        label = 'Other · review in ' + lesion.otherFollowUp;
+    }
     else if (status === 'awaiting_assessment' && typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan)) {
         label = 'Refer / Specialist';
     }
@@ -1420,6 +1424,16 @@ function renderInspectorDocumentationForm(lesion, unlocked) {
                 <p class="insp-hint">For a presentation that is not a skin-cancer plan, such as dermatitis. This does not record an informed refusal.</p>
                 <label class="insp-label" for="inspOtherPlanNote">Condition and plan</label>
                 <textarea id="inspOtherPlanNote" rows="3" class="insp-textarea" placeholder="e.g. Seborrhoeic dermatitis of the scalp — ketoconazole shampoo"${disabled}>${escapeHtml(lesion.otherPlanNote || '')}</textarea>
+                <label class="insp-label" for="inspOtherFollowUp">Follow-up</label>
+                <select id="inspOtherFollowUp" class="insp-select"${disabled}>
+                    <option value="none"${inspectorOpt(lesion.otherFollowUp || 'none', 'none')}>No scheduled follow-up</option>
+                    <option value="2 weeks"${inspectorOpt(lesion.otherFollowUp, '2 weeks')}>Review in 2 weeks</option>
+                    <option value="4 weeks"${inspectorOpt(lesion.otherFollowUp, '4 weeks')}>Review in 4 weeks</option>
+                    <option value="8 weeks"${inspectorOpt(lesion.otherFollowUp, '8 weeks')}>Review in 8 weeks</option>
+                    <option value="3 months"${inspectorOpt(lesion.otherFollowUp, '3 months')}>Review in 3 months</option>
+                    <option value="6 months"${inspectorOpt(lesion.otherFollowUp, '6 months')}>Review in 6 months</option>
+                </select>
+                <p class="insp-hint">A scheduled review keeps this on Open. At that visit you can update the plan, or change it to a biopsy if it has not settled.</p>
             </div>
             <div id="inspPlanConfirmedHistoFields" class="insp-sub is-histo${priorOn ? '' : ' hidden'}">
                 <p class="insp-label" style="margin:0">Previous biopsy / histology</p>
@@ -1931,6 +1945,7 @@ function saveInspectorLesionDocumentation() {
     let topicalFields = typeof emptyTopicalFields === 'function' ? emptyTopicalFields() : {};
     let declineFields = typeof emptyDeclineFields === 'function' ? emptyDeclineFields() : {};
     let lesionOtherNote = '';
+    let lesionOtherFollow = 'none';
     let length = '';
     let width = '';
     let margin = '';
@@ -2000,6 +2015,7 @@ function saveInspectorLesionDocumentation() {
             return;
         }
         lesionOtherNote = otherNote;
+        lesionOtherFollow = typeof readOtherFollowUp === 'function' ? readOtherFollowUp('insp') : 'none';
     }
     pendingLesionSaveSource = '';
     inspectorPaneMode = 'view';
@@ -2054,6 +2070,7 @@ function saveInspectorLesionDocumentation() {
         if (typeof shaveConsentVerified !== 'undefined') shaveConsentVerified = true;
     }
     pendingShaveConsentAction = '';
+    lesionRecord.otherFollowUp = '';
     if (typeof isPunchShaveBiopsyPlan === 'function' && isPunchShaveBiopsyPlan(plan)) {
         lesionRecord.type = biopsyType.includes('Punch') ? 'punch' : 'shave';
     } else if (typeof isExcisionBookingPlan === 'function' && isExcisionBookingPlan(plan)) {
@@ -2064,6 +2081,7 @@ function saveInspectorLesionDocumentation() {
     } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
         lesionRecord.type = 'none';
         lesionRecord.otherPlanNote = '';
+        lesionRecord.otherFollowUp = '';
         lesionRecord.currentPlan = typeof formatDeclinePlanSummary === 'function'
             ? formatDeclinePlanSummary(lesionRecord)
             : 'Declined recommended treatment';
@@ -2073,11 +2091,17 @@ function saveInspectorLesionDocumentation() {
     } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan)) {
         lesionRecord.type = 'none';
         lesionRecord.otherPlanNote = lesionOtherNote;
-        lesionRecord.currentPlan = lesionOtherNote;
-        lesionRecord.managementStatus = 'no_followup';
+        lesionRecord.otherFollowUp = lesionOtherFollow || 'none';
+        lesionRecord.currentPlan = typeof formatOtherPlanSummary === 'function'
+            ? formatOtherPlanSummary(lesionRecord)
+            : lesionOtherNote;
+        if (typeof deriveLesionStatusFromPlan === 'function') {
+            lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
+        }
     } else if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(plan) : /Monitor/i.test(plan)) {
         lesionRecord.type = 'none';
         lesionRecord.otherPlanNote = '';
+        lesionRecord.otherFollowUp = '';
         lesionRecord.monitorFollowUp = document.getElementById('inspMonitorFollowUp')?.value || 'none';
         if (typeof deriveLesionStatusFromPlan === 'function') {
             lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
@@ -2085,6 +2109,7 @@ function saveInspectorLesionDocumentation() {
     } else {
         lesionRecord.type = 'none';
         lesionRecord.otherPlanNote = '';
+        lesionRecord.otherFollowUp = '';
     }
     if (typeof currentPlanAfterCopiedPrior === 'function') {
         const nextCurrentPlan = currentPlanAfterCopiedPrior(

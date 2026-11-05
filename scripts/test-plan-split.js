@@ -23,6 +23,7 @@ eq(isDeclineTreatmentPlan('Other'), false, 'Other is not a refusal');
 eq(isOtherClinicalPlan('Other'), true, 'Other is the skin-condition plan');
 eq(isOtherClinicalPlan('Declines treatment'), false, 'a refusal is not the skin-condition plan');
 eq(formatOtherPlanSummary({ plan: 'Other', otherPlanNote: 'Dermatitis — emollient' }), 'Dermatitis — emollient', 'Other prints the condition note');
+eq(formatOtherPlanSummary({ plan: 'Other', otherPlanNote: 'Dermatitis — emollient', otherFollowUp: '4 weeks' }), 'Dermatitis — emollient — review in 4 weeks', 'Other with a review names the interval');
 eq(formatOtherPlanSummary({ plan: 'Declines treatment', otherPlanNote: 'Dermatitis' }), '', 'a refusal does not print as Other');
 
 const fresh = renderDeclinePlanFieldsHtml('', { plan: 'Declines treatment' }, false);

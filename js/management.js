@@ -1113,6 +1113,7 @@ function lesionShowsPlanCard(lesion) {
     if (type === 'topical' || (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))) return true;
     if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(lesion.plan) : /Monitor/i.test(lesion.plan || '')) return true;
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan)) return true;
+    if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(lesion.plan)) return true;
     const status = typeof lesionLifecycleStatus === 'function'
         ? lesionLifecycleStatus(lesion)
         : lesion.managementStatus;
@@ -1162,6 +1163,16 @@ function renderInspectorDeclinePlanRows(lesion) {
     ].join('');
 }
 
+function renderInspectorOtherPlanRows(lesion) {
+    const follow = lesion?.otherFollowUp && lesion.otherFollowUp !== 'none'
+        ? lesion.otherFollowUp
+        : 'None scheduled';
+    return [
+        histoReportRow('Condition', lesion?.otherPlanNote || 'Other skin condition'),
+        histoReportRow('Follow-up', follow)
+    ].join('');
+}
+
 function renderInspectorMonitorPlanRows(lesion) {
     return [
         histoReportRow('Plan', 'Monitor / Reassure (Benign)'),
@@ -1188,10 +1199,11 @@ function renderInspectorPlanCard(lesion, options) {
     const topical = (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan))
         || (typeof lesionType === 'function' ? lesionType(lesion) : lesion.type) === 'topical';
     const decline = typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan);
-    const monitor = !topical && !decline && (typeof isMonitorLesionPlan === 'function'
+    const other = typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(lesion.plan);
+    const monitor = !topical && !decline && !other && (typeof isMonitorLesionPlan === 'function'
         ? isMonitorLesionPlan(lesion.plan)
         : /Monitor/i.test(lesion.plan || ''));
-    const proposed = !topical && !decline && !monitor && !!lesionProposedPlanKey(lesion)
+    const proposed = !topical && !decline && !other && !monitor && !!lesionProposedPlanKey(lesion)
         && !(typeof isPunchShaveBiopsyPlan === 'function' && isPunchShaveBiopsyPlan(lesion.plan))
         && !(typeof isExcisionBookingPlan === 'function' && isExcisionBookingPlan(lesion.plan));
     const changeBtn = options.changePlan !== false
@@ -1211,6 +1223,8 @@ function renderInspectorPlanCard(lesion, options) {
         rows = renderInspectorDeclinePlanRows(lesion);
     } else if (topical) {
         rows = renderInspectorTopicalPlanRows(lesion);
+    } else if (other) {
+        rows = renderInspectorOtherPlanRows(lesion);
     } else if (monitor) {
         rows = renderInspectorMonitorPlanRows(lesion);
     } else if (proposed) {
@@ -1518,6 +1532,7 @@ function formatLesionPlanPlainLines(lesion) {
         push('Notes', lesion.declineNotes);
     } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(lesion.plan)) {
         push('Condition', lesion.otherPlanNote || 'Other skin condition');
+        push('Follow-up', lesion.otherFollowUp && lesion.otherFollowUp !== 'none' ? lesion.otherFollowUp : 'None scheduled');
     } else if (monitor) {
         push('Plan', 'Monitor / Reassure (Benign)');
         push('Follow-up', lesion.monitorFollowUp && lesion.monitorFollowUp !== 'none' ? lesion.monitorFollowUp : 'None scheduled');

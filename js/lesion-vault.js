@@ -969,6 +969,10 @@ function hasOutstandingTopicalWork(lesion) {
 function isScheduledReviewLesion(lesion) {
     if (!lesion) return false;
     if (isMonitorLesionPlan(lesion.plan) && hasScheduledFollowUp(lesion.monitorFollowUp)) return true;
+    const other = typeof isOtherClinicalPlan === 'function'
+        ? isOtherClinicalPlan(lesion.plan)
+        : String(lesion.plan || '').trim() === 'Other';
+    if (other && hasScheduledFollowUp(lesion.otherFollowUp)) return true;
     const decline = typeof isDeclineTreatmentPlan === 'function'
         ? isDeclineTreatmentPlan(lesion.plan)
         : /Declines Treatment/i.test(String(lesion.plan || ''));
@@ -1876,7 +1880,7 @@ function deriveLesionStatusFromPlan(record) {
         return hasScheduledFollowUp(record.declineReview) ? 'awaiting_assessment' : 'no_followup';
     }
     if (typeof isOtherClinicalPlan === 'function' ? isOtherClinicalPlan(plan) : String(plan || '').trim() === 'Other') {
-        return 'no_followup';
+        return hasScheduledFollowUp(record.otherFollowUp) ? 'awaiting_assessment' : 'no_followup';
     }
     return 'awaiting_assessment';
 }
@@ -1913,7 +1917,13 @@ function defaultPlanLine(lesion) {
     }
     if (status === 'topical_followup') return 'Topical follow-up';
     if (typeof isOtherClinicalPlan === 'function' ? isOtherClinicalPlan(lesion?.plan) : String(lesion?.plan || '').trim() === 'Other') {
-        return String(lesion?.otherPlanNote || '').trim() || 'Other skin condition';
+        if (typeof formatOtherPlanSummary === 'function') {
+            const summary = formatOtherPlanSummary(lesion);
+            if (summary) return summary;
+        }
+        const note = String(lesion?.otherPlanNote || '').trim() || 'Other skin condition';
+        const follow = String(lesion?.otherFollowUp || '').trim();
+        return follow && follow !== 'none' ? (note + ' — review in ' + follow) : note;
     }
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion?.plan)) {
         return typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(lesion)
@@ -3733,6 +3743,17 @@ async function persistSessionLesionToVault(sessionLesion) {
             next.managementStatus = deriveLesionStatusFromPlan(next);
             next.type = 'topical';
             next.currentPlan = defaultPlanLine(next);
+        }
+    }
+    if ((typeof isOtherClinicalPlan === 'function' ? isOtherClinicalPlan(sessionLesion.plan) : String(sessionLesion.plan || '').trim() === 'Other') && !completed) {
+        next.otherFollowUp = sessionLesion.otherFollowUp || 'none';
+        if (!existing.managementStatus || ['awaiting_assessment', 'topical_followup', 'no_followup', 'planned_procedure'].includes(canonicalLesionStatus(existing.managementStatus))) {
+            next.managementStatus = deriveLesionStatusFromPlan(next);
+            next.type = 'none';
+            next.currentPlan = sessionLesion.currentPlan || defaultPlanLine(next);
+            next.clinicallyFinalisedAt = next.managementStatus === 'no_followup'
+                ? (next.clinicallyFinalisedAt || now)
+                : '';
         }
     }
     if (isMonitorLesionPlan(sessionLesion.plan) && !completed) {
