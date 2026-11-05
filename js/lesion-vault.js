@@ -969,6 +969,10 @@ function hasOutstandingTopicalWork(lesion) {
 function isScheduledReviewLesion(lesion) {
     if (!lesion) return false;
     if (isMonitorLesionPlan(lesion.plan) && hasScheduledFollowUp(lesion.monitorFollowUp)) return true;
+    const other = typeof isOtherClinicalPlan === 'function'
+        ? isOtherClinicalPlan(lesion.plan)
+        : String(lesion.plan || '').trim() === 'Other';
+    if (other && hasScheduledFollowUp(lesion.otherFollowUp)) return true;
     const decline = typeof isDeclineTreatmentPlan === 'function'
         ? isDeclineTreatmentPlan(lesion.plan)
         : /Declines Treatment/i.test(String(lesion.plan || ''));
@@ -1875,6 +1879,9 @@ function deriveLesionStatusFromPlan(record) {
     if (typeof isDeclineTreatmentPlan === 'function' ? isDeclineTreatmentPlan(plan) : /Declines Treatment/i.test(plan)) {
         return hasScheduledFollowUp(record.declineReview) ? 'awaiting_assessment' : 'no_followup';
     }
+    if (typeof isOtherClinicalPlan === 'function' ? isOtherClinicalPlan(plan) : String(plan || '').trim() === 'Other') {
+        return hasScheduledFollowUp(record.otherFollowUp) ? 'awaiting_assessment' : 'no_followup';
+    }
     return 'awaiting_assessment';
 }
 
@@ -1909,6 +1916,15 @@ function defaultPlanLine(lesion) {
         return 'Procedure planned';
     }
     if (status === 'topical_followup') return 'Topical follow-up';
+    if (typeof isOtherClinicalPlan === 'function' ? isOtherClinicalPlan(lesion?.plan) : String(lesion?.plan || '').trim() === 'Other') {
+        if (typeof formatOtherPlanSummary === 'function') {
+            const summary = formatOtherPlanSummary(lesion);
+            if (summary) return summary;
+        }
+        const note = String(lesion?.otherPlanNote || '').trim() || 'Other skin condition';
+        const follow = String(lesion?.otherFollowUp || '').trim();
+        return follow && follow !== 'none' ? (note + ' — review in ' + follow) : note;
+    }
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion?.plan)) {
         return typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(lesion)
             ? formatDeclinePlanSummary(lesion)
@@ -3170,6 +3186,93 @@ async function openKnownPatientByIndex(idx) {
     else setCurrentPatient(known);
 }
 
+let patientModalMode = 'add';
+
+function setPatientModalCopy(mode) {
+    const title = document.getElementById('patientModalTitle');
+    const subtitle = document.getElementById('patientModalSubtitle');
+    const submit = document.getElementById('patientModalSubmit');
+    if (mode === 'edit') {
+        if (title) title.textContent = 'Edit patient details';
+        if (subtitle) subtitle.textContent = 'The person number stays the same, so lesions stay on this chart. Name, date of birth, and phone are updated on the linked records.';
+        if (submit) submit.textContent = 'Save details';
+        return;
+    }
+    if (title) title.textContent = 'Add new patient';
+    if (subtitle) subtitle.textContent = 'Creates a new encrypted chart. The logged-in doctor is attached automatically.';
+    if (submit) submit.textContent = 'Create chart and open';
+}
+
+function personRecordMatches(record, chart) {
+    if (!record || !chart) return false;
+    const personId = String(chart.personId || '').trim();
+    const chartId = String(chart.id || chart.chartId || '').trim();
+    if (personId && String(record.personId || '').trim() === personId) return true;
+    const recordChart = String(record.chartId || '').trim();
+    return !!(chartId && recordChart && recordChart === chartId);
+}
+
+function conflictingChartForIdentity(chart, charts, name, dob) {
+    const wanted = canonicalPatientChartId(name, dob);
+    if (!wanted || !chart) return null;
+    const selfId = String(chart.id || chart.chartId || '');
+    return (Array.isArray(charts) ? charts : []).find((other) => {
+        if (!other || String(other.id || '') === selfId) return false;
+        const otherName = composePatientName(other.firstName, other.lastName, other.name);
+        return canonicalPatientChartId(otherName, other.dob) === wanted;
+    }) || null;
+}
+
+function stampPersonDetailsOnRecord(record, details) {
+    if (!record || !details) return false;
+    let changed = false;
+    const assign = (key, value) => {
+        const next = String(value || '');
+        if (String(record[key] || '') === next) return;
+        record[key] = next;
+        changed = true;
+    };
+    assign('patientName', details.name);
+    assign('patientDob', details.dob);
+    assign('patientPhone', details.phone);
+    if (Object.prototype.hasOwnProperty.call(record, 'phone')) assign('phone', details.phone);
+    if (Object.prototype.hasOwnProperty.call(record, 'name') && !record.location && !record.patientName) {
+        assign('name', details.name);
+    }
+    if (Object.prototype.hasOwnProperty.call(record, 'dob') && !record.location && !record.patientDob) {
+        assign('dob', details.dob);
+    }
+    if (Object.prototype.hasOwnProperty.call(record, 'firstName')) assign('firstName', details.firstName);
+    if (Object.prototype.hasOwnProperty.call(record, 'lastName')) assign('lastName', details.lastName);
+    if (details.personId) assign('personId', details.personId);
+    return changed;
+}
+
+function stampLinkedPersonRecords(chart, details) {
+    const lists = [
+        ['lesion', typeof managedLesions !== 'undefined' ? managedLesions : []],
+        ['billing', typeof managedBillings !== 'undefined' ? managedBillings : []],
+        ['visit', typeof managedVisitNotes !== 'undefined' ? managedVisitNotes : []],
+        ['consent', typeof managedConsents !== 'undefined' ? managedConsents : []]
+    ];
+    const seen = new Set();
+    const changed = [];
+    lists.forEach(([kind, list]) => {
+        (list || []).forEach((record) => {
+            if (!personRecordMatches(record, chart)) return;
+            const key = kind + ':' + String(record.id || '');
+            if (seen.has(key)) return;
+            seen.add(key);
+            if (stampPersonDetailsOnRecord(record, details)) changed.push({ kind, record });
+        });
+    });
+    const session = typeof lesions !== 'undefined' && Array.isArray(lesions) ? lesions : [];
+    session.forEach((record) => {
+        if (personRecordMatches(record, chart)) stampPersonDetailsOnRecord(record, details);
+    });
+    return changed;
+}
+
 function openAddPatientModal() {
     if (typeof blockAddPatientWhileVisitActive === 'function' && blockAddPatientWhileVisitActive()) {
         return;
@@ -3193,6 +3296,35 @@ function openAddPatientModal() {
     const addBiopsy = document.getElementById('chartPatientBiopsyBilling');
     if (addConsult) addConsult.value = typeof DEFAULT_CONSULT_BILLING !== 'undefined' ? DEFAULT_CONSULT_BILLING : 'Private Bill';
     if (addBiopsy) addBiopsy.value = typeof DEFAULT_BIOPSY_BILLING !== 'undefined' ? DEFAULT_BIOPSY_BILLING : '$20 OOP per biopsy (Item 30071)';
+    setPatientModalCopy('add');
+    patientModalMode = 'add';
+    if (modal) modal.classList.remove('hidden');
+    if (firstEl) firstEl.focus();
+}
+
+function openEditPatientModal() {
+    if (typeof hasCurrentPatient !== 'function' || !hasCurrentPatient()) {
+        if (typeof showToast === 'function') showToast('Open a chart before changing a person’s details.');
+        return;
+    }
+    const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
+    const source = chart || currentPatient;
+    patientModalMode = 'edit';
+    setPatientModalCopy('edit');
+    const identity = patientIdentityFromRecord(source);
+    const firstEl = document.getElementById('chartPatientFirstName');
+    const lastEl = document.getElementById('chartPatientLastName');
+    if (firstEl) firstEl.value = identity.firstName || '';
+    if (lastEl) lastEl.value = identity.lastName || '';
+    if (typeof bindChartPatientIdentityFields === 'function') bindChartPatientIdentityFields();
+    if (typeof fillChartPatientDobFields === 'function') fillChartPatientDobFields(identity.dob || '');
+    const phoneEl = document.getElementById('chartPatientPhone');
+    if (phoneEl) phoneEl.value = identity.phone || '';
+    const consult = document.getElementById('chartPatientConsultBilling');
+    const biopsy = document.getElementById('chartPatientBiopsyBilling');
+    if (consult) consult.value = source.consultBilling || currentPatient.consultBilling || consult.value;
+    if (biopsy) biopsy.value = source.biopsyBilling || currentPatient.biopsyBilling || biopsy.value;
+    const modal = document.getElementById('patientModal');
     if (modal) modal.classList.remove('hidden');
     if (firstEl) firstEl.focus();
 }
@@ -3210,7 +3342,125 @@ function closePatientModal() {
     if (modal) modal.classList.add('hidden');
 }
 
+function readPatientModalIdentity() {
+    const firstName = document.getElementById('chartPatientFirstName')?.value.trim() || '';
+    const lastName = document.getElementById('chartPatientLastName')?.value.trim() || '';
+    const dob = (typeof readChartPatientDobFields === 'function'
+        ? readChartPatientDobFields()
+        : (document.getElementById('chartPatientDob')?.value.trim() || ''));
+    const phone = typeof formatAuPhoneDisplay === 'function'
+        ? formatAuPhoneDisplay(document.getElementById('chartPatientPhone')?.value || '')
+        : (document.getElementById('chartPatientPhone')?.value.trim() || '');
+    const phoneEl = document.getElementById('chartPatientPhone');
+    if (phoneEl) phoneEl.value = phone;
+    return {
+        firstName,
+        lastName,
+        dob,
+        phone,
+        name: composePatientName(firstName, lastName)
+    };
+}
+
+function patientModalIdentityError(identity) {
+    if (!identity.firstName || !identity.lastName) return 'Enter first name and last name.';
+    if (!identity.dob) return 'Enter date of birth as day, month, and year (for example 12 / 03 / 1960).';
+    if (normalizePhoneDigits(identity.phone).length < 8) return 'Enter a phone number so reception can contact the patient.';
+    if (!patientChartId(identity.name, identity.dob)) return 'Date of birth needs digits so the chart can be identified.';
+    return '';
+}
+
+async function writeStampedPersonRecord(kind, record) {
+    if (kind === 'lesion' && typeof writeManagedLesion === 'function') return writeManagedLesion(record);
+    if (kind === 'billing' && typeof writeManagedBilling === 'function') return writeManagedBilling(record);
+    if (kind === 'visit' && typeof writeManagedVisitNote === 'function') return writeManagedVisitNote(record);
+    if (kind === 'consent' && typeof writeManagedConsentDoc === 'function') return writeManagedConsentDoc(record);
+}
+
+async function submitEditPatientModal() {
+    if (typeof isAppBusy === 'function' && isAppBusy()) {
+        if (typeof showToast === 'function') showToast('Wait until the current action finishes.');
+        return;
+    }
+    if (!hasCurrentPatient()) {
+        showToast('Open a chart before changing a person’s details.');
+        return;
+    }
+    const identity = readPatientModalIdentity();
+    const identityError = patientModalIdentityError(identity);
+    if (identityError) {
+        showToast(identityError);
+        return;
+    }
+    const chart = typeof currentManagedChart === 'function' ? currentManagedChart() : null;
+    if (!chart?.id) {
+        showToast('Open the chart again before saving these details.');
+        return;
+    }
+    const charts = typeof managedCharts !== 'undefined' ? managedCharts : [];
+    if (conflictingChartForIdentity(chart, charts, identity.name, identity.dob)) {
+        showToast('Another chart already uses that name and date of birth.');
+        return;
+    }
+    const billing = typeof readAddPatientBilling === 'function'
+        ? readAddPatientBilling()
+        : { consultBilling: chart.consultBilling, biopsyBilling: chart.biopsyBilling };
+    const finish = async ({ progress }) => {
+        if (!String(chart.personId || '').trim()) chart.personId = newPersonId();
+        const details = {
+            personId: chart.personId,
+            name: identity.name,
+            firstName: identity.firstName,
+            lastName: identity.lastName,
+            dob: identity.dob,
+            phone: identity.phone
+        };
+        chart.firstName = details.firstName;
+        chart.lastName = details.lastName;
+        chart.name = details.name;
+        chart.dob = details.dob;
+        chart.phone = details.phone;
+        if (billing?.consultBilling) chart.consultBilling = billing.consultBilling;
+        if (billing?.biopsyBilling) chart.biopsyBilling = billing.biopsyBilling;
+        chart.updatedAt = new Date().toISOString();
+        if (typeof upsertManagedChartMemory === 'function') upsertManagedChartMemory(chart);
+        setCurrentPatient({
+            name: details.name,
+            firstName: details.firstName,
+            lastName: details.lastName,
+            dob: details.dob,
+            phone: details.phone,
+            clinician: chart.clinician || currentPatient.clinician || '',
+            chartId: chart.id,
+            personId: details.personId,
+            consultBilling: chart.consultBilling,
+            biopsyBilling: chart.biopsyBilling
+        });
+        if (progress) progress('Saving the chart…', 0.25);
+        if (typeof saveManagedChartRecord === 'function') await saveManagedChartRecord(chart);
+        const linked = stampLinkedPersonRecords(chart, details);
+        for (let i = 0; i < linked.length; i += 1) {
+            if (progress) progress('Updating linked records…', 0.25 + (0.7 * (i + 1) / linked.length));
+            await writeStampedPersonRecord(linked[i].kind, linked[i].record);
+        }
+        if (typeof renderManagedLesions === 'function') renderManagedLesions();
+        if (typeof renderChartSidebar === 'function') renderChartSidebar();
+        if (typeof updateOutput === 'function') updateOutput();
+        closePatientModal();
+        patientModalMode = 'add';
+        showToast('Details saved. Lesions stay on this person.');
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving patient details…', finish, {
+            button: document.getElementById('patientModalSubmit'),
+            buttonText: 'Saving…'
+        });
+    }
+    return finish({});
+}
+
 async function submitAddPatientModal() {
+    if (patientModalMode === 'edit') return submitEditPatientModal();
     if (typeof isAppBusy === 'function' && isAppBusy()) {
         if (typeof showToast === 'function') showToast('Wait until the current action finishes.');
         return;
@@ -3493,6 +3743,17 @@ async function persistSessionLesionToVault(sessionLesion) {
             next.managementStatus = deriveLesionStatusFromPlan(next);
             next.type = 'topical';
             next.currentPlan = defaultPlanLine(next);
+        }
+    }
+    if ((typeof isOtherClinicalPlan === 'function' ? isOtherClinicalPlan(sessionLesion.plan) : String(sessionLesion.plan || '').trim() === 'Other') && !completed) {
+        next.otherFollowUp = sessionLesion.otherFollowUp || 'none';
+        if (!existing.managementStatus || ['awaiting_assessment', 'topical_followup', 'no_followup', 'planned_procedure'].includes(canonicalLesionStatus(existing.managementStatus))) {
+            next.managementStatus = deriveLesionStatusFromPlan(next);
+            next.type = 'none';
+            next.currentPlan = sessionLesion.currentPlan || defaultPlanLine(next);
+            next.clinicallyFinalisedAt = next.managementStatus === 'no_followup'
+                ? (next.clinicallyFinalisedAt || now)
+                : '';
         }
     }
     if (isMonitorLesionPlan(sessionLesion.plan) && !completed) {
@@ -4292,6 +4553,7 @@ if (typeof module !== 'undefined' && module.exports) {
         applyContactOutcomeToLesion,
         lesionOwnProcedureKind,
         deriveLesionStatusFromPlan,
+        defaultPlanLine,
         lesionLifecycleStatus,
         spawnFurtherManagementChild,
         recordHistologyOutcome,
@@ -4315,6 +4577,10 @@ if (typeof module !== 'undefined' && module.exports) {
         planRecordIdentityUpgrade,
         consentEpisodeRefs,
         identityChartId,
+        personRecordMatches,
+        conflictingChartForIdentity,
+        stampPersonDetailsOnRecord,
+        stampLinkedPersonRecords,
         canonicalPatientChartId,
         chartIdForName,
         lesionChartId,

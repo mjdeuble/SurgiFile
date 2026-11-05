@@ -157,10 +157,15 @@ function formatLesionPlanIemr(lesion) {
     if (typeof isTopicalPlan === 'function' && isTopicalPlan(lesion.plan)) {
         return 'Topical / Field Treatment';
     }
+    if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(lesion.plan)) {
+        return typeof formatOtherPlanSummary === 'function' && formatOtherPlanSummary(lesion)
+            ? formatOtherPlanSummary(lesion)
+            : 'Other';
+    }
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan)) {
         return typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(lesion)
             ? formatDeclinePlanSummary(lesion)
-            : 'Declines Treatment / Other';
+            : 'Declines treatment';
     }
     const biopsyPlan = typeof isPunchShaveBiopsyPlan === 'function'
         ? isPunchShaveBiopsyPlan(lesion.plan)
