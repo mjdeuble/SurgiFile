@@ -156,6 +156,36 @@ async function writeTextFile(dirHandle, name, text) {
     }
 }
 
+async function appendTextFileNow(dirHandle, name, text) {
+    const handle = await dirHandle.getFileHandle(name, { create: true });
+    const file = await handle.getFile();
+    const size = file.size || 0;
+    let writable;
+    try {
+        writable = await handle.createWritable({ keepExistingData: true });
+    } catch (err) {
+        throw new Error('This browser cannot add to the clinic record without clearing it.');
+    }
+    try {
+        await writable.seek(size);
+        await writable.write(text);
+        await closeWritableSafely(writable);
+    } catch (err) {
+        try { await writable.abort(); } catch (abortErr) { /* leave the previous bytes in place */ }
+        throw err;
+    }
+}
+
+async function appendTextFile(dirHandle, name, text) {
+    const run = enqueueVaultWrite(dirHandle, name, () => appendTextFileNow(dirHandle, name, text));
+    pendingVaultWrites.add(run);
+    try {
+        return await run;
+    } finally {
+        pendingVaultWrites.delete(run);
+    }
+}
+
 async function waitForPendingVaultWrites(timeoutMs) {
     const deadline = Date.now() + (Number(timeoutMs) > 0 ? Number(timeoutMs) : 8000);
     for (let i = 0; i < 6; i += 1) {

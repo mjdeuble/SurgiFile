@@ -120,12 +120,22 @@ function adminVisitNotes() {
 
 async function writeManagedVisitNote(note) {
     if (!isVaultLoggedIn() || !note?.id) return;
+    if (typeof userLogIsActive === 'function' && userLogIsActive()) {
+        await appendUserLogPut('visit', note);
+        return;
+    }
     const dir = await getUserNotesDir(vaultAuth.username, true);
     await writeOpaqueEncryptedJson(dir, note, 'visit', vaultAuth.key);
 }
 
 async function deleteManagedVisitNoteFile(note) {
-    if (!isVaultLoggedIn() || !note?.fileName) return false;
+    if (!isVaultLoggedIn() || !note) return false;
+    if (typeof userLogIsActive === 'function' && userLogIsActive()) {
+        if (!note.id) return false;
+        await appendUserLogDelete('visit', note.id);
+        return true;
+    }
+    if (!note.fileName) return false;
     const dir = await getUserNotesDir(vaultAuth.username, true);
     return await deleteTextFile(dir, note.fileName);
 }

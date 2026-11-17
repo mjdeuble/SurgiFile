@@ -109,6 +109,7 @@ function resetVaultSessionState() {
     vaultPasswordNeedsUpgrade = false;
     closeHeaderAuthMenu();
     vaultAuth = { username: '', key: null, displayName: '' };
+    if (typeof userLogResetSession === 'function') userLogResetSession();
     managedLesions = [];
     managedBillings = [];
     currentManagedCaseId = null;
@@ -993,7 +994,9 @@ async function afterVaultLogin() {
         console.warn('Vault load after sign-in failed', err);
         resetVaultSessionState();
         openAuthModal();
-        throw new Error('Could not load encrypted files from the clinic folder. Check folder access and sign in again.');
+        throw new Error(err && err.userLogUnreadable
+            ? err.message
+            : 'Could not load encrypted files from the clinic folder. Check folder access and sign in again.');
     }
     const pw = document.getElementById('authPassword');
     const confirm = document.getElementById('authPasswordConfirm');

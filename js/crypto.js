@@ -60,3 +60,13 @@ async function decryptJson(key, envelope) {
     const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
     return JSON.parse(new TextDecoder().decode(plainBuf));
 }
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        deriveVaultKey,
+        encryptJson,
+        decryptJson,
+        bytesToB64,
+        b64ToBytes
+    };
+}

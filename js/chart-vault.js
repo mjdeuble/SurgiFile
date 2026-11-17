@@ -481,6 +481,10 @@ function upsertManagedChartMemory(chart) {
 
 async function writeManagedChart(chart) {
     if (!isVaultLoggedIn() || !chart?.id) return;
+    if (typeof userLogIsActive === 'function' && userLogIsActive()) {
+        await appendUserLogPut('chart', chart);
+        return;
+    }
     const dir = await getUserChartsDir(vaultAuth.username, true);
     await writeOpaqueEncryptedJson(dir, chart, 'chart', vaultAuth.key);
 }
@@ -711,6 +715,11 @@ function syncScratchpadIdleStamp(chart, options) {
 
 async function deleteManagedChartFile(chart) {
     if (!isVaultLoggedIn() || !chart) return false;
+    if (typeof userLogIsActive === 'function' && userLogIsActive()) {
+        if (!chart.id) return false;
+        await appendUserLogDelete('chart', chart.id);
+        return true;
+    }
     if (!chart.fileName) return true;
     const dir = await getUserChartsDir(vaultAuth.username, true);
     return await deleteTextFile(dir, chart.fileName);

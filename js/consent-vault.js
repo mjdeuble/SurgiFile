@@ -49,12 +49,22 @@ function adminConsentDocs() {
 
 async function writeManagedConsentDoc(doc) {
     if (!isVaultLoggedIn() || !doc?.id) return;
+    if (typeof userLogIsActive === 'function' && userLogIsActive()) {
+        await appendUserLogPut('consent', doc);
+        return;
+    }
     const dir = await getUserConsentsDir(vaultAuth.username, true);
     await writeOpaqueEncryptedJson(dir, doc, 'consent', vaultAuth.key);
 }
 
 async function deleteManagedConsentDocFile(doc) {
-    if (!isVaultLoggedIn() || !doc?.fileName) return false;
+    if (!isVaultLoggedIn() || !doc) return false;
+    if (typeof userLogIsActive === 'function' && userLogIsActive()) {
+        if (!doc.id) return false;
+        await appendUserLogDelete('consent', doc.id);
+        return true;
+    }
+    if (!doc.fileName) return false;
     const dir = await getUserConsentsDir(vaultAuth.username, true);
     return await deleteTextFile(dir, doc.fileName);
 }

@@ -3308,6 +3308,10 @@ function appendLesionHistory(lesion, action, note) {
 async function writeManagedLesion(lesion) {
     upsertManagedLesionMemory(lesion);
     if (!isVaultLoggedIn()) return;
+    if (typeof userLogIsActive === 'function' && userLogIsActive()) {
+        await appendUserLogPut('lesion', lesion);
+        return;
+    }
     const dir = await getUserLesionsDir(vaultAuth.username, true);
     const payload = await encryptJson(vaultAuth.key, lesion);
     await writeTextFile(dir, lesion.id + '.json.enc', JSON.stringify(payload));
@@ -3315,6 +3319,10 @@ async function writeManagedLesion(lesion) {
 
 async function deleteManagedLesionFile(id) {
     if (!isVaultLoggedIn() || !id) return false;
+    if (typeof userLogIsActive === 'function' && userLogIsActive()) {
+        await appendUserLogDelete('lesion', id);
+        return true;
+    }
     try {
         const dir = await getUserLesionsDir(vaultAuth.username, false);
         return await deleteTextFile(dir, id + '.json.enc');
@@ -3327,6 +3335,10 @@ async function deleteManagedLesionFile(id) {
 async function loadManagedLesionsFromVault() {
     managedLesions = [];
     if (!isVaultLoggedIn()) return;
+    if (typeof loadClinicFromUserLog === 'function' && await loadClinicFromUserLog()) {
+        if (typeof repairClinicLoadedFromUserLog === 'function') await repairClinicLoadedFromUserLog();
+        return;
+    }
     const dir = await getUserLesionsDir(vaultAuth.username, true);
     if (typeof recoverIncompleteVaultWrites === 'function') await recoverIncompleteVaultWrites(dir);
     if (typeof vaultLoadBeginStage === 'function') vaultLoadBeginStage('Loading lesions…', 0.16, 0.46);
@@ -3391,6 +3403,7 @@ async function loadManagedLesionsFromVault() {
             console.warn('Could not rename identifying chart files', err);
         }
     }
+    if (typeof migrateClinicToUserLog === 'function') await migrateClinicToUserLog();
 }
 
 function upsertManagedLesionMemory(lesion) {
