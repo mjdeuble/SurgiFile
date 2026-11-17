@@ -62,6 +62,11 @@ function billingStatusLabel(bill) {
     return BILLING_STATUSES[bill.status] || bill.status;
 }
 
+function billingFieldFromLesion(lesion, existing, key) {
+    if (lesion && Object.prototype.hasOwnProperty.call(lesion, key)) return String(lesion[key] || '');
+    return String(existing?.[key] || '');
+}
+
 function snapshotBillingFromLesion(lesion, existing) {
     const now = new Date().toISOString();
     const patient = sessionPatientSnapshot();
@@ -80,8 +85,8 @@ function snapshotBillingFromLesion(lesion, existing) {
         clinician: lesion.clinician || patient.clinician || '',
         location: detail.location || lesion.location || '',
         impression: detail.pathology || lesion.impression || existing?.impression || '',
-        histologyDiagnosis: lesion.histologyDiagnosis || existing?.histologyDiagnosis || '',
-        histologyResult: lesion.histologyResult || existing?.histologyResult || '',
+        histologyDiagnosis: billingFieldFromLesion(lesion, existing, 'histologyDiagnosis'),
+        histologyResult: billingFieldFromLesion(lesion, existing, 'histologyResult'),
         procedureType: detail.procedure || lesion.procedure || '',
         punchSize: detail.punchSize || lesion.punchSize || '',
         type: lesion.type || (typeof lesionType === 'function' ? lesionType(lesion) : '') || existing?.type || '',
@@ -96,15 +101,11 @@ function snapshotBillingFromLesion(lesion, existing) {
         graftType: detail.graftType || lesion.graftType || lesion.billingGraftType || '',
         billingGraftType: lesion.billingGraftType || detail.graftType || existing?.billingGraftType || '',
         billingLesionType: (typeof inferBillingLesionType === 'function' ? inferBillingLesionType(lesion) : '')
-            || lesion.billingLesionType
-            || existing?.billingLesionType
-            || '',
+            || billingFieldFromLesion(lesion, existing, 'billingLesionType'),
         billingReconstruction: biopsy ? '' : (lesion.billingReconstruction || existing?.billingReconstruction || ''),
         includeFlapGraft: lesion.includeFlapGraft ?? existing?.includeFlapGraft,
         suggestedMbsItems: (suggestion && suggestion.ready && suggestion.summary)
-            || lesion.suggestedMbsItems
-            || existing?.suggestedMbsItems
-            || '',
+            || billingFieldFromLesion(lesion, existing, 'suggestedMbsItems'),
         assignedMbsItems: existing?.assignedMbsItems || lesion.assignedMbsItems || '',
         excludeConsult: existing?.excludeConsult ?? false,
         consultItem: existing?.consultItem || '',
@@ -319,4 +320,11 @@ async function migrateEmbeddedBillingFromLesions() {
             }
         }
     }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        billingFieldFromLesion,
+        snapshotBillingFromLesion
+    };
 }

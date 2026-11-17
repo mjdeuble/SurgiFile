@@ -1,6 +1,7 @@
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 
-        #manageLesionNfaModal {
+        #manageLesionNfaModal,
+        #clearHistologyResultModal {
             z-index: 70;
         }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -1877,6 +1878,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         .histo-inline-btn:hover {
             background: #e5f1fb;
             border-color: #0078d4;
+        }
+        .histo-inline-stack {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.25rem;
         }
         .histo-report-dd-actions {
             display: flex;

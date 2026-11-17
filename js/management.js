@@ -1074,6 +1074,12 @@ function histoInlineButton(label, onclick) {
     return `<button type="button" class="histo-inline-btn" onclick="${onclick}">${escapeHtml(label)}</button>`;
 }
 
+function histoResultActions(id, microscopy) {
+    const edit = histoInlineButton(microscopy ? 'Edit result' : 'Enter result', `openHistologyModal('${id}')`);
+    if (!microscopy) return edit;
+    return `<span class="histo-inline-stack">${edit}${histoInlineButton('Clear result', `openClearHistologyResult('${id}')`)}</span>`;
+}
+
 function lesionChainHasDoneProcedure(lesion) {
     if (!lesion) return false;
     const done = (item) => typeof lesionProcedureDone === 'function'
@@ -1269,7 +1275,7 @@ function renderInspectorHistologyReport(lesion, kind, specimenIndex, options) {
     const inlineEntry = kind === 'current' && typeof inspectorNeedsHistologyEntry === 'function'
         && inspectorNeedsHistologyEntry(lesion) && !microscopy;
     const resultBtn = canEditResult && !inlineEntry
-        ? histoInlineButton(microscopy ? 'Edit result' : 'Enter result', `openHistologyModal('${id}')`)
+        ? histoResultActions(id, microscopy)
         : '';
     const rows = [
         histoReportRow('Laboratory', lab),
@@ -3636,6 +3642,91 @@ async function submitHistologyModal() {
         });
     }
     return save({});
+}
+
+let clearHistologyResultId = '';
+
+function clearHistologyResultTarget() {
+    const id = clearHistologyResultId;
+    return (typeof managedLesions !== 'undefined' ? managedLesions : [])
+        .find((item) => String(item.id) === String(id))
+        || (typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(id))
+        || null;
+}
+
+function openClearHistologyResult(id) {
+    clearHistologyResultId = String(id || '');
+    const lesion = clearHistologyResultTarget();
+    const body = document.getElementById('clearHistologyResultBody');
+    const who = [lesion?.patientName || '', lesion?.location || ''].filter(Boolean).join(' — ');
+    const linked = !!(lesion?.linkedReexcisionId || lesion?.linkedChildId);
+    const action = linked
+        ? 'The diagnosis and report are removed. A linked next episode stays, so this lesion does not return to the results queue.'
+        : 'The diagnosis and report are removed. This lesion returns to awaiting results. The procedure record and pot number stay.';
+    if (body) body.textContent = (who ? (who + '. ') : '') + action;
+    const modal = document.getElementById('clearHistologyResultModal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeClearHistologyResult() {
+    clearHistologyResultId = '';
+    const modal = document.getElementById('clearHistologyResultModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function confirmClearHistologyResult() {
+    const id = clearHistologyResultId;
+    const lesion = clearHistologyResultTarget();
+    if (!id || !lesion || typeof clearSavedHistologyResult !== 'function') {
+        closeClearHistologyResult();
+        showToast('Could not find that lesion.');
+        return false;
+    }
+    const save = async () => {
+        const outcome = clearSavedHistologyResult(lesion);
+        if (!outcome?.ok) {
+            showToast('There is no result to clear.');
+            return false;
+        }
+        if (typeof lesions !== 'undefined' && Array.isArray(lesions)) {
+            const idx = lesions.findIndex((item) => String(item.id) === String(id));
+            if (idx !== -1 && lesions[idx] !== lesion) Object.assign(lesions[idx], lesion);
+        }
+        if (typeof managedLesions !== 'undefined' && Array.isArray(managedLesions)) {
+            const idx = managedLesions.findIndex((item) => String(item.id) === String(id));
+            if (idx === -1) managedLesions.unshift(lesion);
+            else if (managedLesions[idx] !== lesion) Object.assign(managedLesions[idx], lesion);
+        }
+        if (typeof saveManagedLesionRecord === 'function') {
+            await saveManagedLesionRecord(lesion, 'histology:cleared', 'Result cleared', { silent: true });
+        }
+        if (typeof syncBillingFromLesion === 'function') {
+            try { await syncBillingFromLesion(lesion); } catch (err) { /* the lesion copy is already cleared */ }
+        }
+        closeClearHistologyResult();
+        if (typeof markVisitReviewAndRefreshOutput === 'function') markVisitReviewAndRefreshOutput(id);
+        const practice = typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive();
+        const filter = typeof normalizeMgmtFilter === 'function'
+            ? normalizeMgmtFilter(typeof mgmtActiveFilter !== 'undefined' ? mgmtActiveFilter : '')
+            : (typeof mgmtActiveFilter !== 'undefined' ? mgmtActiveFilter : '');
+        if (outcome.restored && practice && filter === 'requires_management' && typeof setMgmtFilter === 'function') {
+            setMgmtFilter('awaiting_histology');
+        } else if (typeof renderManagedLesions === 'function') {
+            renderManagedLesions();
+        } else if (typeof renderChartLesionInspector === 'function') {
+            renderChartLesionInspector({ force: true });
+            if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+        }
+        showToast(outcome.restored ? 'Result cleared. Awaiting results.' : 'Result cleared.');
+        return true;
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Clearing result…', save, {
+            button: document.getElementById('btnConfirmClearHistologyResult'),
+            buttonText: 'Clearing…'
+        });
+    }
+    return save();
 }
 
 function findLesionForExcisionProcedure(id) {
