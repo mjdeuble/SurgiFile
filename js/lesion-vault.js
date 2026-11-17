@@ -3816,6 +3816,50 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
     return { lesion };
 }
 
+function clearSavedHistologyResult(lesion) {
+    if (!lesion) return { ok: false, reason: 'missing' };
+    const hadResult = !!(String(lesion.histologyResult || '').trim() || String(lesion.histologyDiagnosis || '').trim());
+    if (!hadResult) return { ok: false, reason: 'empty' };
+    const linked = !!(lesion.linkedReexcisionId || lesion.linkedChildId);
+    lesion.histologyResult = '';
+    lesion.histologyDiagnosis = '';
+    lesion.histologyAt = '';
+    lesion.histologyCaseNumber = '';
+    if (Array.isArray(lesion.timeline)) {
+        lesion.timeline = lesion.timeline.filter((event) => !event || event.type !== 'histology');
+    }
+    const done = typeof lesionProcedureDone === 'function'
+        ? lesionProcedureDone(lesion)
+        : !!(lesion.procedureCompletedAt || lesion.excisionFinalisedAt);
+    const restored = !!(done && !linked);
+    if (restored) {
+        lesion.managementStatus = 'awaiting_histology';
+        lesion.currentPlan = 'Awaiting histology';
+        lesion.resultPlan = '';
+        lesion.contactState = '';
+        lesion.resultAdvisedAt = '';
+        lesion.clinicallyFinalisedAt = '';
+        lesion.contactUrgent = false;
+        lesion.proposedPlan = '';
+        lesion.proposedPlanNote = '';
+    }
+    if (typeof appendLesionTimeline === 'function') {
+        appendLesionTimeline(lesion, {
+            type: 'plan',
+            note: restored ? 'Result cleared. Awaiting histology.' : 'Result cleared.',
+            planAfter: restored ? 'Awaiting histology' : (lesion.currentPlan || '')
+        });
+    }
+    lesion.billingLesionType = '';
+    if (typeof applyInferredBillingLesionType === 'function') applyInferredBillingLesionType(lesion);
+    lesion.suggestedMbsItems = '';
+    if (typeof suggestMbsItems === 'function') {
+        const suggestion = suggestMbsItems(lesion);
+        if (suggestion && suggestion.ready && suggestion.summary) lesion.suggestedMbsItems = suggestion.summary;
+    }
+    return { ok: true, restored, linked };
+}
+
 async function applyAdviceFromContact(lesion) {
     if (!lesion?.id) return { changed: false };
     if (typeof repairLesionAwaitingAfterResult === 'function') repairLesionAwaitingAfterResult(lesion);
@@ -4308,6 +4352,7 @@ if (typeof module !== 'undefined' && module.exports) {
         lesionLifecycleStatus,
         spawnFurtherManagementChild,
         recordHistologyOutcome,
+        clearSavedHistologyResult,
         applyAdviceFromContact,
         setManagedLesionStatus,
         isVerbalConsentBiopsyType,
