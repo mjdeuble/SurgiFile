@@ -1,7 +1,10 @@
 /* Node checks: lesion history copy text includes site, exam, and notes. */
 const {
-    formatLesionHistoryShareText
+    formatLesionHistoryShareText,
+    lesionNoteEvents,
+    renderLesionNotesListHtml
 } = require('../js/management.js');
+global.escapeHtml = (value) => String(value || '');
 
 let failed = 0;
 function eq(actual, expected, label) {
@@ -51,6 +54,66 @@ eq(text.includes('Morning review — desk to phone after 10'), true, 'includes c
 eq(text.includes('Save plan'), false, 'does not include inspector form chrome');
 
 eq(formatLesionHistoryShareText(null), '', 'empty without a lesion');
+
+const parent = {
+    id: 'P',
+    location: 'Right cheek',
+    patientName: 'Jane Example',
+    createdAt: '2026-03-01T00:00:00.000Z',
+    timeline: [
+        { id: 'late', type: 'note', at: '2026-10-02T00:00:00.000Z', note: 'Parent later note' },
+        { id: 'early', type: 'note', at: '2026-03-02T00:00:00.000Z', note: 'Parent first note' }
+    ]
+};
+const child = {
+    id: 'C',
+    priorLesionId: 'P',
+    location: 'Right cheek',
+    patientName: 'Jane Example',
+    createdAt: '2026-10-01T00:00:00.000Z',
+    timeline: [
+        { id: 'child', type: 'note', at: '2026-10-20T09:10:00.000Z', note: 'Child follow-up note' }
+    ]
+};
+global.managedLesions = [child, parent];
+
+const fromChild = formatLesionHistoryShareText(child, { name: 'Jane Example', dob: '02/03/1954' });
+const fromParent = formatLesionHistoryShareText(parent, { name: 'Jane Example', dob: '02/03/1954' });
+function noteOrder(text) {
+    return ['Parent first note', 'Parent later note', 'Child follow-up note'].map((note) => text.indexOf(note));
+}
+const childOrder = noteOrder(fromChild);
+const parentOrder = noteOrder(fromParent);
+eq(childOrder.every((index) => index !== -1), true, 'copied child history includes parent and child notes');
+eq(childOrder[0] < childOrder[1] && childOrder[1] < childOrder[2], true, 'copied history lists the oldest note first');
+eq(parentOrder[0] < parentOrder[1] && parentOrder[1] < parentOrder[2], true, 'copied parent history includes the child note in the same order');
+
+const shown = lesionNoteEvents(child).map((event) => event.note);
+eq(JSON.stringify(shown), JSON.stringify([
+    'Parent first note',
+    'Parent later note',
+    'Child follow-up note'
+]), 'the notes list is the whole chain, oldest first');
+const html = renderLesionNotesListHtml(child);
+eq(html.indexOf('Parent first note') < html.indexOf('Child follow-up note'), true, 'the displayed notes list the oldest note first');
+
+global.lesionChainNoteEvents = lesionNoteEvents;
+const { chartReviewTodayNotes } = require('../js/outputs.js');
+const todayParent = {
+    id: 'TP',
+    timeline: [{ id: 'tp', type: 'note', at: '2026-10-20T01:00:00.000Z', note: 'Parent note from this morning' }]
+};
+const todayChild = {
+    id: 'TC',
+    priorLesionId: 'TP',
+    timeline: [{ id: 'tc', type: 'note', at: '2026-10-20T02:00:00.000Z', note: 'Child note from this morning' }]
+};
+global.managedLesions = [todayChild, todayParent];
+eq(
+    JSON.stringify(chartReviewTodayNotes(todayChild, '2026-10-20T10:00:00.000Z')),
+    JSON.stringify(['Parent note from this morning', 'Child note from this morning']),
+    'today’s copied note includes the parent note before the child note'
+);
 
 if (failed) {
     console.error('\n' + failed + ' failing check(s)');

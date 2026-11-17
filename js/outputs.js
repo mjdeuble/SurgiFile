@@ -413,7 +413,9 @@ function reviewEventIsToday(iso, now) {
 }
 
 function chartReviewTodayNotes(lesion, now) {
-    const events = Array.isArray(lesion?.timeline) ? lesion.timeline : [];
+    const events = typeof lesionChainNoteEvents === 'function'
+        ? lesionChainNoteEvents(lesion)
+        : (Array.isArray(lesion?.timeline) ? lesion.timeline : []);
     const notes = [];
     events.forEach((event) => {
         if (String(event?.type || '') !== 'note') return;

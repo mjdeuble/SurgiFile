@@ -750,11 +750,99 @@ function isLesionNoteEvent(event) {
     return typeof isLesionContactEvent === 'function' && isLesionContactEvent(event);
 }
 
+function lesionNoteRecordsById(focus) {
+    const byId = new Map();
+    const add = (item) => {
+        if (!item || !item.id) return;
+        byId.set(String(item.id), item);
+    };
+    if (typeof managedLesions !== 'undefined' && Array.isArray(managedLesions)) managedLesions.forEach(add);
+    if (typeof lesions !== 'undefined' && Array.isArray(lesions)) lesions.forEach(add);
+    if (focus && focus.id) byId.set(String(focus.id), focus);
+    return byId;
+}
+
+function lesionNoteFamily(lesion) {
+    if (!lesion) return [];
+    const byId = lesionNoteRecordsById(lesion);
+    const lookup = (id) => {
+        const key = String(id || '');
+        if (!key) return null;
+        if (byId.has(key)) return byId.get(key);
+        return typeof findLesionRecordById === 'function' ? findLesionRecordById(key) : null;
+    };
+    const climbed = new Set();
+    let cursor = lesion;
+    let root = lesion;
+    while (cursor && cursor.priorLesionId) {
+        const id = String(cursor.priorLesionId);
+        if (climbed.has(id)) break;
+        climbed.add(id);
+        const prior = lookup(id);
+        if (!prior) break;
+        root = prior;
+        cursor = prior;
+    }
+    const chain = [];
+    const seen = new Set();
+    const walk = (item) => {
+        if (!item) return;
+        const id = item.id ? String(item.id) : '';
+        if (id) {
+            if (seen.has(id)) return;
+            seen.add(id);
+        } else if (chain.indexOf(item) !== -1) {
+            return;
+        }
+        chain.push(item);
+        if (!id) return;
+        const kids = [];
+        byId.forEach((candidate) => {
+            if (candidate && String(candidate.priorLesionId || '') === id) kids.push(candidate);
+        });
+        kids.sort((a, b) => String(a.createdAt || a.updatedAt || '').localeCompare(String(b.createdAt || b.updatedAt || '')));
+        kids.forEach(walk);
+    };
+    walk(root);
+    if (lesion.id) {
+        if (!seen.has(String(lesion.id))) chain.push(lesion);
+    } else if (chain.indexOf(lesion) === -1) {
+        chain.push(lesion);
+    }
+    return chain;
+}
+
+function lesionChainNoteEvents(lesion) {
+    const rows = [];
+    const seenIds = new Set();
+    lesionNoteFamily(lesion).forEach((item, lesionIndex) => {
+        const timeline = Array.isArray(item && item.timeline) ? item.timeline : [];
+        timeline.forEach((event, eventIndex) => {
+            if (!isLesionNoteEvent(event)) return;
+            const id = event && event.id ? String(event.id) : '';
+            if (id) {
+                if (seenIds.has(id)) return;
+                seenIds.add(id);
+            }
+            rows.push({
+                event,
+                lesionIndex,
+                eventIndex,
+                at: String(event && event.at || '')
+            });
+        });
+    });
+    rows.sort((a, b) => {
+        const byTime = a.at.localeCompare(b.at);
+        if (byTime) return byTime;
+        if (a.lesionIndex !== b.lesionIndex) return a.lesionIndex - b.lesionIndex;
+        return a.eventIndex - b.eventIndex;
+    });
+    return rows.map((row) => row.event);
+}
+
 function lesionNoteEvents(lesion) {
-    const events = typeof lesionTimelineNewestFirst === 'function'
-        ? lesionTimelineNewestFirst(lesion)
-        : (Array.isArray(lesion?.timeline) ? lesion.timeline.slice().reverse() : []);
-    return events.filter(isLesionNoteEvent);
+    return lesionChainNoteEvents(lesion);
 }
 
 function latestLesionTimelineNote(lesion, type) {
@@ -4325,6 +4413,9 @@ async function finaliseCurrentCaseToBilling() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         formatLesionHistoryShareText,
+        lesionNoteEvents,
+        lesionChainNoteEvents,
+        renderLesionNotesListHtml,
         formatLesionEpisodePlainText,
         formatLesionEpisodePlainLines,
         renderInspectorPlanCard,
