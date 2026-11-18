@@ -374,7 +374,7 @@ const ANATOMIC_SITE_RISK_GROUPS = [
     {
         id: 'lower-limb',
         label: 'Lower limb',
-        keywords: ['leg', 'thigh', 'knee', 'popliteal', 'shin', 'pretibial', 'calf', 'ankle', 'foot', 'toe', 'heel', 'sole', 'plantar', 'dorsum of foot', 'lower limb', 'lower leg'],
+        keywords: ['leg', 'thigh', 'knee', 'popliteal', 'shin', 'pretibial', 'calf', 'ankle', 'foot', 'toe', 'heel', 'sole', 'plantar', 'dorsum of foot', 'lower limb', 'lower leg', 'crural'],
         risks: [
             "Lower limb risks: Slower wound healing due to leg circulation, lower leg swelling (edema), and requirement for strict leg elevation after surgery."
         ]

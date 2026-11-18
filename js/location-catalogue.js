@@ -21,6 +21,8 @@ const MBS_LOCATION_SITES = [
     { id: 'hand', region: 2, label: 'Hand / wrist', aliases: ['wrist', 'palm', 'palmar'], re: /\b(hands?|wrists?|palms?|palmar|dorsum of (the )?hand)\b/i },
     { id: 'knee', region: 2, label: 'Knee', aliases: ['patella'], re: /\b(knees?|patella|popliteal)\b/i },
     { id: 'shin', region: 2, label: 'Shin / pretibia', aliases: ['pretibia', 'tibial'], re: /\b(shins?|pretibia|pre-tibial|pretibial)\b/i },
+    { id: 'lower_leg', region: 2, label: 'Lower leg', aliases: ['lower-leg'], re: /\blower[\s-]+legs?\b/i },
+    { id: 'crural', region: 2, label: 'Crural region', aliases: ['crus'], re: /\bcrural\b/i },
     { id: 'calf', region: 2, label: 'Calf', aliases: ['gastroc'], re: /\b(calf|calves)\b/i },
     { id: 'ankle', region: 2, label: 'Ankle', aliases: ['malleolus'], re: /\b(ankles?|malleolus|malleolar)\b/i },
     { id: 'foot', region: 2, label: 'Foot', aliases: ['heel', 'sole', 'plantar', 'dorsum of foot'], re: /\b(feet|foot|heels?|soles?|plantar|dorsum of (the )?foot)\b/i },

@@ -84,7 +84,7 @@ function aftercareSiteGroup(locationStr) {
         if (hit) return hit.id;
     }
     const lower = loc.toLowerCase();
-    if (/leg|thigh|knee|shin|calf|ankle|foot|toe|heel|plantar|pretibial/.test(lower)) return 'lower-limb';
+    if (/leg|thigh|knee|shin|calf|ankle|foot|toe|heel|plantar|pretibial|crural/.test(lower)) return 'lower-limb';
     if (/hand|finger|thumb|wrist|palm/.test(lower)) return 'hand';
     if (/arm|elbow|forearm|axilla/.test(lower)) return 'upper-limb';
     if (/ear|helix|pinna/.test(lower)) return 'ear';
