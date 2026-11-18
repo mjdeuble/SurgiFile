@@ -1685,11 +1685,8 @@ function renderInspectorPlanContactForm(lesion) {
         <div class="insp-card-body">
             <input type="hidden" id="inspManageLesionId" value="${escapeHtml(String(lesion.id || ''))}">
             ${planBlock}
-            <div>
-                <label class="insp-label" for="inspLesionNote">Add note</label>
-                <textarea id="inspLesionNote" rows="2" class="insp-textarea" placeholder="${escapeHtml(inspectorNotePlaceholder(lesion))}"></textarea>
-            </div>
             ${notes}
+            <textarea id="inspLesionNote" rows="2" class="insp-textarea" aria-label="Add note" placeholder="${escapeHtml(inspectorNotePlaceholder(lesion))}"></textarea>
             <div class="insp-actions">
                 <button type="button" class="insp-save" id="btnSaveInspectorManage" onclick="submitInspectorManageLesion()">${showPlan ? 'Save plan' : 'Add note'}</button>
             </div>

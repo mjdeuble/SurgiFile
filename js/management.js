@@ -1168,10 +1168,7 @@ function renderLesionNotesBlock(lesion) {
 function renderLesionNotesListHtml(lesion) {
     const events = lesionNoteEvents(lesion);
     if (!events.length) return '';
-    return `<div>
-        <p class="insp-label">Notes</p>
-        <ul class="lesion-timeline">${events.map((event) => renderLesionNoteCard(event, lesion && lesion.id)).join('')}</ul>
-    </div>`;
+    return `<ul class="lesion-timeline">${events.map((event) => renderLesionNoteCard(event, lesion && lesion.id)).join('')}</ul>`;
 }
 
 function renderManagedLesionCard(lesion, options) {

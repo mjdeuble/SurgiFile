@@ -80,6 +80,19 @@ const notes = chart.renderInspectorPlanContactForm(booked);
 eq(chart.inspectorCanSetResultPlan(booked), false, 'a booked procedure has no second plan choice');
 has(notes, '<div class="insp-card-head">Notes</div>', 'the lower block is notes');
 has(notes, 'Add note', 'the lower block saves a note');
+lacks(notes, 'insp-label">Add note', 'the entry box has no Add note heading');
+global.renderLesionNotesListHtml = management.renderLesionNotesListHtml;
+const noted = chart.renderInspectorPlanContactForm({
+    id: 'note-1',
+    plan: 'Formally Book Excision Procedure',
+    type: 'excision',
+    managementStatus: 'planned_procedure',
+    timeline: [{ id: 'n1', type: 'note', at: '2026-11-19T05:19:00.000Z', note: 'Excision booked' }]
+});
+const noteListAt = noted.indexOf('lesion-timeline');
+const noteBoxAt = noted.indexOf('id="inspLesionNote"');
+eq(noteListAt !== -1 && noteListAt < noteBoxAt, true, 'recorded notes sit above the entry box');
+lacks(noted, 'insp-label">Notes', 'the notes list has no second Notes heading');
 lacks(notes, 'inspHistologyNext', 'the lower block has no outcome radios');
 lacks(notes, 'Needs further management', 'the lower block does not offer further management');
 
