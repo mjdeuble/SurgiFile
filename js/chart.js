@@ -1131,14 +1131,59 @@ function inspectorLesionMode(lesion) {
     return (done ? 'done' : 'doc') + ':' + (unlocked ? 'open' : 'lock') + (histo ? ':histo' : '');
 }
 
+function smsAcceptableResultLabel(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    const answer = raw === 'yes' ? 'Yes' : (raw === 'no' ? 'No' : 'Not recorded');
+    return 'SMS for Acceptable Result = ' + answer;
+}
+
+function lesionSmsAcceptableResult(lesion) {
+    const details = typeof patientContactForLesion === 'function'
+        ? patientContactForLesion(lesion)
+        : { sms: '', chartId: '' };
+    let sms = details.sms === 'yes' || details.sms === 'no' ? details.sms : '';
+    if (!sms && typeof hasCurrentPatient === 'function' && hasCurrentPatient()
+        && typeof smsNormalResultsConsent !== 'undefined') {
+        const chartId = String(details.chartId || lesion?.chartId || '');
+        if (!chartId || chartId === String(currentPatient.chartId || '')) {
+            const live = String(smsNormalResultsConsent || '').trim().toLowerCase();
+            if (live === 'yes' || live === 'no') sms = live;
+        }
+    }
+    return sms;
+}
+
+function inspectorPatientDisplayName(lesion) {
+    const stored = String(lesion?.patientName || '').trim();
+    if (stored) return stored;
+    if (typeof patientIdentityFromRecord === 'function') {
+        const name = String(patientIdentityFromRecord(lesion || {}).name || '').trim();
+        if (name) return name;
+    }
+    if (typeof hasCurrentPatient === 'function' && hasCurrentPatient()) {
+        return String(currentPatient.name || '').trim() || 'Unnamed patient';
+    }
+    return 'Unnamed patient';
+}
+
+function inspectorPatientSmsHtml(lesion) {
+    const sms = lesionSmsAcceptableResult(lesion);
+    const tone = sms === 'yes' ? 'is-yes' : (sms === 'no' ? 'is-no' : 'is-unset');
+    const name = typeof escapeHtml === 'function' ? escapeHtml(inspectorPatientDisplayName(lesion)) : inspectorPatientDisplayName(lesion);
+    const label = typeof escapeHtml === 'function' ? escapeHtml(smsAcceptableResultLabel(sms)) : smsAcceptableResultLabel(sms);
+    return `<p class="insp-patient-sms"><span class="insp-patient-sms-name">${name}</span><span class="insp-patient-sms-flag ${tone}">${label}</span></p>`;
+}
+
 function paintInspectorCaption(lesion) {
     const cap = document.querySelector('#inspLesionSlot .chart-inspector-caption')
         || document.querySelector('#chartLesionInspector .chart-inspector-caption');
     if (!cap || !lesion) return;
     const h2 = cap.querySelector('h2');
-    const p = cap.querySelector('p');
     if (h2) h2.textContent = lesion.location || 'No site';
-    if (p) p.remove();
+    const html = inspectorPatientSmsHtml(lesion);
+    const existing = cap.querySelector('.insp-patient-sms');
+    if (existing) existing.outerHTML = html;
+    else cap.insertAdjacentHTML('beforeend', html);
 }
 
 function inspectorOpt(current, value) {
@@ -2743,6 +2788,7 @@ function renderChartLesionInspector(options) {
     slot.innerHTML = `
         <div class="chart-inspector-caption">
             <h2>${escapeHtml(lesion.location || 'No site')}</h2>
+            ${inspectorPatientSmsHtml(lesion)}
         </div>
         ${toolbar ? `<div class="chart-inspector-toolbar">${toolbar}</div>` : ''}
         <div class="chart-inspector-body" data-inspector-view="1">
@@ -2954,6 +3000,8 @@ function renderChartSidebar() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         inspectorCanSetResultPlan,
-        renderInspectorPlanContactForm
+        renderInspectorPlanContactForm,
+        smsAcceptableResultLabel,
+        inspectorPatientSmsHtml
     };
 }
