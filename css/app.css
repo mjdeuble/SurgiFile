@@ -2274,10 +2274,45 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
             overflow-y: auto;
         }
         .lesion-timeline-item {
-            padding: 0.55rem 0.7rem;
+            padding: 0.45rem 0.6rem;
             border-radius: 0.65rem;
             border: 1px solid #e2e8f0;
             background: #fff;
+        }
+        .lesion-note-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.55rem;
+        }
+        .lesion-note-text {
+            flex: 1;
+            min-width: 0;
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #1e293b;
+        }
+        .lesion-note-delete {
+            flex-shrink: 0;
+            margin-top: 0.05rem;
+            padding: 0.1rem;
+            border: 0;
+            background: transparent;
+            color: #94a3b8;
+            cursor: pointer;
+            line-height: 0;
+        }
+        .lesion-note-delete svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .lesion-note-delete:hover {
+            color: #b91c1c;
         }
         .chart-main {
             overflow: auto;

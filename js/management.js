@@ -1052,12 +1052,116 @@ function renderLesionProcedureBlock(lesion) {
     return renderLesionCardBlock(done ? 'Procedure' : 'Plan', done ? lesionProcedureAt(lesion) : '', rows);
 }
 
+function lesionNoteWhen(event) {
+    if (typeof formatLesionWhen === 'function') return formatLesionWhen(event && event.at) || '';
+    if (typeof formatLesionCardDate === 'function') return formatLesionCardDate(event && event.at) || '';
+    return '';
+}
+
+function renderLesionNoteCard(event, lesionId) {
+    const when = lesionNoteWhen(event);
+    const note = String(event && event.note || '').trim();
+    const text = when && note ? (when + ' — ' + note) : (when || note);
+    const eventId = String(event && event.id || '').replace(/'/g, '');
+    const ownerId = String(lesionId || '').replace(/'/g, '');
+    const bin = eventId && ownerId
+        ? `<button type="button" class="lesion-note-delete" aria-label="Delete note" title="Delete note" onclick="event.stopPropagation(); deleteLesionNoteEvent('${ownerId}', '${eventId}')"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16"></path><path d="M9 7V5h6v2"></path><path d="M7 7l1 12h8l1-12"></path></svg></button>`
+        : '';
+    return `<li class="lesion-timeline-item lesion-note-row">
+        <p class="lesion-note-text">${escapeHtml(text)}</p>
+        ${bin}
+    </li>`;
+}
+
+function removeNoteEventFromRecord(record, eventId) {
+    if (!record || !Array.isArray(record.timeline)) return null;
+    const idx = record.timeline.findIndex((event) => String(event && event.id || '') === String(eventId || ''));
+    if (idx === -1) return null;
+    const removed = record.timeline.splice(idx, 1)[0];
+    if (String(record.adminCallNote || '').trim() && String(record.adminCallNote).trim() === String(removed && removed.note || '').trim()) {
+        const latest = record.timeline
+            .filter((event) => event && event.type === 'note' && String(event.note || '').trim())
+            .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0];
+        record.adminCallNote = latest ? String(latest.note).trim() : '';
+    }
+    return removed;
+}
+
+function recordsSharingLesionId(id) {
+    const key = String(id || '');
+    if (!key) return [];
+    const found = [];
+    const add = (item) => {
+        if (!item || String(item.id || '') !== key || found.indexOf(item) !== -1) return;
+        found.push(item);
+    };
+    if (typeof managedLesions !== 'undefined' && Array.isArray(managedLesions)) managedLesions.forEach(add);
+    if (typeof lesions !== 'undefined' && Array.isArray(lesions)) lesions.forEach(add);
+    return found;
+}
+
+async function deleteLesionNoteEvent(focusLesionId, eventId) {
+    const focus = typeof findLesionRecordById === 'function'
+        ? findLesionRecordById(focusLesionId)
+        : null;
+    if (!focus) {
+        if (typeof showToast === 'function') showToast('Could not find that lesion.');
+        return false;
+    }
+    const family = lesionNoteFamily(focus);
+    let holderId = '';
+    let target = null;
+    family.forEach((item) => {
+        if (holderId || !item) return;
+        const hit = (Array.isArray(item.timeline) ? item.timeline : []).find((event) => String(event && event.id || '') === String(eventId || '') && isLesionNoteEvent(event));
+        if (hit) {
+            holderId = item.id;
+            target = hit;
+        }
+    });
+    if (!holderId || !target) {
+        if (typeof showToast === 'function') showToast('Note not found.');
+        return false;
+    }
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm('Delete this note?')) return false;
+    recordsSharingLesionId(holderId).forEach((record) => removeNoteEventFromRecord(record, eventId));
+    const managed = typeof managedLesions !== 'undefined' && Array.isArray(managedLesions)
+        ? managedLesions.find((item) => String(item.id) === String(holderId))
+        : null;
+    const session = typeof lesions !== 'undefined' && Array.isArray(lesions)
+        ? lesions.find((item) => String(item.id) === String(holderId))
+        : null;
+    if (managed && session && managed !== session) {
+        managed.timeline = session.timeline;
+        managed.adminCallNote = session.adminCallNote;
+    }
+    const toSave = managed || session;
+    if (toSave && typeof saveManagedLesionRecord === 'function') {
+        await saveManagedLesionRecord(toSave, 'note:delete', String(target.note || '').trim());
+    }
+    if (typeof document !== 'undefined') {
+        const modal = document.getElementById('manageLesionModal');
+        const timelineEl = document.getElementById('manageLesionTimeline');
+        if (modal && timelineEl && !modal.classList.contains('hidden')) {
+            const openId = document.getElementById('manageLesionLesionId')?.value || focusLesionId;
+            const open = typeof findLesionRecordById === 'function' ? findLesionRecordById(openId) : focus;
+            const left = open ? lesionNoteEvents(open) : [];
+            timelineEl.innerHTML = left.map((event) => renderLesionNoteCard(event, open && open.id)).join('');
+            const wrap = document.getElementById('manageLesionTimelineWrap');
+            if (wrap) wrap.classList.toggle('hidden', !left.length);
+        }
+    }
+    if (typeof renderChartLesionInspector === 'function') renderChartLesionInspector({ force: true });
+    if (typeof showToast === 'function') showToast('Note deleted.');
+    return true;
+}
+
 function renderLesionNotesBlock(lesion) {
     const events = lesionNoteEvents(lesion);
     if (!events.length) return '';
     return `<section class="lesion-card-block">
         <h4><span>Notes</span></h4>
-        <ul class="lesion-card-log">${events.map(renderLesionCardEventLine).join('')}</ul>
+        <ul class="lesion-timeline">${events.map((event) => renderLesionNoteCard(event, lesion && lesion.id)).join('')}</ul>
     </section>`;
 }
 
@@ -1066,7 +1170,7 @@ function renderLesionNotesListHtml(lesion) {
     if (!events.length) return '';
     return `<div>
         <p class="insp-label">Notes</p>
-        <ul class="lesion-timeline">${events.map(typeof formatTimelineEvent === 'function' ? formatTimelineEvent : (e) => `<li>${escapeHtml(e.note || '')}</li>`).join('')}</ul>
+        <ul class="lesion-timeline">${events.map((event) => renderLesionNoteCard(event, lesion && lesion.id)).join('')}</ul>
     </div>`;
 }
 
@@ -1832,36 +1936,8 @@ function lesionCommsTypeFromForm(channel, outcome) {
     return 'call_attempt';
 }
 
-function formatTimelineEvent(event) {
-    const when = typeof formatLesionWhen === 'function' ? formatLesionWhen(event.at) : (event.at || '');
-    const typeLabel = {
-        call_attempt: 'Call',
-        voicemail: 'Voicemail',
-        sms: 'SMS',
-        spoke: 'Spoke',
-        result_advised: 'Result advised',
-        appointment_requested: 'Appointment',
-        plan: 'Plan',
-        procedure: 'Procedure',
-        abort: 'Aborted',
-        histology: 'Histology',
-        consent: 'Consent',
-        note: 'Note'
-    }[event.type] || event.type;
-    const bits = [typeLabel];
-    if (event.outcome) bits.push(event.outcome);
-    const head = bits.join(' · ');
-    const note = event.note ? escapeHtml(event.note) : '';
-    const plan = event.planAfter ? `<div class="text-[11px] text-slate-600">Plan: ${escapeHtml(event.planAfter)}</div>` : '';
-    return `<li class="lesion-timeline-item">
-        <div class="flex justify-between gap-2">
-            <span class="font-semibold text-slate-800">${escapeHtml(head)}</span>
-            <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(when)}</span>
-        </div>
-        ${note ? `<p class="text-[12px] text-slate-600 mt-0.5">${note}</p>` : ''}
-        ${plan}
-        ${event.by ? `<p class="text-[10px] text-slate-400">${escapeHtml(event.by)}</p>` : ''}
-    </li>`;
+function formatTimelineEvent(event, lesionId) {
+    return renderLesionNoteCard(event, lesionId);
 }
 
 function updateLesionCommsOutcomeVisibility() {
@@ -3392,7 +3468,7 @@ function openManageLesionModal(id) {
     if (timelineWrap) timelineWrap.classList.toggle('hidden', !events.length);
     if (timelineEl) {
         timelineEl.innerHTML = events.length
-            ? events.map(formatTimelineEvent).join('')
+            ? events.map((event) => renderLesionNoteCard(event, lesion.id)).join('')
             : '';
     }
     if (noteEl) noteEl.value = '';
@@ -4416,6 +4492,9 @@ if (typeof module !== 'undefined' && module.exports) {
         lesionNoteEvents,
         lesionChainNoteEvents,
         renderLesionNotesListHtml,
+        renderLesionNoteCard,
+        removeNoteEventFromRecord,
+        deleteLesionNoteEvent,
         formatLesionEpisodePlainText,
         formatLesionEpisodePlainLines,
         renderInspectorPlanCard,

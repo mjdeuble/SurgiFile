@@ -2,7 +2,9 @@
 const {
     formatLesionHistoryShareText,
     lesionNoteEvents,
-    renderLesionNotesListHtml
+    renderLesionNotesListHtml,
+    removeNoteEventFromRecord,
+    deleteLesionNoteEvent
 } = require('../js/management.js');
 global.escapeHtml = (value) => String(value || '');
 
@@ -94,9 +96,28 @@ eq(JSON.stringify(shown), JSON.stringify([
     'Parent later note',
     'Child follow-up note'
 ]), 'the notes list is the whole chain, oldest first');
+global.formatLesionWhen = (iso) => String(iso || '').slice(0, 10);
 const html = renderLesionNotesListHtml(child);
 eq(html.indexOf('Parent first note') < html.indexOf('Child follow-up note'), true, 'the displayed notes list the oldest note first');
+eq(html.includes('— Parent first note'), true, 'the date leads the note');
+eq(html.includes('>Note<'), false, 'a note card does not repeat the word Note');
+eq(html.includes('Dr Smith'), false, 'a note card does not show the author');
+eq(html.includes('Delete note'), true, 'each note card can delete the note');
+child.timeline[0].by = 'Dr Smith';
+const withAuthor = renderLesionNotesListHtml(child);
+eq(withAuthor.includes('Dr Smith'), false, 'the author stays off the card');
 
+const record = {
+    id: 'D',
+    adminCallNote: 'Later note',
+    timeline: [
+        { id: 'n1', type: 'note', at: '2026-01-01T00:00:00.000Z', note: 'Earlier note', by: 'Dr Smith' },
+        { id: 'n2', type: 'note', at: '2026-02-01T00:00:00.000Z', note: 'Later note', by: 'Dr Smith' }
+    ]
+};
+eq(removeNoteEventFromRecord(record, 'n2').note, 'Later note', 'the chosen note is removed');
+eq(record.timeline.length, 1, 'one note remains');
+eq(record.adminCallNote, 'Earlier note', 'the stored call note falls back to the earlier note');
 global.lesionChainNoteEvents = lesionNoteEvents;
 const { chartReviewTodayNotes } = require('../js/outputs.js');
 const todayParent = {
@@ -115,8 +136,21 @@ eq(
     'today’s copied note includes the parent note before the child note'
 );
 
-if (failed) {
-    console.error('\n' + failed + ' failing check(s)');
+global.managedLesions = [record];
+global.findLesionRecordById = (id) => global.managedLesions.find((item) => item.id === id) || null;
+global.window = { confirm: () => true };
+let saved = null;
+global.saveManagedLesionRecord = async (item) => { saved = item; };
+deleteLesionNoteEvent('D', 'n1').then((ok) => {
+    eq(ok, true, 'deleting a note succeeds');
+    eq(record.timeline.length, 0, 'the deleted note is gone');
+    eq(saved && saved.id, 'D', 'the lesion is saved after the note is deleted');
+    if (failed) {
+        console.error('\n' + failed + ' failing check(s)');
+        process.exit(1);
+    }
+    console.log('\nall lesion-history share checks passed');
+}).catch((err) => {
+    console.error(err);
     process.exit(1);
-}
-console.log('\nall lesion-history share checks passed');
+});
