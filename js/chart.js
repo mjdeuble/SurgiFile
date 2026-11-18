@@ -2583,10 +2583,21 @@ function printLesionHistory() {
     return openInspectorPrintWindow(html);
 }
 
+function openChartFromCurrentLesion() {
+    const lesion = currentInspectorLesion();
+    if (!lesion || typeof openChartFromLesion !== 'function') return;
+    openChartFromLesion(String(lesion.id || ''));
+}
+
 function syncLesionHistoryActions() {
     const on = lesionHistoryShareVisible();
     const bar = document.getElementById('chartInspectorPrintbar');
     if (bar) bar.classList.toggle('hidden', !on);
+    const openBtn = document.getElementById('btnOpenChartFromLesion');
+    if (openBtn) {
+        const showOpen = on && typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive();
+        openBtn.classList.toggle('hidden', !showOpen);
+    }
 }
 
 function inspectorToolMode() {
@@ -2779,12 +2790,9 @@ function renderChartLesionInspector(options) {
         || (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan));
     const pendingBill = typeof lesionIsClinicallyFinalised === 'function' && lesionIsClinicallyFinalised(lesion)
         && typeof lesionCanCloseNoFollowup === 'function' && !lesionCanCloseNoFollowup(lesion);
-    const toolbar = [
-        `<button type="button" onclick="copyLesionHistory()">Copy history</button>`,
-        `<button type="button" onclick="printLesionHistory()">Print history</button>`,
-        practiceWorkspaceActive() ? `<button type="button" onclick="openChartFromLesion('${safeId}')">Open chart</button>` : '',
-        refer ? `<button type="button" onclick="openLetterModalForRefer('${safeId}')">Generate letter</button>` : ''
-    ].filter(Boolean).join('');
+    const toolbar = refer
+        ? `<button type="button" onclick="openLetterModalForRefer('${safeId}')">Generate letter</button>`
+        : '';
     slot.innerHTML = `
         <div class="chart-inspector-caption">
             <h2>${escapeHtml(lesion.location || 'No site')}</h2>
