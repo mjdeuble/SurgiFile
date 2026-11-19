@@ -1844,14 +1844,8 @@ function formatLesionHistoryShareText(lesion, patient) {
     if (!lesion) return '';
     const ident = patient || {};
     const lines = [];
-    const name = String(ident.name || ident.patientName || lesion.patientName || '').trim();
-    if (name) lines.push(name);
-    const meta = [
-        ident.dob || ident.patientDob || lesion.patientDob ? 'DOB ' + (ident.dob || ident.patientDob || lesion.patientDob) : '',
-        ident.phone || lesion.patientPhone || '',
-        ident.clinician || lesion.clinician ? 'Dr ' + (ident.clinician || lesion.clinician) : ''
-    ].filter(Boolean);
-    if (meta.length) lines.push(meta.join(' · '));
+    const dob = ident.dob || ident.patientDob || lesion.patientDob || '';
+    if (dob) lines.push('DOB ' + dob);
     const site = String(lesion.location || '').trim();
     if (site) {
         if (lines.length) lines.push('');
@@ -1860,10 +1854,7 @@ function formatLesionHistoryShareText(lesion, patient) {
     const episode = typeof formatLesionEpisodePlainText === 'function'
         ? formatLesionEpisodePlainText(lesion, { indent: '' })
         : '';
-    if (episode) {
-        if (lines.length) lines.push('');
-        lines.push(episode);
-    }
+    if (episode) lines.push(episode);
     const notes = typeof lesionNoteEvents === 'function' ? lesionNoteEvents(lesion) : [];
     if (notes.length) {
         if (lines.length) lines.push('');

@@ -44,12 +44,17 @@ const lesion = {
 const text = formatLesionHistoryShareText(lesion, {
     name: 'Jane Example',
     dob: '02/03/1954',
+    phone: '0412 345 678',
     clinician: 'Deuble'
 });
 
 eq(!!text, true, 'share text is produced');
-eq(text.includes('Jane Example'), true, 'includes patient name');
+eq(text.includes('Jane Example'), false, 'copy leaves out the patient name');
+eq(text.includes('0412 345 678'), false, 'copy leaves out the phone number');
+eq(text.includes('Dr Deuble'), false, 'copy leaves out the doctor name');
 eq(text.includes('DOB 02/03/1954'), true, 'includes date of birth');
+eq(text.includes('Right cheek\nExamination') || text.includes('Right cheek\nSpecimen'), true, 'the site leads straight into the description');
+eq(text.includes('Right cheek\n\n'), false, 'there is no blank line under the site');
 eq(text.includes('Right cheek'), true, 'includes site');
 eq(text.includes('6mm erythematous nodule') || text.includes('Macroscopic'), true, 'includes exam background');
 eq(text.includes('Morning review — desk to phone after 10'), true, 'includes clinician note');
