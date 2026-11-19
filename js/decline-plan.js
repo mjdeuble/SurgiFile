@@ -1,6 +1,7 @@
-/* Informed refusal / other disposition — medicolegal documentation for Declines Treatment / Other */
+/* Informed refusal for Declines treatment. Other is a separate plan, and both can keep a review. */
 
-const DECLINE_TREATMENT_PLAN = 'Declines Treatment / Other';
+const DECLINE_TREATMENT_PLAN = 'Declines treatment';
+const OTHER_CLINICAL_PLAN = 'Other';
 
 const DECLINE_RECOMMENDED_OPTIONS = [
     { id: 'biopsy', label: 'Punch / shave biopsy' },
@@ -22,7 +23,57 @@ const DECLINE_RISK_OPTIONS = [
 const DECLINE_DEFAULT_SAFETY_NET = 'Return sooner if the lesion changes in size, colour or shape, bleeds, becomes tender, or new lesions appear. Treatment can still be arranged later.';
 
 function isDeclineTreatmentPlan(plan) {
-    return String(plan || '').includes('Declines Treatment');
+    return /declines treatment/i.test(String(plan || ''));
+}
+
+function isOtherClinicalPlan(plan) {
+    return String(plan || '').trim() === OTHER_CLINICAL_PLAN;
+}
+
+function lesionOpensAsOtherPlan(lesion) {
+    if (isOtherClinicalPlan(lesion?.plan)) return true;
+    return isDeclineTreatmentPlan(lesion?.plan) && lesion?.declineKind === 'other';
+}
+
+function otherFieldsFromLesion(lesion) {
+    const legacyOther = isDeclineTreatmentPlan(lesion?.plan) && lesion?.declineKind === 'other';
+    const note = String(lesion?.otherPlanNote || '').trim()
+        || (legacyOther ? String(lesion?.declineOtherPlan || '').trim() : '');
+    let follow = String(lesion?.otherFollowUp || '').trim();
+    if ((!follow || follow === 'none') && legacyOther && lesion?.declineReview && lesion.declineReview !== 'none') {
+        follow = lesion.declineReview;
+    }
+    return { note, follow: follow || 'none' };
+}
+
+function readOtherPlanNote(prefix) {
+    const id = prefix === 'insp' ? 'inspOtherPlanNote' : 'otherPlanNote';
+    return String(document.getElementById(id)?.value || '').trim();
+}
+
+function readOtherFollowUp(prefix) {
+    const id = prefix === 'insp' ? 'inspOtherFollowUp' : 'otherFollowUp';
+    return document.getElementById(id)?.value || 'none';
+}
+
+function otherPlanNoteError(note) {
+    if (!String(note || '').trim()) {
+        return 'Describe the skin condition and what you are doing for it. Declined cancer treatment belongs under Declines treatment.';
+    }
+    return '';
+}
+
+function appendReviewInterval(summary, review) {
+    const interval = String(review || '').trim();
+    if (!summary || !interval || interval === 'none') return summary;
+    return summary + ' — review in ' + interval;
+}
+
+function formatOtherPlanSummary(lesion) {
+    if (!isOtherClinicalPlan(lesion?.plan) && !(isDeclineTreatmentPlan(lesion?.plan) && lesion?.declineKind === 'other')) return '';
+    const fields = otherFieldsFromLesion(lesion);
+    const note = fields.note || 'Other skin condition';
+    return appendReviewInterval(note, fields.follow);
 }
 
 function declineNs(prefix) {
@@ -70,7 +121,6 @@ function renderDeclinePlanFieldsHtml(prefix, lesion, disabled) {
     const ns = declineNs(prefix);
     const d = { ...emptyDeclineFields(), ...(lesion || {}) };
     const off = disabled ? ' disabled' : '';
-    const kind = d.declineKind || '';
     const rec = Array.isArray(d.declineRecommended) ? d.declineRecommended : [];
     const risks = Array.isArray(d.declineRisks) ? d.declineRisks : [];
     const recommendedBoxes = DECLINE_RECOMMENDED_OPTIONS.map((opt) => (
@@ -80,24 +130,15 @@ function renderDeclinePlanFieldsHtml(prefix, lesion, disabled) {
         `<label class="insp-choice"><input type="checkbox" name="${ns}Risks" value="${opt.id}"${declineChecked(risks, opt.id)} onchange="syncDeclinePlanUi('${prefix}')"${off}> ${opt.label}</label>`
     )).join('');
     return `
-        <p class="insp-label" style="margin:0">Informed refusal / other disposition</p>
-        <p class="insp-hint">NSW Health and Avant: a valid refusal is freely given, specific, and informed. Record what was recommended, what was explained, the patient’s reason, capacity, and the safety-net. This is not a substitute for a signed hospital refusal form if the risk of harm is high.</p>
-        <p class="insp-label">Disposition</p>
-        <div class="insp-choice-row">
-            <label class="insp-choice"><input type="radio" name="${ns}Kind" value="declines"${kind === 'declines' || !kind ? ' checked' : ''} onchange="syncDeclinePlanUi('${prefix}')"${off}> Patient declines recommended treatment</label>
-            <label class="insp-choice"><input type="radio" name="${ns}Kind" value="other"${kind === 'other' ? ' checked' : ''} onchange="syncDeclinePlanUi('${prefix}')"${off}> Other (document)</label>
-        </div>
-        <div id="${ns}RecommendedWrap" class="${kind === 'other' ? 'hidden' : ''}">
+        <p class="insp-label" style="margin:0">Informed refusal</p>
+        <p class="insp-hint">Use this when the patient declines a recommended skin-cancer treatment. A valid refusal is freely given, specific, and informed. Record what was recommended, what was explained, the patient’s reason, capacity, and the safety-net. A skin condition that is not a cancer plan, such as dermatitis, belongs under Other.</p>
+        <div id="${ns}RecommendedWrap">
             <p class="insp-label">Recommended treatment declined</p>
             <div class="insp-choice-list">${recommendedBoxes}</div>
             <div id="${ns}RecommendedOtherWrap" class="${rec.includes('other') ? '' : 'hidden'}">
                 <label class="insp-label" for="${ns}RecommendedOther">Other recommended treatment</label>
                 <input type="text" id="${ns}RecommendedOther" class="insp-input" value="${declineEsc(d.declineRecommendedOther || '')}" placeholder="e.g. Mohs referral, PDT course"${off}>
             </div>
-        </div>
-        <div id="${ns}OtherWrap" class="${kind === 'other' ? '' : 'hidden'}">
-            <label class="insp-label" for="${ns}OtherPlan">Other plan</label>
-            <input type="text" id="${ns}OtherPlan" class="insp-input" value="${declineEsc(d.declineOtherPlan || '')}" placeholder="e.g. Patient to think overnight; will phone next week"${off}>
         </div>
         <div>
             <label class="insp-label" for="${ns}Reason">Patient’s stated reason</label>
@@ -139,7 +180,7 @@ function renderDeclinePlanFieldsHtml(prefix, lesion, disabled) {
             <textarea id="${ns}SafetyNetAdvice" rows="2" class="insp-textarea"${off}>${declineEsc(d.declineSafetyNetAdvice || DECLINE_DEFAULT_SAFETY_NET)}</textarea>
         </div>
         <div>
-            <label class="insp-label" for="${ns}Review">Offered review</label>
+            <label class="insp-label" for="${ns}Review">Review</label>
             <select id="${ns}Review" class="insp-select"${off}>
                 <option value="none"${!d.declineReview || d.declineReview === 'none' ? ' selected' : ''}>No scheduled review — return if changes</option>
                 <option value="2 weeks"${d.declineReview === '2 weeks' ? ' selected' : ''}>Review in 2 weeks</option>
@@ -148,6 +189,7 @@ function renderDeclinePlanFieldsHtml(prefix, lesion, disabled) {
                 <option value="3 months"${d.declineReview === '3 months' ? ' selected' : ''}>Review in 3 months</option>
                 <option value="6 months"${d.declineReview === '6 months' ? ' selected' : ''}>Review in 6 months</option>
             </select>
+            <p class="insp-hint">A scheduled review keeps this on Open until that visit.</p>
         </div>
         <label class="insp-choice"><input type="checkbox" id="${ns}SecondOpinion" ${d.declineSecondOpinion ? 'checked' : ''}${off}> Second opinion offered</label>
         <label class="insp-choice"><input type="checkbox" id="${ns}WrittenInfo" ${d.declineWrittenInfo ? 'checked' : ''}${off}> Written information provided</label>
@@ -169,9 +211,6 @@ function mountDeclinePlanFields(containerId, prefix, lesion, disabled) {
 
 function syncDeclinePlanUi(prefix) {
     const ns = declineNs(prefix);
-    const kind = document.querySelector(`input[name="${ns}Kind"]:checked`)?.value || 'declines';
-    document.getElementById(ns + 'RecommendedWrap')?.classList.toggle('hidden', kind !== 'declines');
-    document.getElementById(ns + 'OtherWrap')?.classList.toggle('hidden', kind !== 'other');
     const recOther = !!document.querySelector(`input[name="${ns}Recommended"][value="other"]:checked`);
     document.getElementById(ns + 'RecommendedOtherWrap')?.classList.toggle('hidden', !recOther);
     const riskOther = !!document.querySelector(`input[name="${ns}Risks"][value="other"]:checked`);
@@ -187,7 +226,7 @@ function readCheckedValues(name) {
 function readDeclineFieldsFromForm(prefix) {
     const ns = declineNs(prefix);
     const fields = emptyDeclineFields();
-    fields.declineKind = document.querySelector(`input[name="${ns}Kind"]:checked`)?.value || 'declines';
+    fields.declineKind = 'declines';
     fields.declineRecommended = readCheckedValues(ns + 'Recommended');
     fields.declineRecommendedOther = document.getElementById(ns + 'RecommendedOther')?.value.trim() || '';
     fields.declineOtherPlan = document.getElementById(ns + 'OtherPlan')?.value.trim() || '';
@@ -264,13 +303,10 @@ function formatDeclineFormLabel(value) {
 
 function formatDeclinePlanSummary(lesion) {
     if (!isDeclineTreatmentPlan(lesion?.plan)) return '';
-    if (lesion.declineKind === 'other') {
-        return lesion.declineOtherPlan
-            ? ('Other plan — ' + lesion.declineOtherPlan)
-            : 'Other disposition documented';
-    }
+    if (lesion.declineKind === 'other') return formatOtherPlanSummary(lesion);
     const rec = formatDeclineRecommendedText(lesion);
-    return rec ? ('Declined ' + rec) : 'Declined recommended treatment';
+    const summary = rec ? ('Declined ' + rec) : 'Declined recommended treatment';
+    return appendReviewInterval(summary, lesion.declineReview);
 }
 
 function formatDeclineEmrLines(lesion) {
@@ -330,7 +366,7 @@ function printDeclineAcknowledgement(prefix) {
     </style>
 </head>
 <body>
-    <h1>Informed refusal / other disposition</h1>
+    <h1>Informed refusal</h1>
     <p class="meta">${declineEsc(clinic)}${patient ? ' · ' + declineEsc(patient) : ''}${dob ? ' · DOB ' + declineEsc(dob) : ''}${clinician ? ' · ' + declineEsc(clinician) : ''}<br>Recorded ${declineEsc(when)}</p>
     <h2>Disposition</h2>
     <p>${fields.declineKind === 'other'
@@ -348,7 +384,7 @@ function printDeclineAcknowledgement(prefix) {
     <p>How recorded: ${declineEsc(formatDeclineFormLabel(fields.declineForm))}.</p>
     <h2>Safety-net</h2>
     <p>${declineEsc(fields.declineSafetyNetAdvice || DECLINE_DEFAULT_SAFETY_NET)}</p>
-    <p>Offered review: ${declineEsc(!fields.declineReview || fields.declineReview === 'none' ? 'None scheduled — return if changes' : fields.declineReview)}.</p>
+    <p>Review: ${declineEsc(!fields.declineReview || fields.declineReview === 'none' ? 'None scheduled — return if changes' : fields.declineReview)}.</p>
     <p>${fields.declineSecondOpinion ? 'Second opinion offered. ' : ''}${fields.declineWrittenInfo ? 'Written information provided. ' : ''}${fields.declineNotes ? declineEsc(fields.declineNotes) : ''}</p>
     <p>This contemporaneous note records that the treating clinician explained the recommended treatment, alternatives, and material risks, and that the patient (or person responsible) made this decision.</p>
     <script>window.onload = function () { window.print(); };<\/script>

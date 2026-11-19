@@ -72,9 +72,13 @@ function formatExamPlanBadge(lesion) {
         && typeof formatTopicalTableBadge === 'function') {
         return formatTopicalTableBadge(lesion);
     }
+    if (typeof lesionOpensAsOtherPlan === 'function' && lesionOpensAsOtherPlan(lesion)) {
+        return (typeof formatOtherPlanSummary === 'function' && formatOtherPlanSummary(lesion))
+            || 'Other';
+    }
     if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(lesion.plan)) {
         return (typeof formatDeclinePlanSummary === 'function' && formatDeclinePlanSummary(lesion))
-            || 'Declines Treatment / Other';
+            || 'Declines treatment';
     }
     if (typeof isReferLesionPlan === 'function' && isReferLesionPlan(lesion.plan)) {
         return 'Refer / Specialist';
@@ -720,8 +724,10 @@ function openLesionModal(lesionId = null) {
             if (isTopicalPlan(item.plan) && planEl.value !== item.plan) {
                 planEl.value = 'Topical / Field Treatment';
             }
-            if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(item.plan)) {
-                planEl.value = typeof DECLINE_TREATMENT_PLAN === 'string' ? DECLINE_TREATMENT_PLAN : 'Declines Treatment / Other';
+            if (typeof lesionOpensAsOtherPlan === 'function' && lesionOpensAsOtherPlan(item)) {
+                planEl.value = typeof OTHER_CLINICAL_PLAN === 'string' ? OTHER_CLINICAL_PLAN : 'Other';
+            } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(item.plan)) {
+                planEl.value = typeof DECLINE_TREATMENT_PLAN === 'string' ? DECLINE_TREATMENT_PLAN : 'Declines treatment';
             }
             if (isConfirmedHistologyExcisionPlan(item.plan)) {
                 planEl.value = FORMAL_EXCISION_PLAN;
@@ -757,6 +763,11 @@ function openLesionModal(lesionId = null) {
             const monitorEl = document.getElementById('monitorFollowUp');
             if (monitorEl) monitorEl.value = item.monitorFollowUp || 'none';
             if (typeof mountDeclinePlanFields === 'function') mountDeclinePlanFields('planDeclineFields', '', item);
+            const otherSaved = typeof otherFieldsFromLesion === 'function' ? otherFieldsFromLesion(item) : { note: item.otherPlanNote || '', follow: item.otherFollowUp || 'none' };
+            const otherNoteEl = document.getElementById('otherPlanNote');
+            if (otherNoteEl) otherNoteEl.value = otherSaved.note || '';
+            const otherFollowEl = document.getElementById('otherFollowUp');
+            if (otherFollowEl) otherFollowEl.value = otherSaved.follow || 'none';
         }
     } else {
         document.getElementById('lesionModalTitle').innerText = "Document Skin Lesion";
@@ -786,6 +797,10 @@ function openLesionModal(lesionId = null) {
         const monitorEl = document.getElementById('monitorFollowUp');
         if (monitorEl) monitorEl.value = 'none';
         if (typeof mountDeclinePlanFields === 'function') mountDeclinePlanFields('planDeclineFields', '', emptyDeclineFields());
+        const otherNoteEl = document.getElementById('otherPlanNote');
+        if (otherNoteEl) otherNoteEl.value = '';
+        const otherFollowEl = document.getElementById('otherFollowUp');
+        if (otherFollowEl) otherFollowEl.value = 'none';
     }
 
     handlePlanChange();
@@ -849,12 +864,14 @@ function handlePlanChange() {
     const eFields = document.getElementById('planExcisionFields');
     const tFields = document.getElementById('planTopicalFields');
     const dFields = document.getElementById('planDeclineFields');
+    const oFields = document.getElementById('planOtherFields');
     const mFields = document.getElementById('planMonitorFields');
 
     if (bFields) bFields.classList.add('hidden');
     if (eFields) eFields.classList.add('hidden');
     if (tFields) tFields.classList.add('hidden');
     if (dFields) dFields.classList.add('hidden');
+    if (oFields) oFields.classList.add('hidden');
     if (mFields) mFields.classList.add('hidden');
 
     if (typeof isMonitorLesionPlan === 'function' ? isMonitorLesionPlan(plan) : /Monitor/i.test(plan)) {
@@ -876,6 +893,8 @@ function handlePlanChange() {
             dFields.classList.remove('hidden');
         }
         if (typeof syncDeclinePlanUi === 'function') syncDeclinePlanUi('');
+    } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan)) {
+        if (oFields) oFields.classList.remove('hidden');
     }
     syncPriorHistologyFieldsUi();
 }
@@ -925,6 +944,8 @@ function saveLesion() {
     let graftType = '';
     let topicalFields = emptyTopicalFields();
     let declineFields = typeof emptyDeclineFields === 'function' ? emptyDeclineFields() : {};
+    let lesionOtherNote = '';
+    let lesionOtherFollow = 'none';
     let length = '';
     let width = '';
     let margin = '';
@@ -996,6 +1017,14 @@ function saveLesion() {
             showToast(declineError);
             return;
         }
+    } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan)) {
+        lesionOtherNote = typeof readOtherPlanNote === 'function' ? readOtherPlanNote('') : '';
+        lesionOtherFollow = typeof readOtherFollowUp === 'function' ? readOtherFollowUp('') : 'none';
+        const otherError = typeof otherPlanNoteError === 'function' ? otherPlanNoteError(lesionOtherNote) : '';
+        if (otherError) {
+            showToast(otherError);
+            return;
+        }
     }
 
     const patientSnap = typeof sessionPatientSnapshot === 'function' ? sessionPatientSnapshot() : null;
@@ -1062,9 +1091,23 @@ function saveLesion() {
         lesionRecord.type = 'topical';
     } else if (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan)) {
         lesionRecord.type = 'none';
+        lesionRecord.otherPlanNote = '';
+        lesionRecord.otherFollowUp = '';
         lesionRecord.currentPlan = typeof formatDeclinePlanSummary === 'function'
             ? formatDeclinePlanSummary(lesionRecord)
             : 'Declined recommended treatment';
+        if (typeof deriveLesionStatusFromPlan === 'function') {
+            lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
+        }
+    } else if (typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan)) {
+        lesionRecord.type = 'none';
+        lesionRecord.plan = 'Other';
+        lesionRecord.declineKind = '';
+        lesionRecord.otherPlanNote = lesionOtherNote;
+        lesionRecord.otherFollowUp = lesionOtherFollow || 'none';
+        lesionRecord.currentPlan = typeof formatOtherPlanSummary === 'function'
+            ? formatOtherPlanSummary(lesionRecord)
+            : lesionOtherNote;
         if (typeof deriveLesionStatusFromPlan === 'function') {
             lesionRecord.managementStatus = deriveLesionStatusFromPlan(lesionRecord);
         }
@@ -1083,7 +1126,8 @@ function saveLesion() {
         existingLesion?.currentPlan || lesionRecord.currentPlan
     );
     if (nextCurrentPlan !== undefined
-        && !(typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan))) {
+        && !(typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(plan))
+        && !(typeof isOtherClinicalPlan === 'function' && isOtherClinicalPlan(plan))) {
         lesionRecord.currentPlan = nextCurrentPlan;
     }
 
@@ -1187,7 +1231,7 @@ function renderLesionsTable() {
             <td class="p-3 text-slate-700">${escapeHtml(typeof formatDiagnosisDisplay === 'function' ? formatDiagnosisDisplay(l.impression) : (l.impression || ''))}</td>
             <td class="p-3"><span class="text-[11px] font-semibold text-blue-800">${escapeHtml(status)}</span>${l.currentPlan ? `<div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(l.currentPlan)}</div>` : ''}${typeof lastUnsuccessfulCall === 'function' && lastUnsuccessfulCall(l) ? `<span class="lesion-call-badge">${escapeHtml(formatCallBadge(lastUnsuccessfulCall(l)))}</span>` : ''}</td>
             <td class="p-3">
-                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${(l.plan || '').includes('Biopsy') ? 'bg-blue-100 text-blue-800' : ((l.plan || '').includes('Excision') || isConfirmedHistologyExcisionPlan(l.plan)) ? 'bg-purple-100 text-purple-800' : (typeof isReferLesionPlan === 'function' && isReferLesionPlan(l.plan)) ? 'bg-indigo-100 text-indigo-800' : isTopicalPlan(l.plan) ? 'bg-teal-100 text-teal-800' : (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(l.plan)) ? 'bg-amber-100 text-amber-950 border border-amber-300' : (l.plan || '').includes('Awaiting') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'}">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${(l.plan || '').includes('Biopsy') ? 'bg-blue-100 text-blue-800' : ((l.plan || '').includes('Excision') || isConfirmedHistologyExcisionPlan(l.plan)) ? 'bg-purple-100 text-purple-800' : (typeof isReferLesionPlan === 'function' && isReferLesionPlan(l.plan)) ? 'bg-indigo-100 text-indigo-800' : isTopicalPlan(l.plan) ? 'bg-teal-100 text-teal-800' : (typeof lesionOpensAsOtherPlan === 'function' && lesionOpensAsOtherPlan(l)) ? 'bg-slate-100 text-slate-800 border border-slate-300' : (typeof isDeclineTreatmentPlan === 'function' && isDeclineTreatmentPlan(l.plan)) ? 'bg-amber-100 text-amber-950 border border-amber-300' : (l.plan || '').includes('Awaiting') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'}">
                             ${escapeHtml(formatExamPlanBadge(l))}
                         </span>
             </td>

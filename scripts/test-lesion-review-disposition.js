@@ -16,6 +16,7 @@ function eq(actual, expected, label) {
 global.isTopicalPlan = (plan) => String(plan || '').includes('Topical');
 global.isReferLesionPlan = (plan) => String(plan || '').includes('Refer');
 global.isDeclineTreatmentPlan = (plan) => /Declines Treatment/i.test(String(plan || ''));
+global.isOtherClinicalPlan = (plan) => String(plan || '').trim() === 'Other';
 global.formatDeclinePlanSummary = (lesion) => lesion?.declineKind === 'other'
     ? (lesion.declineOtherPlan || 'Other disposition documented')
     : 'Declined recommended treatment';
@@ -89,6 +90,19 @@ const declineReview = {
 eq(vault.deriveLesionStatusFromPlan(declineReview), 'awaiting_assessment', 'decline with offered review stays open');
 eq(vault.lesionReviewDispositionKind(declineReview), 'scheduled', 'decline review kind is scheduled');
 eq(vault.deriveLesionStatusFromPlan({ ...declineReview, declineReview: 'none' }), 'no_followup', 'decline without review still completes');
+
+const otherReview = {
+    id: 'O1',
+    plan: 'Other',
+    type: 'none',
+    otherPlanNote: 'Dermatitis — emollient',
+    otherFollowUp: '4 weeks',
+    managementStatus: 'awaiting_assessment'
+};
+eq(vault.deriveLesionStatusFromPlan(otherReview), 'awaiting_assessment', 'other with a review stays open');
+eq(vault.lesionReviewDispositionKind(otherReview), 'scheduled', 'other review kind is scheduled');
+eq(vault.deriveLesionStatusFromPlan({ ...otherReview, otherFollowUp: 'none' }), 'no_followup', 'other without a review completes');
+eq(vault.isScheduledReviewLesion(otherReview), true, 'other with a review is a scheduled review');
 
 const pdt = {
     id: 'P1',
