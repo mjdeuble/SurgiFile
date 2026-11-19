@@ -1680,18 +1680,30 @@ function renderInspectorPlanContactForm(lesion) {
                     <input type="text" id="inspHistologyProposedPlanNote" class="insp-input" value="${escapeHtml(lesion.proposedPlanNote || '')}" placeholder="e.g. Efudix forehead · discuss with patient">
                 </div>
             </div>` : '';
-    return `<section class="insp-card" id="inspPlanContactCard">
-        <div class="insp-card-head">${cardTitle}</div>
+    const lesionId = escapeHtml(String(lesion.id || ''));
+    const noteCard = `<section class="insp-card" id="inspLesionNotesCard">
+        <div class="insp-card-head">Notes</div>
         <div class="insp-card-body">
-            <input type="hidden" id="inspManageLesionId" value="${escapeHtml(String(lesion.id || ''))}">
-            ${planBlock}
+            ${showPlan ? '' : `<input type="hidden" id="inspManageLesionId" value="${lesionId}">`}
             ${notes}
             <textarea id="inspLesionNote" rows="2" class="insp-textarea" aria-label="Add note" placeholder="${escapeHtml(inspectorNotePlaceholder(lesion))}"></textarea>
             <div class="insp-actions">
-                <button type="button" class="insp-save" id="btnSaveInspectorManage" onclick="submitInspectorManageLesion()">${showPlan ? 'Save plan' : 'Add note'}</button>
+                <button type="button" class="insp-save" id="btnAddInspectorNote" onclick="submitInspectorLesionNote()">Add note</button>
             </div>
         </div>
     </section>`;
+    if (!showPlan) return noteCard;
+    return `<section class="insp-card" id="inspPlanContactCard">
+        <div class="insp-card-head">${cardTitle}</div>
+        <div class="insp-card-body">
+            <input type="hidden" id="inspManageLesionId" value="${lesionId}">
+            ${planBlock}
+            <div class="insp-actions">
+                <button type="button" class="insp-save" id="btnSaveInspectorManage" onclick="submitInspectorManageLesion()">Save plan</button>
+            </div>
+        </div>
+    </section>
+    ${noteCard}`;
 }
 
 function bindInspectorHistologyEntry(lesion) {
@@ -2129,6 +2141,62 @@ function cancelChartLesionPlan(id) {
     if (typeof openManageLesionNfaConfirm === 'function') openManageLesionNfaConfirm();
 }
 
+async function persistLesionNote(id, callNote) {
+    const note = String(callNote || '').trim();
+    if (!id) return false;
+    if (!note) {
+        showToast('Enter a note.');
+        return false;
+    }
+    const lesion = (typeof managedLesions !== 'undefined' ? managedLesions : [])
+        .find((item) => String(item.id) === String(id))
+        || (typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(id));
+    if (!lesion) {
+        showToast('Could not find that lesion.');
+        return false;
+    }
+    if (typeof appendLesionNote === 'function') appendLesionNote(lesion, note);
+    else if (typeof appendLesionTimeline === 'function') {
+        lesion.adminCallNote = note;
+        appendLesionTimeline(lesion, { type: 'note', note });
+    }
+    patchSessionAndManagedLesion(id, {
+        adminCallNote: note,
+        timeline: lesion.timeline
+    });
+    const saved = (typeof managedLesions !== 'undefined' ? managedLesions : [])
+        .find((item) => String(item.id) === String(id))
+        || (typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(id));
+    if (saved && typeof persistSessionLesionToVault === 'function') {
+        try { await persistSessionLesionToVault(saved); } catch (err) { /* session copy kept */ }
+    } else if (saved && typeof saveManagedLesionRecord === 'function' && typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
+        await saveManagedLesionRecord(saved, 'note', note);
+    }
+    if (typeof markVisitReviewAndRefreshOutput === 'function') markVisitReviewAndRefreshOutput(id);
+    return true;
+}
+
+async function submitInspectorLesionNote() {
+    const id = document.getElementById('inspManageLesionId')?.value;
+    const callNote = document.getElementById('inspLesionNote')?.value.trim() || '';
+    const save = async () => {
+        const ok = await persistLesionNote(id, callNote);
+        if (!ok) return false;
+        showToast('Note added.');
+        renderChartLesionInspector({ force: true });
+        if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+        if (typeof refreshManageLesionNotes === 'function') refreshManageLesionNotes(id);
+        return true;
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving note…', save, {
+            button: document.getElementById('btnAddInspectorNote'),
+            buttonText: 'Saving…'
+        });
+    }
+    return save();
+}
+
 async function submitInspectorManageLesion() {
     manageLesionUiSource = 'inspector';
     const id = document.getElementById('inspManageLesionId')?.value;
@@ -2137,7 +2205,7 @@ async function submitInspectorManageLesion() {
         || '';
     const proposedPlan = document.querySelector('input[name="inspHistologyProposedPlan"]:checked')?.value || '';
     const proposedPlanNote = document.getElementById('inspHistologyProposedPlanNote')?.value.trim() || '';
-    const callNote = document.getElementById('inspLesionNote')?.value.trim() || '';
+    const draftNote = document.getElementById('inspLesionNote')?.value || '';
     if (!id) {
         manageLesionForcedAction = '';
         return false;
@@ -2172,45 +2240,16 @@ async function submitInspectorManageLesion() {
         else if (typeof openHistologyModal === 'function') openHistologyModal(id);
         return false;
     }
+    if (next !== 'no_followup' && next !== 'further_management' && next !== 'plan_excision') {
+        showToast('Choose a plan.');
+        return false;
+    }
     const extras = {
-        callNote: '',
         contact: reviewDisposition ? 'advised_now' : (lesion.contactState || 'mark_for_contact'),
         fileNoCall: false,
         allowWithoutHistology: reviewDisposition && canOpenFurther,
         proposedPlan: (next === 'further_management' || next === 'plan_excision') ? proposedPlan : '',
         proposedPlanNote: (next === 'further_management' || next === 'plan_excision') ? proposedPlanNote : ''
-    };
-    const persistNote = (target) => {
-        if (!callNote || !target) return;
-        if (typeof appendLesionNote === 'function') appendLesionNote(target, callNote);
-        else if (typeof appendLesionTimeline === 'function') {
-            target.adminCallNote = callNote;
-            appendLesionTimeline(target, { type: 'note', note: callNote });
-        }
-    };
-    const saveNoteOnly = async () => {
-        if (!callNote) {
-            showToast('Enter a note.');
-            return false;
-        }
-        persistNote(lesion);
-        patchSessionAndManagedLesion(id, {
-            adminCallNote: callNote,
-            timeline: lesion.timeline
-        });
-        const saved = (typeof managedLesions !== 'undefined' ? managedLesions : [])
-            .find((item) => String(item.id) === String(id))
-            || (typeof lesions !== 'undefined' ? lesions : []).find((item) => String(item.id) === String(id));
-        if (saved && typeof persistSessionLesionToVault === 'function') {
-            try { await persistSessionLesionToVault(saved); } catch (err) { /* session copy kept */ }
-        } else if (saved && typeof saveManagedLesionRecord === 'function' && typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
-            await saveManagedLesionRecord(saved, 'note', callNote);
-        }
-        showToast('Note added.');
-        if (typeof markVisitReviewAndRefreshOutput === 'function') markVisitReviewAndRefreshOutput(id);
-        renderChartLesionInspector({ force: true });
-        if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
-        return true;
     };
     const save = async ({ progress }) => {
         if (progress) progress('Saving lesion…', 0.25);
@@ -2219,11 +2258,10 @@ async function submitInspectorManageLesion() {
             if (typeof upsertManagedLesionMemory === 'function') upsertManagedLesionMemory(lesion);
             const saved = await recordHistologyOutcome(id, '', next, lesion?.billingLesionType || '', extras);
             const live = saved?.lesion || lesion;
-            persistNote(live);
             if (live) patchSessionAndManagedLesion(id, {
                 resultPlan: live.resultPlan,
                 contactState: live.contactState,
-                adminCallNote: live.adminCallNote || callNote,
+                adminCallNote: live.adminCallNote,
                 managementStatus: live.managementStatus,
                 currentPlan: live.currentPlan,
                 clinicallyFinalisedAt: live.clinicallyFinalisedAt,
@@ -2248,10 +2286,15 @@ async function submitInspectorManageLesion() {
                 if (saved?.openChildId) markVisitReviewAndRefreshOutput(saved.openChildId);
             }
             renderChartLesionInspector({ force: true });
+            if (draftNote.trim() && String(selectedChartLesionId || id) === String(id)) {
+                const noteEl = document.getElementById('inspLesionNote');
+                if (noteEl) noteEl.value = draftNote;
+            }
             if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
             return true;
         }
-        return saveNoteOnly();
+        showToast('Choose a plan.');
+        return false;
     };
     if (typeof runBusyAction === 'function') {
         return runBusyAction('Saving lesion…', save, {

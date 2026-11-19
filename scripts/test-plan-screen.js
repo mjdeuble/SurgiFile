@@ -80,6 +80,8 @@ const notes = chart.renderInspectorPlanContactForm(booked);
 eq(chart.inspectorCanSetResultPlan(booked), false, 'a booked procedure has no second plan choice');
 has(notes, '<div class="insp-card-head">Notes</div>', 'the lower block is notes');
 has(notes, 'Add note', 'the lower block saves a note');
+has(notes, 'submitInspectorLesionNote()', 'a note uses its own save');
+lacks(notes, 'Save plan', 'a booked procedure has no plan save on the note');
 lacks(notes, 'insp-label">Add note', 'the entry box has no Add note heading');
 global.renderLesionNotesListHtml = management.renderLesionNotesListHtml;
 const noted = chart.renderInspectorPlanContactForm({
@@ -110,6 +112,12 @@ const topicalForm = chart.renderInspectorPlanContactForm(topical);
 has(topicalForm, '<div class="insp-card-head">This review</div>', 'a topical review is titled This review');
 has(topicalForm, 'Cleared / no further action', 'a topical review can be cleared');
 has(topicalForm, 'Needs further management', 'a topical review can still need further management');
+has(topicalForm, 'submitInspectorManageLesion()', 'the review saves the plan on its own');
+has(topicalForm, 'submitInspectorLesionNote()', 'the review adds a note on its own');
+const planCardAt = topicalForm.indexOf('id="inspPlanContactCard"');
+const notesCardAt = topicalForm.indexOf('id="inspLesionNotesCard"');
+eq(planCardAt !== -1 && notesCardAt > planCardAt, true, 'the notes card sits apart from the plan card');
+lacks(topicalForm.slice(planCardAt, notesCardAt), 'inspLesionNote', 'the plan card does not contain the note box');
 eq((topicalForm.match(/This review/g) || []).length, 1, 'This review is not repeated as a second heading');
 
 const monitor = {

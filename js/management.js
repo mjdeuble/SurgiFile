@@ -3492,6 +3492,47 @@ function openManageLesionModal(id) {
     if (modal) modal.classList.remove('hidden');
 }
 
+function refreshManageLesionNotes(id) {
+    const modal = document.getElementById('manageLesionModal');
+    const openId = document.getElementById('manageLesionLesionId')?.value;
+    if (!modal || modal.classList.contains('hidden') || String(openId || '') !== String(id || '')) return;
+    const lesion = (typeof managedLesions !== 'undefined' ? managedLesions : [])
+        .find((item) => String(item.id) === String(id));
+    const timelineWrap = document.getElementById('manageLesionTimelineWrap');
+    const timelineEl = document.getElementById('manageLesionTimeline');
+    const events = lesion && typeof lesionNoteEvents === 'function' ? lesionNoteEvents(lesion) : [];
+    if (timelineWrap) timelineWrap.classList.toggle('hidden', !events.length);
+    if (timelineEl) {
+        timelineEl.innerHTML = events.length
+            ? events.map((event) => renderLesionNoteCard(event, lesion.id)).join('')
+            : '';
+    }
+}
+
+async function submitManageLesionNote() {
+    const id = document.getElementById('manageLesionLesionId')?.value;
+    const callNote = document.getElementById('histologyCallNote')?.value.trim() || '';
+    const save = async () => {
+        if (typeof persistLesionNote !== 'function') return false;
+        const ok = await persistLesionNote(id, callNote);
+        if (!ok) return false;
+        const noteEl = document.getElementById('histologyCallNote');
+        if (noteEl) noteEl.value = '';
+        showToast('Note added.');
+        refreshManageLesionNotes(id);
+        if (typeof renderChartLesionInspector === 'function') renderChartLesionInspector({ force: true });
+        if (typeof renderChartLesionTree === 'function') renderChartLesionTree();
+        return true;
+    };
+    if (typeof runBusyAction === 'function') {
+        return runBusyAction('Saving note…', save, {
+            button: document.getElementById('btnAddManageLesionNote'),
+            buttonText: 'Saving…'
+        });
+    }
+    return save();
+}
+
 function closeManageLesionModal() {
     const modal = document.getElementById('manageLesionModal');
     if (modal) modal.classList.add('hidden');
@@ -3505,6 +3546,10 @@ async function submitManageLesionModal() {
     const proposedPlan = document.querySelector('input[name="histologyProposedPlan"]:checked')?.value || '';
     const proposedPlanNote = document.getElementById('histologyProposedPlanNote')?.value.trim() || '';
     const callNote = document.getElementById('histologyCallNote')?.value.trim() || '';
+    if (callNote) {
+        showToast('Add the note first. It is separate from the plan.');
+        return false;
+    }
     if (!id) return false;
     const lesion = managedLesions.find((item) => String(item.id) === String(id));
     const contact = lesion?.contactState || 'mark_for_contact';
@@ -3534,7 +3579,6 @@ async function submitManageLesionModal() {
     const save = async ({ progress }) => {
         if (progress) progress('Saving lesion…', 0.25);
         const extras = {
-            callNote: '',
             contact: reviewDisposition ? 'advised_now' : contact,
             fileNoCall: false,
             allowWithoutHistology: reviewDisposition && canOpenFurther,
@@ -3542,12 +3586,6 @@ async function submitManageLesionModal() {
             proposedPlanNote: (next === 'further_management' || next === 'plan_excision') ? proposedPlanNote : ''
         };
         const saved = await recordHistologyOutcome(id, '', next, lesion?.billingLesionType || '', extras);
-        if (callNote && saved?.lesion && typeof appendLesionNote === 'function') {
-            appendLesionNote(saved.lesion, callNote);
-            if (typeof saveManagedLesionRecord === 'function' && typeof isVaultLoggedIn === 'function' && isVaultLoggedIn()) {
-                await saveManagedLesionRecord(saved.lesion, 'note', callNote, { silent: true });
-            }
-        }
         closeManageLesionModal();
         const further = next === 'further_management' || next === 'plan_excision';
         let message = 'Lesion updated.';
@@ -3559,7 +3597,6 @@ async function submitManageLesionModal() {
                     ? 'Lesion clinically finalised. Unbilled items stay on Billing.'
                     : 'Lesion clinically finalised. No further action.');
         }
-        if (callNote) message = (message === 'Lesion updated.' ? 'Note added.' : message);
         showToast(message);
         if (typeof markVisitReviewAndRefreshOutput === 'function') {
             markVisitReviewAndRefreshOutput(id);
