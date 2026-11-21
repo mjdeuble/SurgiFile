@@ -1870,11 +1870,11 @@ function refreshFinaliseVisitModal() {
         if (state.mode === 'process' && allBiopsy) {
             billHint.textContent = '30071 can be billed at the procedure. Click a site or item number to copy it into Best Practice, then mark processed and close.';
         } else if (state.mode === 'process' && mixed) {
-            billHint.textContent = 'Bill ready items now (30071, suspected melanoma, or known histology). Hold the rest until histology is in. Click a site or item number to copy it into Best Practice.';
+            billHint.textContent = 'A group that is still waiting stays held together. Groups that are ready can be marked processed. Click a site or item number to copy it into Best Practice.';
         } else if (state.mode === 'process') {
             billHint.textContent = 'Click a site or an item number to copy it into Best Practice. Same-day procedures bill together. Copy what you need, then mark processed and close so billing is not an extra step.';
         } else {
-            billHint.textContent = 'HOLD this excision until histology is in. 30071, suspected melanoma, and lesions with known histology can be billed at the procedure. Click each expected item as a placeholder; change it if the result differs.';
+            billHint.textContent = 'HOLD the whole group until every lesion can be billed together. Click each expected item as a placeholder; change it if the result differs.';
         }
     }
 

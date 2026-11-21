@@ -2164,9 +2164,11 @@ function renderBillingQueueCard(view, options) {
                 <p class="text-[11px] text-slate-500">${escapeHtml(billingCardMeta(view))}</p>
             </div>
             ${(() => {
+                const record = (typeof managedLesions !== 'undefined' ? managedLesions : []).find((item) => String(item.id) === String(view.lesionId || view.id)) || view;
+                const groupReady = typeof procedureGroupBillingReady === 'function' ? procedureGroupBillingReady(record) : { ok: true };
                 const status = typeof lesionCanBillAtProcedure === 'function' ? lesionCanBillAtProcedure(view) : { hold: view.billWhen === 'hold', kind: '' };
-                if (status.hold) {
-                    return '<p class="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">HOLD this excision until histology is in. 30071, suspected melanoma, and lesions with known histology can be billed now.</p>';
+                if (!groupReady.ok || status.hold) {
+                    return '<p class="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">HOLD the whole group until every lesion can be billed together.</p>';
                 }
                 if (status.kind === 'biopsy') {
                     return '<p class="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">30071 can be billed at the procedure. One consult for the visit.</p>';
@@ -2622,7 +2624,7 @@ async function openProcessBillingModal(lesionId) {
     }
     const ready = typeof procedureGroupBillingReady === 'function' ? procedureGroupBillingReady(lesion) : { ok: true, group: [lesion] };
     if (!ready.ok) {
-        showToast(ready.reason || 'Enter histology before billing this excision. 30071, suspected melanoma, and known-histology lesions can be billed now.');
+        showToast(ready.reason || 'Hold this group until every lesion can be billed together.');
         return;
     }
     const group = (ready.group || [lesion]).slice();

@@ -1641,34 +1641,35 @@ function refreshProcedureBillingPanel() {
             ? '30071 is ready. Add any missing site details, then process session billing.'
             : 'Some codes still need procedure area or size. Enter those, then process session billing.';
     } else if (summary.mixed) {
-        banner.className = 'text-xs rounded-lg px-3 py-2 border border-sky-300 bg-sky-50 text-sky-950 font-semibold';
-        banner.textContent = 'Bill ready items now (30071, suspected melanoma, or known histology). Hold the rest until histology is in. One consult (23) for the visit.';
+        banner.className = 'text-xs rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 font-semibold';
+        banner.textContent = 'Hold the whole group until every lesion can be billed together. One consult (23) for the visit.';
     } else if (summary.allHold) {
         banner.className = 'text-xs rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 font-semibold';
-        banner.textContent = 'Hold this excision until histology is in. 30071, suspected melanoma, and lesions with known histology can be billed at the procedure.';
+        banner.textContent = 'Hold this group until histology is in. The lesions are billed together.';
     } else {
-        banner.className = 'text-xs rounded-lg px-3 py-2 border border-sky-300 bg-sky-50 text-sky-950 font-semibold';
-        banner.textContent = 'Bill 30071, suspected melanoma, and known-histology excisions at the procedure. Hold other excisions until the result is in.';
+        banner.className = 'text-xs rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 font-semibold';
+        banner.textContent = 'Hold the whole group until every lesion has an item number. The lesions are billed together.';
     }
     const firstUnsent = selected.find((lesion) => {
         const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
         return !(typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill));
     });
     const firstId = String(firstUnsent?.id || '').replace(/'/g, '');
-    const canProcessNow = firstId && summary.processRows && summary.processRows.some((row) => row.ready && row.codes);
+    const canProcessNow = firstId && summary.allReady;
+    const groupHeld = !summary.allReady;
     const sessionAction = canProcessNow
         ? `<div class="flex justify-end"><button type="button" onclick="openProcessBillingModal('${firstId}')" class="mgmt-action-btn mgmt-action-btn-primary">Process session billing</button></div>`
         : '';
     const listHtml = summary.rows.map((row) => {
         const bill = typeof billingForLesion === 'function' ? billingForLesion(row.lesion.id) : null;
         const sent = typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill);
-        const badge = row.hold
+        const badge = (groupHeld || row.hold)
             ? '<span class="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">Hold</span>'
             : '<span class="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">Ready</span>';
         const action = sent
             ? '<span class="text-[11px] font-semibold text-emerald-800">Billed</span>'
-            : (row.hold
-                ? '<span class="text-[11px] text-amber-800">Hold for histology</span>'
+            : (groupHeld
+                ? '<span class="text-[11px] text-amber-800">Held with the group</span>'
                 : '<span class="text-[11px] text-emerald-800">Included in session billing</span>');
         return `<div class="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
             <div class="min-w-0">
@@ -1681,7 +1682,7 @@ function refreshProcedureBillingPanel() {
     }).join('');
     const copyBlock = summary.doctorText
         ? `<div class="flex flex-wrap items-center justify-between gap-2">
-                <p class="text-[11px] text-slate-500">${summary.holdRows && summary.holdRows.length && summary.processRows && summary.processRows.length ? 'Bill ready items now; HOLD the rest until histology. One consult (23) for the visit.' : (summary.holdRows && summary.holdRows.length ? 'HOLD until histology. 30071, suspected melanoma, and known-histology lesions can be billed now. One consult (23).' : 'One consult (23) for the visit, then each lesion item.')}</p>
+                <p class="text-[11px] text-slate-500">${summary.holdRows && summary.holdRows.length ? 'HOLD the whole group until every lesion can be billed together. One consult (23).' : 'One consult (23) for the visit, then each lesion item.'}</p>
                 <button type="button" onclick="copyProcedureBillingCodes()" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold rounded-lg cursor-pointer">Copy billing codes</button>
            </div>`
         : '';
@@ -1859,7 +1860,7 @@ async function endProcedureSession() {
             ? 'Procedure finished. Process session billing now — 30071 can be billed at the procedure.'
             : 'Procedure finished. Process session billing now.');
     } else if (billed?.mixed) {
-        showToast('Procedure finished. Bill ready items now. Hold remaining excisions until histology is in.');
+        showToast('Procedure finished. Hold the whole group until histology is in, then bill it together.');
     } else if (billed?.allHold) {
         showToast('Procedure finished. Hold this excision until histology is in.');
     } else {

@@ -1140,35 +1140,42 @@ function lesionNeedsHistologyToBill(lesion) {
     return true;
 }
 
+function billingRowReadyToProcess(row) {
+    return !!(row && row.ok && !row.hold && row.ready && row.codes);
+}
+
 function procedureGroupBillingReady(lesion) {
     const group = procedureBillingGroup(lesion);
-    if (!group.length) return { ok: false, hold: true, group, billable: [], pending: [], reason: 'No procedure to bill.' };
-    const pending = group.filter((item) => lesionNeedsHistologyToBill(item) && !lesionHasHistologyForBilling(item));
-    const billable = group.filter((item) => !lesionNeedsHistologyToBill(item) || lesionHasHistologyForBilling(item));
-    if (!billable.length) {
-        const sites = pending.map((item) => item.location || 'site').join(', ');
+    const unsent = typeof visitUnsentBillingLesions === 'function'
+        ? visitUnsentBillingLesions(group)
+        : group;
+    const members = unsent.length ? unsent : group;
+    if (!members.length) return { ok: false, hold: true, group: members, billable: [], pending: [], reason: 'No procedure to bill.' };
+    const summary = procedureSessionBillingSummary(members);
+    const pending = (summary.rows || []).filter((row) => !billingRowReadyToProcess(row));
+    if (pending.length) {
+        const sites = pending.map((row) => row.site || 'site').join(', ');
+        const waitingHistology = pending.some((row) => row.hold);
         return {
             ok: false,
             hold: true,
-            group,
-            billable,
-            pending,
-            reason: pending.length === 1
-                ? 'Enter histology for ' + sites + ' before billing this excision. 30071, suspected melanoma, and lesions with known histology can be billed now.'
-                : 'Enter histology for these excisions before billing (' + sites + '). 30071, suspected melanoma, and known-histology lesions can be billed now.'
+            group: members,
+            fullGroup: group,
+            billable: [],
+            pending: pending.map((row) => row.lesion).filter(Boolean),
+            reason: waitingHistology
+                ? 'Hold this group until histology is in for ' + sites + '. The whole group is billed together.'
+                : 'Hold this group until ' + sites + ' has an item number. The whole group is billed together.'
         };
     }
-    const pendingSites = pending.map((item) => item.location || 'site').join(', ');
     return {
         ok: true,
-        hold: pending.length > 0,
-        group: billable,
+        hold: false,
+        group: members,
         fullGroup: group,
-        billable,
-        pending,
-        reason: pending.length
-            ? 'Bill ready items now (30071, suspected melanoma, or known histology). Hold until histology for ' + pendingSites + '.'
-            : ''
+        billable: members,
+        pending: [],
+        reason: ''
     };
 }
 
@@ -1216,7 +1223,7 @@ function lesionCanBillAtProcedure(lesion) {
         return {
             ok: false,
             hold: true,
-            reason: 'Hold this excision until histology is in. 30071, suspected melanoma, and lesions with known histology can be billed now.',
+            reason: 'Hold this excision until histology is in. The whole group is held together until every lesion can be billed.',
             kind: 'hold'
         };
     }
@@ -1287,7 +1294,7 @@ function receptionBillingInstruction(summary) {
         return codes ? site + ' ' + codes : site;
     };
     if (summary.holdRows && summary.holdRows.length && summary.processRows && summary.processRows.length) {
-        return 'Billing: bill ready items now (30071, suspected melanoma, known histology); HOLD the rest until histology — ' + summary.rows.map(formatRow).join('; ') + '. Change item if result differs';
+        return 'Billing: HOLD the whole group until every lesion can be billed together — ' + summary.rows.map(formatRow).join('; ') + '. Change item if result differs';
     }
     if (summary.holdRows && summary.holdRows.length) {
         return 'Billing: HOLD until histology — ' + summary.rows.map(formatRow).join('; ') + '. Change item if result differs';
@@ -1408,9 +1415,19 @@ function visitFinaliseBillingState(lesionList) {
         ? procedureSessionBillingSummary(unsent)
         : { rows: [], holdRows: [], allReady: false, allProcess: false };
     const copyText = generateVisitBillingCopy(unsent);
-    const readyNow = (summary.processRows || []).filter((row) => row.ready && row.codes);
-    if (readyNow.length) {
-        return { mode: 'process', lesions: unsent, summary, copyText, alreadyBilled };
+    const groups = new Map();
+    unsent.forEach((item) => {
+        const key = procedureBillingGroupKey(item) || ('lesion:' + String(item.id || ''));
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+    });
+    const processLesions = [];
+    groups.forEach((members) => {
+        const ready = procedureGroupBillingReady(members[0]);
+        if (ready.ok) processLesions.push(...members);
+    });
+    if (processLesions.length) {
+        return { mode: 'process', lesions: processLesions, summary, copyText, alreadyBilled };
     }
     return { mode: 'hold', lesions: unsent, summary, copyText, alreadyBilled };
 }
@@ -1433,8 +1450,20 @@ async function markVisitLesionsBillingProcessed(lesionList) {
 }
 
 async function confirmSameDaySessionBilling(lesionList) {
-    const summary = procedureSessionBillingSummary(lesionList);
-    const readyRows = (summary.processRows || []).filter((row) => row.ready && row.codes);
+    const readyLesions = [];
+    const seen = new Set();
+    (lesionList || []).forEach((lesion) => {
+        const ready = procedureGroupBillingReady(lesion);
+        if (!ready.ok) return;
+        (ready.group || []).forEach((item) => {
+            const id = String(item?.id || '');
+            if (!id || seen.has(id)) return;
+            seen.add(id);
+            readyLesions.push(item);
+        });
+    });
+    const summary = procedureSessionBillingSummary(readyLesions);
+    const readyRows = (summary.rows || []).filter((row) => billingRowReadyToProcess(row));
     if (!readyRows.length) return { confirmed: 0, codes: [], doctorText: summary.doctorText || '' };
     const codes = [];
     for (const row of readyRows) {
@@ -1462,7 +1491,12 @@ if (typeof module !== 'undefined' && module.exports) {
         DEFAULT_CONSULT_BILLING,
         DEFAULT_BIOPSY_BILLING,
         resolvedGraftType,
-        closureNeedsGraftType
+        closureNeedsGraftType,
+        procedureGroupBillingReady,
+        visitFinaliseBillingState,
+        confirmSameDaySessionBilling,
+        billingRowReadyToProcess,
+        procedureBillingGroupKey
     };
 }
 
