@@ -779,6 +779,15 @@ function histoSpecimenNo(l, idx) {
     return pot || String(idx + 1);
 }
 
+function histoRequestSentence(text) {
+    const body = String(text || '').trim().replace(/\.{2,}/g, '.').replace(/\.+$/, '');
+    return body ? body + '.' : '';
+}
+
+function joinHistologyRequest(lines) {
+    return (lines || []).map(histoRequestSentence).filter(Boolean).join(' ');
+}
+
 function generatePathologyOutputs(lesionList) {
     const raw = Array.isArray(lesionList) ? lesionList : getBiopsyLesions();
     const biopsyLesions = raw.map((item) => (
@@ -805,7 +814,7 @@ function generatePathologyOutputs(lesionList) {
         return `${histoSpecimenNo(l, idx)}. ${(l.location || 'UNSPECIFIED SITE').toUpperCase()}: ${diag}, ${bType}${histoSizeSuffix(l)}${detailsStr}${priorStr}`;
     });
 
-    let fullDetailedText = testDetailedLines.join('\n');
+    let fullDetailedText = joinHistologyRequest(testDetailedLines);
 
     const requiresAttachment = biopsyLesions.length > 2 || fullDetailedText.length > 180;
 
@@ -815,14 +824,14 @@ function generatePathologyOutputs(lesionList) {
     if (!requiresAttachment) {
         slipText = fullDetailedText;
     } else {
-        slipText = `*** SEE ATTACHED REPORT FOR FULL CLINICAL DETAILS ***\n`;
-        slipText += biopsyLesions.map((l, idx) => {
+        slipText = `*** SEE ATTACHED ***\n`;
+        slipText += joinHistologyRequest(biopsyLesions.map((l, idx) => {
             const diag = histoClinicalDx(l.impression);
             const bType = histoTechniqueLabel(l);
             const accession = typeof formatHistologyAccession === 'function' ? formatHistologyAccession(l, 'prior') : '';
             const prev = accession ? `; prev ${accession}` : '';
             return `${histoSpecimenNo(l, idx)}. ${(l.location || 'UNSPECIFIED SITE').toUpperCase()}: ${diag}, ${bType}${histoSizeSuffix(l)}${prev}`;
-        }).join('\n');
+        }));
 
         const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
         
@@ -1391,7 +1400,8 @@ if (typeof module !== 'undefined' && module.exports) {
         formatChartReviewLesionBlock,
         formatChartReviewLesionsSection,
         generateResultIemrNote,
-        formatLesionPlanIemr
+        formatLesionPlanIemr,
+        generatePathologyOutputs
     };
 }
 

@@ -20,7 +20,7 @@ function bootDermRecord() {
     if (typeof updateScreeningCompleteButton === 'function') updateScreeningCompleteButton();
 
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js?v=224').catch(() => {
+        navigator.serviceWorker.register('sw.js?v=225').catch(() => {
             // Offline cache is optional when opened from file:// or without HTTPS
         });
     }
