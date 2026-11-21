@@ -1127,9 +1127,10 @@ async function saveCurrentChartFromDom(options) {
     }
     if (typeof snapshotProcedureSession === 'function') {
         const snap = snapshotProcedureSession();
-        chart.procedureSession = (typeof isStoredProcedureSessionActive === 'function' && isStoredProcedureSessionActive(snap))
-            ? snap
-            : null;
+        const stillOpen = typeof procedureSessionStillOpen === 'function'
+            ? procedureSessionStillOpen(snap)
+            : (typeof isStoredProcedureSessionActive === 'function' && isStoredProcedureSessionActive(snap));
+        chart.procedureSession = stillOpen ? snap : null;
     }
     if (options?.endVisit) {
         chart.visitSession = null;
@@ -1140,6 +1141,7 @@ async function saveCurrentChartFromDom(options) {
             || examFromDomIsFilled(exam)
             || screening.filled
             || screening.completed
+            || (typeof procedureSessionStillOpen === 'function' && procedureSessionStillOpen(chart.procedureSession))
             || (typeof isStoredProcedureSessionActive === 'function' && isStoredProcedureSessionActive(chart.procedureSession))) {
             chart.visitSession = visitSnap;
         } else if (chart.visitSession?.visitDate === todayVisitKey()) {
@@ -1558,7 +1560,10 @@ async function openPatientChartWork(patient, options) {
         ? seedPatientBillingFromSource(patient)
         : null;
     if (typeof cancelScheduledChartSave === 'function') cancelScheduledChartSave();
-    setCurrentPatient({ ...identity, name, dob, clinician, chartId }, options);
+    setCurrentPatient({ ...identity, name, dob, clinician, chartId }, {
+        ...(options || {}),
+        silentRestore: !!(options && (options.silentRestore || options.resumeAfterLock))
+    });
     if (typeof cancelScheduledChartSave === 'function') cancelScheduledChartSave();
     const billingForChart = seededBilling || (() => {
         const extra = {};
@@ -1596,27 +1601,20 @@ async function openPatientChartWork(patient, options) {
         && restoreProcedureSessionFromChart(chart);
     if (typeof refreshExamCopyStateFromChart === 'function') refreshExamCopyStateFromChart(chart);
     const shouldResumeWorkspace = !!(options?.resumeVisit || options?.resumeAfterLock || restoredVisit || restoredProcedure);
-    if (shouldResumeWorkspace && typeof switchWorkspaceTab === 'function') {
-        if (restoredProcedure) {
-            switchWorkspaceTab('excision-generator', { skipCompleteModal: true, skipPersist: true });
-        } else {
-            const tab = chart?.visitSession?.workspaceTab;
-            if (typeof isClinicalWorkspaceTab === 'function' ? isClinicalWorkspaceTab(tab) : (tab === 'skin-check' || tab === 'excision-generator')) {
-                switchWorkspaceTab(tab, { skipCompleteModal: true, skipPersist: true });
-            }
-        }
-    }
+    if (shouldResumeWorkspace) applyResumedChartWorkspace(chart, restoredProcedure);
     if (typeof setMgmtFilter === 'function' && (!options || !options.keepFilter)) setMgmtFilter('open');
     if (typeof renderManagedLesions === 'function') renderManagedLesions();
     if (typeof updateChartChrome === 'function') updateChartChrome();
     if (typeof updateOutput === 'function') updateOutput();
     if (!options?.silent) {
-        if (restoredProcedure) showToast('Opened chart: ' + name + '. Procedure still in progress.');
+        if (restoredProcedure) showToast(loginResumeMessage(chart, true));
         else if (restoredVisit) showToast('Opened chart: ' + name + '. Visit restored.');
         else showToast('Opened chart: ' + name + '.');
     }
     if (typeof maybePromptConsultType === 'function') {
-        maybePromptConsultType(options);
+        const resumedTab = shouldResumeWorkspace ? resumedChartWorkspaceTab(chart, restoredProcedure) : '';
+        const skipPrompt = !!(options?.skipConsultTypePrompt || resumedTab === 'management');
+        if (!skipPrompt) maybePromptConsultType(options);
     }
     return true;
 }
@@ -1636,40 +1634,101 @@ function chartForLastPatient(saved) {
     return charts.find((chart) => chart.name === saved.name && chart.dob === saved.dob) || null;
 }
 
+function formatResumeDay(isoDate) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate || ''));
+    if (!match) return String(isoDate || '');
+    const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    if (Number.isNaN(parsed.getTime())) return String(isoDate || '');
+    return parsed.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+}
+
+function chooseLoginResumeTarget(input) {
+    const lastChart = input?.lastChart || null;
+    const lastChartId = String(input?.lastChartId || '').trim();
+    const procedureChart = input?.procedureChart || null;
+    const procedureId = String(procedureChart?.id || '');
+    const lastId = String(lastChart?.id || '');
+    if (procedureChart && procedureId && procedureId !== lastId) {
+        return { kind: 'procedure-other', chart: procedureChart };
+    }
+    if (lastChart) return { kind: 'chart', chart: lastChart };
+    if (lastChartId) return { kind: 'missing', chart: null };
+    return { kind: 'none', chart: null };
+}
+
+function resumedChartWorkspaceTab(chart, restoredProcedure) {
+    if (restoredProcedure) return 'excision-generator';
+    const session = chart?.visitSession;
+    const today = typeof todayVisitKey === 'function' ? todayVisitKey() : '';
+    if (!session || !today || session.visitDate !== today || !isVisitSessionActive(session)) return 'management';
+    const tab = session.workspaceTab || 'management';
+    if (tab === 'history' || tab === 'skin-check' || tab === 'excision-generator' || tab === 'consent' || tab === 'management') {
+        return tab;
+    }
+    return 'management';
+}
+
+function loginResumeMessage(chart, procedureOpen) {
+    const name = String(chart?.name || 'the chart').trim() || 'the chart';
+    if (!procedureOpen) return 'Opened ' + name + '.';
+    const saved = chart?.procedureSession || {};
+    const today = typeof todayVisitKey === 'function' ? todayVisitKey() : '';
+    const day = String(saved.visitDate || '');
+    if (day && today && day !== today) {
+        return 'Opened ' + name + '. Procedure from ' + formatResumeDay(day) + ' is still in progress.';
+    }
+    return 'Opened ' + name + '. Procedure still in progress.';
+}
+
+function applyResumedChartWorkspace(chart, restoredProcedure) {
+    const tab = resumedChartWorkspaceTab(chart, restoredProcedure);
+    const clinical = typeof isClinicalWorkspaceTab === 'function'
+        ? isClinicalWorkspaceTab(tab)
+        : (tab === 'history' || tab === 'skin-check' || tab === 'excision-generator' || tab === 'consent');
+    if (clinical && typeof visitClinicalUnlocked === 'function' && !visitClinicalUnlocked()) {
+        if (typeof pendingWorkspaceTab !== 'undefined') pendingWorkspaceTab = tab;
+        return tab;
+    }
+    if (typeof switchWorkspaceTab === 'function') {
+        switchWorkspaceTab(tab, { skipCompleteModal: true, skipPersist: true });
+    }
+    return tab;
+}
+
 async function resumeLastChartAfterLogin() {
     if (typeof openPatientChart !== 'function') return false;
     const last = typeof readLastPatient === 'function' ? readLastPatient() : null;
     const lastChart = chartForLastPatient(last);
-    const activeProcedure = typeof findActiveProcedureChart === 'function'
+    const procedureChart = typeof findActiveProcedureChart === 'function'
         ? findActiveProcedureChart()
         : null;
-    const activeVisit = findActiveVisitChart();
-    const source = lastChart || activeProcedure || activeVisit;
-    if (!source) return false;
-    const chartRecord = lastChart || (source.id ? source : chartForLastPatient(source));
-    const hasActiveVisit = !!(chartRecord && isVisitSessionActive(chartRecord.visitSession));
-    const hasActiveProcedure = !!(chartRecord && typeof isStoredProcedureSessionActive === 'function'
-        && isStoredProcedureSessionActive(chartRecord.procedureSession))
-        || !!(activeProcedure && typeof isStoredProcedureSessionActive === 'function'
-            && isStoredProcedureSessionActive(activeProcedure.procedureSession));
-    const opened = await openPatientChart(patientFromChartOrLast(source), {
+    const target = chooseLoginResumeTarget({
+        lastChart,
+        lastChartId: last?.chartId || '',
+        procedureChart
+    });
+    if (target.kind === 'none') return false;
+    if (target.kind === 'missing') {
+        showToast('That chart is no longer available.');
+        return false;
+    }
+    const opened = await openPatientChart(patientFromChartOrLast(target.chart), {
         silent: true,
         keepFilter: true,
         resumeVisit: true,
         resumeAfterLock: true
     });
     if (!opened) return false;
-    if (hasActiveProcedure && typeof procedureSession !== 'undefined' && procedureSession.started) {
-        showToast('Procedure still in progress. Restored after sign-in.');
-        return 'procedure';
-    }
-    if (hasActiveVisit || (typeof activeWorkspaceTab !== 'undefined'
-        && (typeof isClinicalWorkspaceTab === 'function'
-            ? isClinicalWorkspaceTab(activeWorkspaceTab)
-            : (activeWorkspaceTab === 'skin-check' || activeWorkspaceTab === 'excision-generator')))) {
-        showToast('Visit restored after sign-in.');
-        return 'visit';
-    }
+    const procedureOpen = typeof procedureSessionStillOpen === 'function'
+        ? procedureSessionStillOpen(target.chart.procedureSession)
+        : (typeof isStoredProcedureSessionActive === 'function'
+            && isStoredProcedureSessionActive(target.chart.procedureSession));
+    const resumed = !!(procedureOpen && typeof procedureSession !== 'undefined' && procedureSession.started);
+    showToast(loginResumeMessage(target.chart, resumed));
+    if (resumed) return 'procedure';
+    const session = target.chart.visitSession;
+    const today = todayVisitKey();
+    if (session && session.visitDate === today && isVisitSessionActive(session)) return 'visit';
     return 'chart';
 }
 
@@ -1988,6 +2047,11 @@ async function flushVisitPersistence() {
         if (typeof waitForPendingVaultWrites === 'function') await waitForPendingVaultWrites();
         return { ok: true, skipped: true };
     }
+    if (typeof maybeSaveOpenProcedureForm === 'function') {
+        try { maybeSaveOpenProcedureForm(); } catch (err) {
+            console.warn('Could not save the open procedure form', err);
+        }
+    }
     const errors = [];
     if (typeof saveCurrentChartFromDom === 'function') {
         try { await saveCurrentChartFromDom(); } catch (err) {
@@ -2059,4 +2123,15 @@ function updateChartChrome() {
     if (typeof renderPatientChartSummary === 'function') renderPatientChartSummary();
     if (typeof syncChartLesionWorkspace === 'function') syncChartLesionWorkspace();
     updateHeaderPatient();
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        chooseLoginResumeTarget,
+        resumedChartWorkspaceTab,
+        loginResumeMessage,
+        formatResumeDay,
+        isVisitSessionActive,
+        todayVisitKey
+    };
 }

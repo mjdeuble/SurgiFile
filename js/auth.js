@@ -985,7 +985,7 @@ async function afterVaultLogin() {
         const resumeKind = typeof resumeLastChartAfterLogin === 'function'
             ? await resumeLastChartAfterLogin()
             : false;
-        if (resumeKind !== 'procedure' && resumeKind !== 'visit') {
+        if (!resumeKind && typeof switchWorkspaceTab === 'function') {
             switchWorkspaceTab('management');
         }
         startVaultIdleLock();

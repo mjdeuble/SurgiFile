@@ -34,7 +34,8 @@ function emptyProcedureSession(chartId) {
         siteComplications: {},
         amendLesionId: '',
         amendPanel: '',
-        preStartByLesionId: {}
+        preStartByLesionId: {},
+        visitDate: ''
     };
 }
 
@@ -81,8 +82,11 @@ function procedurePreStartFor(id) {
 
 function snapshotProcedureSession() {
     const today = typeof todayVisitKey === 'function' ? todayVisitKey() : '';
+    const visitDate = procedureSession.started
+        ? (procedureSession.visitDate || today)
+        : today;
     return {
-        visitDate: today,
+        visitDate,
         chartId: procedureSession.chartId || (typeof currentPatient !== 'undefined' ? currentPatient.chartId : '') || '',
         selectedIds: (procedureSession.selectedIds || []).map(String),
         deselectedIds: (procedureSession.deselectedIds || []).map(String),
@@ -103,16 +107,20 @@ function snapshotProcedureSession() {
     };
 }
 
-function isStoredProcedureSessionActive(saved) {
+function procedureSessionStillOpen(saved) {
     if (!saved || !saved.started || saved.completedAt) return false;
-    const today = typeof todayVisitKey === 'function' ? todayVisitKey() : '';
-    if (saved.visitDate && today && saved.visitDate !== today) return false;
     return (saved.selectedIds || []).length > 0 || (saved.lockedIds || []).length > 0;
 }
 
+function isStoredProcedureSessionActive(saved) {
+    return procedureSessionStillOpen(saved);
+}
+
 function findActiveProcedureChart() {
-    const charts = typeof managedCharts !== 'undefined' ? managedCharts : [];
-    return charts.find((chart) => isStoredProcedureSessionActive(chart.procedureSession)) || null;
+    const charts = (typeof managedCharts !== 'undefined' ? managedCharts : [])
+        .filter((chart) => procedureSessionStillOpen(chart.procedureSession));
+    charts.sort((a, b) => String(b.procedureSession?.startedAt || '').localeCompare(String(a.procedureSession?.startedAt || '')));
+    return charts[0] || null;
 }
 
 function catchProcedureVaultWrite(promise, kind) {
@@ -164,6 +172,7 @@ function restoreProcedureSessionFromChart(chart) {
         lockedIds: (saved.lockedIds || saved.selectedIds || []).map(String),
         started: true,
         startedAt: saved.startedAt || new Date().toISOString(),
+        visitDate: saved.visitDate || '',
         completedAt: '',
         detailLesionId: saved.detailLesionId || '',
         complications: normalizeEpisodeComplications(saved.complications),
@@ -1433,6 +1442,9 @@ function startProcedureSession() {
     const start = async () => {
         procedureSession.started = true;
         procedureSession.startedAt = new Date().toISOString();
+        if (!procedureSession.visitDate) {
+            procedureSession.visitDate = typeof todayVisitKey === 'function' ? todayVisitKey() : '';
+        }
         procedureSession.completedAt = '';
         procedureSession.lockedIds = procedureSession.selectedIds.map(String);
         procedureSession.preStartByLesionId = captureProcedurePreStartSnapshots(
@@ -2037,4 +2049,14 @@ function renderProcedureWorkspace() {
     if (typeof renderProcedureAbortList === 'function') renderProcedureAbortList();
     setProcedureDetailFormLocked(lockForm);
     syncProcedurePhaseUi();
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        procedureSessionStillOpen,
+        isStoredProcedureSessionActive,
+        findActiveProcedureChart,
+        snapshotProcedureSession,
+        emptyProcedureSession
+    };
 }
