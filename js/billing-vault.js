@@ -223,7 +223,7 @@ async function migrateBillingQueueStatuses() {
     }
 }
 
-async function createOrUpdateBillingFromLesion(lesion) {
+async function createOrUpdateBillingFromLesion(lesion, options) {
     if (!lesion?.id) return null;
     if (typeof applyInferredBillingLesionType === 'function') {
         applyInferredBillingLesionType(lesion);
@@ -250,7 +250,7 @@ async function createOrUpdateBillingFromLesion(lesion) {
     if (managed) {
         managed.billingRecordId = bill.id;
         if (lesion.billingLesionType) managed.billingLesionType = lesion.billingLesionType;
-        if (isVaultLoggedIn()) {
+        if (isVaultLoggedIn() && !(options && options.skipLesionWrite)) {
             try { await writeManagedLesion(managed); } catch (err) { /* billing file is the source of truth */ }
         }
     }

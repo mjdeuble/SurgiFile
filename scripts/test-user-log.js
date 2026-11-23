@@ -19,6 +19,7 @@ function eq(actual, expected, label) {
 
 function memoryDir() {
     const files = new Map();
+    const dirs = new Map();
     return {
         files,
         write(name, text) { files.set(name, String(text)); },
@@ -29,6 +30,21 @@ function memoryDir() {
                 throw err;
             }
             return files.get(name);
+        },
+        async getDirectoryHandle(name, opts) {
+            if (!dirs.has(name)) {
+                if (!(opts && opts.create)) {
+                    const err = new Error('missing');
+                    err.name = 'NotFoundError';
+                    throw err;
+                }
+                dirs.set(name, memoryDir());
+            }
+            return dirs.get(name);
+        },
+        async *entries() {
+            for (const name of files.keys()) yield [name, { kind: 'file' }];
+            for (const name of dirs.keys()) yield [name, { kind: 'directory' }];
         }
     };
 }
@@ -115,11 +131,24 @@ async function roundTrip() {
 
     await log.appendUserLogPut('lesion', { id: 'spot-1', location: 'Left cheek', updatedAt: '2026-11-02T00:00:00.000Z', plan: 'Monitor' });
     await log.appendUserLogPut('lesion', { id: 'spot-2', location: 'Right arm', updatedAt: '2026-11-02T01:00:00.000Z' });
+    const additions = await dir.getDirectoryHandle('records.additions');
+    const savedNames = [];
+    for await (const [name, handle] of additions.entries()) {
+        if (handle.kind === 'file') savedNames.push(name);
+    }
+    eq(savedNames.length, 2, 'each save writes its own small file');
+    eq(dir.files.get('records.additions.log'), '', 'a save does not copy the older additions log');
     const loaded = await log.loadClinicFromUserLog();
     eq(loaded, true, 'sign-in reads the finished copy and the additions');
     eq(global.managedLesions.map((item) => item.id).sort(), ['spot-1', 'spot-2'], 'additions are applied on top of the finished copy');
     eq(global.managedLesions.find((item) => item.id === 'spot-1').plan, 'Monitor', 'the newer copy of a lesion replaces the one in the finished file');
     eq(global.managedCharts.length, 1, 'charts from the finished copy are kept');
+
+    additions.write('00000050.log', 'DR1 50 8\n{"cut":');
+    await log.appendUserLogPut('lesion', { id: 'spot-3', location: 'Shin', updatedAt: '2026-11-03T00:00:00.000Z' });
+    await log.loadClinicFromUserLog();
+    eq(additions.files.has('00000050.log'), false, 'an unfinished small save is removed');
+    eq(global.managedLesions.some((item) => item.id === 'spot-3'), true, 'a later save is kept when an earlier small file is unfinished');
 
     dir.write('records.additions.log', dir.files.get('records.additions.log') + 'DR1 8 30\n{"cut":');
     await log.loadClinicFromUserLog();

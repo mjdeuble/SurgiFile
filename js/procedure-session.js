@@ -1824,14 +1824,14 @@ async function endProcedureSession() {
             const sessionIdx = lesions.findIndex((item) => String(item.id) === String(id));
             if (sessionIdx !== -1) lesions[sessionIdx] = { ...lesions[sessionIdx], ...lesion };
             try {
-                if (typeof persistSessionLesionToVault === 'function' && isVaultLoggedIn()) {
-                    await persistSessionLesionToVault(lesion);
-                }
-                if (typeof setManagedLesionStatus === 'function' && isVaultLoggedIn()) {
-                    await setManagedLesionStatus(id, 'awaiting_histology', lesion.procedureComplications || 'Procedure completed');
+                if (typeof appendLesionHistory === 'function') {
+                    appendLesionHistory(lesion, 'status:awaiting_histology', lesion.procedureComplications || 'Procedure completed');
                 }
                 if (typeof createOrUpdateBillingFromLesion === 'function') {
-                    await createOrUpdateBillingFromLesion(lesion);
+                    await createOrUpdateBillingFromLesion(lesion, { skipLesionWrite: true });
+                }
+                if (typeof persistSessionLesionToVault === 'function' && isVaultLoggedIn()) {
+                    await persistSessionLesionToVault(lesion);
                 }
             } catch (err) {
                 lesion.managementStatus = 'awaiting_histology';

@@ -1,14 +1,16 @@
-/* One finished clinic copy plus a file of additions, per signed-in user.
-   Saves add a sealed record to the additions file. A tidy on sign-in rewrites
-   the finished copy when the additions have grown, or when notes and bills
-   are due to be removed. The previous finished copy is kept until the new
-   one has been read back. */
+/* One finished clinic copy plus one small file per save, per signed-in user.
+   A save writes only that record. It does not copy the earlier saves.
+   Older clinics may still have those saves in records.additions.log.
+   A tidy on sign-in rewrites the finished copy when the additions have
+   grown, or when notes and bills are due to be removed. The previous
+   finished copy is kept until the new one has been read back. */
 
 const USER_LOG_KINDS = ['lesion', 'chart', 'billing', 'visit', 'consent'];
 const USER_LOG_SNAPSHOT = 'records.snapshot.json.enc';
 const USER_LOG_SNAPSHOT_PREV = 'records.snapshot.prev.json.enc';
 const USER_LOG_SNAPSHOT_NEXT = 'records.snapshot.next.json.enc';
 const USER_LOG_ADDITIONS = 'records.additions.log';
+const USER_LOG_ADDITIONS_DIR = 'records.additions';
 const USER_LOG_TIDY_BYTES = 1536 * 1024;
 const USER_LOG_TIDY_COUNT = 40;
 const USER_LOG_DAMAGED = 'The additions file has a damaged entry. Later saves were left unloaded.';
@@ -239,6 +241,75 @@ async function userLogReadOptional(dir, name) {
     }
 }
 
+function userLogAdditionName(seq) {
+    return String(seq).padStart(8, '0') + '.log';
+}
+
+function userLogMissing(err) {
+    return !!(err && (err.name === 'NotFoundError' || err.name === 'NotFound'));
+}
+
+async function userLogOpenAdditionsDir(dir, create) {
+    try {
+        return await dir.getDirectoryHandle(USER_LOG_ADDITIONS_DIR, { create: !!create });
+    } catch (err) {
+        if (userLogMissing(err)) return null;
+        throw err;
+    }
+}
+
+async function userLogListAdditionNames(additionsDir) {
+    const names = [];
+    if (!additionsDir || typeof additionsDir.entries !== 'function') return names;
+    for await (const [name, handle] of additionsDir.entries()) {
+        if (handle && handle.kind === 'file' && /\.log$/i.test(name)) names.push(name);
+    }
+    names.sort();
+    return names;
+}
+
+async function clearUserLogAdditionFiles(dir) {
+    const additionsDir = await userLogOpenAdditionsDir(dir, false);
+    if (!additionsDir || typeof deleteTextFile !== 'function') return;
+    const names = await userLogListAdditionNames(additionsDir);
+    for (const name of names) {
+        await deleteTextFile(additionsDir, name);
+    }
+}
+
+async function readUserLogAdditionPieces(dir) {
+    const additionsDir = await userLogOpenAdditionsDir(dir, false);
+    if (!additionsDir) return { entries: [], bytes: 0, count: 0, damaged: '', torn: 0 };
+    const names = await userLogListAdditionNames(additionsDir);
+    const entries = [];
+    let bytes = 0;
+    let damaged = '';
+    let torn = 0;
+    for (const name of names) {
+        let text = '';
+        try {
+            text = await readTextFile(additionsDir, name);
+        } catch (err) {
+            damaged = USER_LOG_DAMAGED;
+            continue;
+        }
+        const parsed = parseUserLogAdditions(text);
+        if (parsed.entries.length) {
+            entries.push.apply(entries, parsed.entries);
+            bytes += parsed.completeBytes;
+            if (parsed.tornTail && typeof writeTextFile === 'function') {
+                const kept = userLogDecode(userLogEncode(text).subarray(0, parsed.completeBytes));
+                try { await writeTextFile(additionsDir, name, kept); } catch (err) { /* the good entry is still loaded */ }
+            }
+        } else if (parsed.tornTail && typeof deleteTextFile === 'function') {
+            torn += 1;
+            try { await deleteTextFile(additionsDir, name); } catch (err) { /* an unfinished save is left out */ }
+        }
+        if (parsed.damaged) damaged = parsed.damaged;
+    }
+    return { entries, bytes, count: entries.length, damaged, torn };
+}
+
 async function userLogDecryptSnapshot(text, key) {
     const envelope = JSON.parse(text);
     const body = await decryptJson(key, envelope);
@@ -328,6 +399,7 @@ async function publishUserLogSnapshot(dir, records, seq, key) {
         throw new Error('The clinic record copy did not match what was written.');
     }
     await writeTextFile(dir, USER_LOG_ADDITIONS, '');
+    await clearUserLogAdditionFiles(dir);
     if (typeof deleteTextFile === 'function') await deleteTextFile(dir, USER_LOG_SNAPSHOT_NEXT);
     await activateUserLog(written.body.records, written.body.seq, 0, 0);
     return written.body;
@@ -341,7 +413,9 @@ async function appendUserLogEntry(entry) {
     if (plain.record) plain.record = userLogClone(plain.record);
     const envelope = await encryptJson(vaultAuth.key, plain);
     const frame = frameUserLogEntry(seq, JSON.stringify(envelope));
-    await appendTextFile(dir, USER_LOG_ADDITIONS, frame);
+    const additionsDir = await userLogOpenAdditionsDir(dir, true);
+    if (!additionsDir) throw new Error('The clinic additions folder could not be opened.');
+    await writeTextFile(additionsDir, userLogAdditionName(seq), frame);
     userLogAdditionsBytes += userLogUtf8Length(frame);
     userLogAdditionsCount += 1;
 }
@@ -397,8 +471,9 @@ async function loadClinicFromUserLog() {
             snapshot = null;
         }
     }
+    const pieces = await readUserLogAdditionPieces(dir);
     if (!snapshot) {
-        if (snapshotFile.found || prevFile.found || additionsFile.found) {
+        if (snapshotFile.found || prevFile.found || additionsFile.found || pieces.count) {
             const err = new Error('The clinic record file could not be read. The older separate files were left unused so a newer save is not replaced by an old copy.');
             err.userLogUnreadable = true;
             throw err;
@@ -411,14 +486,15 @@ async function loadClinicFromUserLog() {
         const kept = userLogDecode(userLogEncode(additionsFile.text).subarray(0, parsed.completeBytes));
         try { await writeTextFile(dir, USER_LOG_ADDITIONS, kept); } catch (err) { /* the good entries are still loaded */ }
     }
-    const decoded = await decodeUserLogFrames(parsed.entries, vaultAuth.key);
+    const combined = parsed.entries.concat(pieces.entries).sort((a, b) => a.seq - b.seq);
+    const decoded = await decodeUserLogFrames(combined, vaultAuth.key);
     const records = applyUserLogEntries(snapshot.records, decoded.decoded);
     const seq = userLogNextSequence(snapshot, decoded.decoded);
-    await activateUserLog(records, seq - 1, parsed.completeBytes, parsed.count);
+    await activateUserLog(records, seq - 1, parsed.completeBytes + pieces.bytes, parsed.count + pieces.count);
     if (usedPrev) userLogTell('The newest record copy could not be read. Opened the previous copy.');
-    if (!additionsFile.found) userLogTell('The additions file is missing. Showing records as of the last tidy.');
-    if (parsed.damaged || decoded.damaged) userLogTell(parsed.damaged || decoded.damaged);
-    else if (parsed.tornTail) userLogTell('The last save was incomplete and was left out.');
+    if (!additionsFile.found && !pieces.count) userLogTell('The additions file is missing. Showing records as of the last tidy.');
+    if (parsed.damaged || pieces.damaged || decoded.damaged) userLogTell(parsed.damaged || pieces.damaged || decoded.damaged);
+    else if (parsed.tornTail || pieces.torn) userLogTell('The last save was incomplete and was left out.');
     try {
         await maybeTidyUserLog(dir, vaultAuth.key);
     } catch (err) {

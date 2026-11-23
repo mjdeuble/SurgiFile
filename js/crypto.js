@@ -3,10 +3,13 @@
 const VAULT_KDF_ITERATIONS = 210000;
 
 function bytesToB64(bytes) {
-    let binary = '';
     const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    arr.forEach((b) => { binary += String.fromCharCode(b); });
-    return btoa(binary);
+    const parts = [];
+    const chunk = 0x8000;
+    for (let i = 0; i < arr.length; i += chunk) {
+        parts.push(String.fromCharCode.apply(null, arr.subarray(i, i + chunk)));
+    }
+    return btoa(parts.join(''));
 }
 
 function b64ToBytes(b64) {
