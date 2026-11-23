@@ -1006,23 +1006,54 @@ function persistVisitGeneratedDocuments() {
     });
 }
 
+function ensurePathologyPrintFrame() {
+    let frame = document.getElementById('pathologyPrintFrame');
+    if (frame) return frame;
+    frame = document.createElement('iframe');
+    frame.id = 'pathologyPrintFrame';
+    frame.title = 'Pathology print';
+    frame.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(frame);
+    return frame;
+}
+
 function printSupplementaryReportSheet(lesionList) {
     const biopsyLesions = Array.isArray(lesionList) ? lesionList : currentHistologySpecimens();
-    if (biopsyLesions.length === 0) return;
-
-    const printHtml = buildSupplementaryPathologyHtml(biopsyLesions, { autoPrint: true });
-    const printWin = window.open('', '_blank', 'width=800,height=900');
-    if (printWin) {
-        printWin.document.open();
-        printWin.document.write(printHtml);
-        printWin.document.close();
+    if (biopsyLesions.length === 0) {
+        showToast('No attached pathology report to print yet.');
+        return;
+    }
+    const printHtml = buildSupplementaryPathologyHtml(biopsyLesions, { autoPrint: false });
+    const frame = ensurePathologyPrintFrame();
+    const win = frame && frame.contentWindow;
+    const doc = win && win.document;
+    if (!win || !doc || typeof win.print !== 'function') {
+        showToast('Could not open the print dialog.');
+        return;
+    }
+    let started = false;
+    const startPrint = () => {
+        if (started) return;
+        started = true;
+        frame.onload = null;
+        try {
+            if (typeof win.focus === 'function') win.focus();
+            win.print();
+        } catch (err) {
+            showToast('Could not open the print dialog.');
+            return;
+        }
         const suppText = document.getElementById('supplementaryReportText')?.value || '';
-        markOutputCopied('supp', suppText);
+        if (typeof markOutputCopied === 'function') markOutputCopied('supp', suppText);
         persistVisitGeneratedDocuments();
         showToast('Supplementary pathology report sent to printer. Saved in generated documents.');
-    } else {
-        showToast('Unable to open print window. Please check popup permissions.');
-    }
+    };
+    frame.onload = startPrint;
+    doc.open();
+    doc.write(printHtml);
+    doc.close();
+    if (doc.readyState === 'complete') startPrint();
+    else if (typeof setTimeout === 'function') setTimeout(startPrint, 200);
 }
 
 function generateReceptionMessage() {
@@ -1401,7 +1432,8 @@ if (typeof module !== 'undefined' && module.exports) {
         formatChartReviewLesionsSection,
         generateResultIemrNote,
         formatLesionPlanIemr,
-        generatePathologyOutputs
+        generatePathologyOutputs,
+        printSupplementaryReportSheet
     };
 }
 
