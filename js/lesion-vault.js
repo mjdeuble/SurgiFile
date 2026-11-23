@@ -1539,6 +1539,7 @@ async function applyHistologyCaseToSiblings(sourceId, caseNumber) {
     const siblings = histologyCaseShareSiblings(source);
     let applied = 0;
     let skipped = 0;
+    const pending = [];
     for (const item of siblings) {
         const existing = normalizeHistologyCaseNumber(item.histologyCaseNumber);
         if (existing && existing !== num) {
@@ -1548,15 +1549,10 @@ async function applyHistologyCaseToSiblings(sourceId, caseNumber) {
         if (existing === num) continue;
         item.histologyCaseNumber = num;
         item.updatedAt = new Date().toISOString();
-        if (typeof saveManagedLesionRecord === 'function') {
-            await saveManagedLesionRecord(item, 'histology-case', 'Lab case ' + num, { silent: true });
-        } else if (typeof writeManagedLesion === 'function') {
-            await writeManagedLesion(item);
-            upsertManagedLesionMemory(item);
-        }
+        pending.push(saveManagedLesionRecord(item, 'histology-case', 'Lab case ' + num, { silent: true }));
         applied += 1;
     }
-    if (applied && typeof renderManagedLesions === 'function') renderManagedLesions();
+    if (pending.length) await Promise.all(pending);
     if (applied && typeof renderChartSidebar === 'function') renderChartSidebar();
     return { applied, skipped };
 }
@@ -3675,6 +3671,16 @@ async function saveManagedLesionRecord(lesion, action, note, options) {
     }
 }
 
+async function saveHistologyLesionAndBill(lesion, action, note, options) {
+    const billSave = typeof syncBillingFromLesion === 'function'
+        ? syncBillingFromLesion(lesion).catch((err) => {
+            console.warn('Could not update the bill from this result', err);
+        })
+        : Promise.resolve();
+    const lesionSave = saveManagedLesionRecord(lesion, action, note, options);
+    await Promise.all([lesionSave, billSave]);
+}
+
 async function setManagedLesionStatus(id, status, note, extras) {
     const lesion = managedLesions.find((item) => String(item.id) === String(id));
     if (!lesion) return;
@@ -3765,10 +3771,7 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
             note: [resultText, accession && ('Lab case ' + accession)].filter(Boolean).join(' · '),
             planAfter: lesion.currentPlan || ''
         });
-        if (typeof syncBillingFromLesion === 'function') {
-            await syncBillingFromLesion(lesion);
-        }
-        await saveManagedLesionRecord(lesion, 'histology', resultText || lesion.histologyResult || '', { silent: true });
+        await saveHistologyLesionAndBill(lesion, 'histology', resultText || lesion.histologyResult || '', { silent: true });
         return { lesion, resultOnly: true };
     }
     lesion.resultPlan = action === 'further_management' || action === 'no_followup' ? action : (lesion.resultPlan || '');
@@ -3796,9 +3799,11 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
         note: timelineNote,
         planAfter
     });
-    if (typeof syncBillingFromLesion === 'function') {
-        await syncBillingFromLesion(lesion);
-    }
+    const billSave = typeof syncBillingFromLesion === 'function'
+        ? syncBillingFromLesion(lesion).catch((err) => {
+            console.warn('Could not update the bill from this result', err);
+        })
+        : Promise.resolve();
     const note = [
         extras.callNote
             ? (String(resultText || '').trim() ? resultText + ' · ' + extras.callNote : extras.callNote)
@@ -3815,7 +3820,10 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
             return { lesion, needResult: true };
         }
         lesion.currentPlan = 'Further management opened';
-        await saveManagedLesionRecord(lesion, reviewDisposition ? 'plan' : 'histology', note);
+        await Promise.all([
+            billSave,
+            saveManagedLesionRecord(lesion, reviewDisposition ? 'plan' : 'histology', note)
+        ]);
         const child = await spawnFurtherManagementChild(lesion, {
             allowWithoutHistology: reviewDisposition,
             contact: reviewDisposition ? 'advised_now' : (fileNoCall ? 'mark_for_contact' : contact),
@@ -3836,20 +3844,29 @@ async function recordHistologyOutcome(id, resultText, nextAction, billingType, e
     if (action === 'no_followup') {
         const billingHold = !lesionCanCloseNoFollowup(lesion);
         const closurePlan = reviewClosurePlanLine(lesion, billingHold);
-        await setManagedLesionStatus(id, 'no_followup', note, {
-            currentPlan: closurePlan
-        });
+        await Promise.all([
+            billSave,
+            setManagedLesionStatus(id, 'no_followup', note, {
+                currentPlan: closurePlan
+            })
+        ]);
         return { lesion, closed: true, billingHold, closurePlan };
     }
     if (contact === 'appointment_requested') {
         lesion.managementStatus = 'appointment_requested';
         lesion.currentPlan = planAfter;
-        await saveManagedLesionRecord(lesion, 'histology', note);
+        await Promise.all([
+            billSave,
+            saveManagedLesionRecord(lesion, 'histology', note)
+        ]);
         return { lesion, reception: true };
     }
     lesion.managementStatus = 'needs_contact';
     lesion.currentPlan = planAfter;
-    await saveManagedLesionRecord(lesion, 'histology', note);
+    await Promise.all([
+        billSave,
+        saveManagedLesionRecord(lesion, 'histology', note)
+    ]);
     return { lesion };
 }
 
@@ -4389,6 +4406,8 @@ if (typeof module !== 'undefined' && module.exports) {
         lesionLifecycleStatus,
         spawnFurtherManagementChild,
         recordHistologyOutcome,
+        saveHistologyLesionAndBill,
+        applyHistologyCaseToSiblings,
         clearSavedHistologyResult,
         applyAdviceFromContact,
         setManagedLesionStatus,

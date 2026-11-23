@@ -201,9 +201,18 @@ function uniqueVisitReviewLesionIds(ids) {
     return out;
 }
 
-function markVisitReviewAndRefreshOutput(id) {
+function markVisitReviewAndRefreshOutput(id, options) {
     if (typeof touchVisitReviewLesion === 'function') touchVisitReviewLesion(id);
-    if (typeof updateOutput === 'function') updateOutput();
+    if (typeof updateOutput !== 'function') return;
+    if (options && options.deferNote) {
+        setTimeout(() => {
+            try { updateOutput(); } catch (err) {
+                console.warn('Could not refresh the visit note', err);
+            }
+        }, 0);
+        return;
+    }
+    updateOutput();
 }
 
 function touchVisitReviewLesion(id) {

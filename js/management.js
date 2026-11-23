@@ -3613,8 +3613,8 @@ async function submitManageLesionModal() {
         }
         showToast(message);
         if (typeof markVisitReviewAndRefreshOutput === 'function') {
-            markVisitReviewAndRefreshOutput(id);
-            if (saved?.openChildId) markVisitReviewAndRefreshOutput(saved.openChildId);
+            markVisitReviewAndRefreshOutput(id, { deferNote: true });
+            if (saved?.openChildId) markVisitReviewAndRefreshOutput(saved.openChildId, { deferNote: true });
         }
         if (saved?.needResult) {
             showToast('Save a histology result before opening further management.');
@@ -3820,7 +3820,7 @@ async function submitHistologyModal() {
             if (idx !== -1) Object.assign(lesions[idx], saved.lesion);
         }
         if (typeof selectedChartLesionId !== 'undefined') selectedChartLesionId = id;
-        if (typeof markVisitReviewAndRefreshOutput === 'function') markVisitReviewAndRefreshOutput(id);
+        if (typeof markVisitReviewAndRefreshOutput === 'function') markVisitReviewAndRefreshOutput(id, { deferNote: true });
         const awaitingQueue = typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive()
             && typeof mgmtActiveFilter !== 'undefined' && mgmtActiveFilter === 'awaiting_histology';
         if (fromInspector && awaitingQueue && typeof setMgmtFilter === 'function') {
@@ -3909,14 +3909,17 @@ async function confirmClearHistologyResult() {
             if (idx === -1) managedLesions.unshift(lesion);
             else if (managedLesions[idx] !== lesion) Object.assign(managedLesions[idx], lesion);
         }
-        if (typeof saveManagedLesionRecord === 'function') {
-            await saveManagedLesionRecord(lesion, 'histology:cleared', 'Result cleared', { silent: true });
-        }
-        if (typeof syncBillingFromLesion === 'function') {
-            try { await syncBillingFromLesion(lesion); } catch (err) { /* the lesion copy is already cleared */ }
-        }
+        const lesionSave = typeof saveManagedLesionRecord === 'function'
+            ? saveManagedLesionRecord(lesion, 'histology:cleared', 'Result cleared', { silent: true })
+            : Promise.resolve();
+        const billSave = typeof syncBillingFromLesion === 'function'
+            ? syncBillingFromLesion(lesion).catch((err) => {
+                console.warn('Could not update the bill from this result', err);
+            })
+            : Promise.resolve();
+        await Promise.all([lesionSave, billSave]);
         closeClearHistologyResult();
-        if (typeof markVisitReviewAndRefreshOutput === 'function') markVisitReviewAndRefreshOutput(id);
+        if (typeof markVisitReviewAndRefreshOutput === 'function') markVisitReviewAndRefreshOutput(id, { deferNote: true });
         const practice = typeof practiceWorkspaceActive === 'function' && practiceWorkspaceActive();
         const filter = typeof normalizeMgmtFilter === 'function'
             ? normalizeMgmtFilter(typeof mgmtActiveFilter !== 'undefined' ? mgmtActiveFilter : '')
