@@ -123,7 +123,20 @@ async function closeWritableSafely(writable) {
     }
 }
 
-async function writeTextFileNow(dirHandle, name, text) {
+async function writeTextFileNow(dirHandle, name, text, options) {
+    if (options && options.fresh) {
+        const destHandle = await dirHandle.getFileHandle(name, { create: true });
+        const destWritable = await destHandle.createWritable();
+        try {
+            await destWritable.write(text);
+            await closeWritableSafely(destWritable);
+        } catch (err) {
+            try { await destWritable.abort(); } catch (abortErr) { /* a new file can be removed */ }
+            try { await deleteTextFile(dirHandle, name); } catch (deleteErr) { /* an unfinished new file is left out on the next sign-in */ }
+            throw err;
+        }
+        return;
+    }
     const tmpName = String(name) + '.tmp';
     const tmpHandle = await dirHandle.getFileHandle(tmpName, { create: true });
     const tmpWritable = await tmpHandle.createWritable();
@@ -146,8 +159,8 @@ async function writeTextFileNow(dirHandle, name, text) {
     await deleteTextFile(dirHandle, tmpName);
 }
 
-async function writeTextFile(dirHandle, name, text) {
-    const run = enqueueVaultWrite(dirHandle, name, () => writeTextFileNow(dirHandle, name, text));
+async function writeTextFile(dirHandle, name, text, options) {
+    const run = enqueueVaultWrite(dirHandle, name, () => writeTextFileNow(dirHandle, name, text, options));
     pendingVaultWrites.add(run);
     try {
         return await run;

@@ -19,6 +19,8 @@ let userLogActive = false;
 let userLogNextSeq = 1;
 let userLogAdditionsBytes = 0;
 let userLogAdditionsCount = 0;
+let userLogDirHandle = null;
+let userLogAdditionsHandle = null;
 
 function userLogIsActive() {
     return userLogActive;
@@ -29,6 +31,8 @@ function userLogResetSession() {
     userLogNextSeq = 1;
     userLogAdditionsBytes = 0;
     userLogAdditionsCount = 0;
+    userLogDirHandle = null;
+    userLogAdditionsHandle = null;
 }
 
 function userLogUtf8Length(text) {
@@ -407,15 +411,23 @@ async function publishUserLogSnapshot(dir, records, seq, key) {
 
 async function appendUserLogEntry(entry) {
     if (!userLogActive || typeof getUserDir !== 'function' || typeof vaultAuth === 'undefined' || !vaultAuth.key) return;
-    const dir = await getUserDir(vaultAuth.username, true);
+    if (!userLogDirHandle) userLogDirHandle = await getUserDir(vaultAuth.username, true);
+    const dir = userLogDirHandle;
     const seq = takeUserLogSeq();
     const plain = Object.assign({}, entry, { v: 1, seq });
     if (plain.record) plain.record = userLogClone(plain.record);
     const envelope = await encryptJson(vaultAuth.key, plain);
     const frame = frameUserLogEntry(seq, JSON.stringify(envelope));
-    const additionsDir = await userLogOpenAdditionsDir(dir, true);
+    if (!userLogAdditionsHandle) userLogAdditionsHandle = await userLogOpenAdditionsDir(dir, true);
+    const additionsDir = userLogAdditionsHandle;
     if (!additionsDir) throw new Error('The clinic additions folder could not be opened.');
-    await writeTextFile(additionsDir, userLogAdditionName(seq), frame);
+    try {
+        await writeTextFile(additionsDir, userLogAdditionName(seq), frame, { fresh: true });
+    } catch (err) {
+        userLogDirHandle = null;
+        userLogAdditionsHandle = null;
+        throw err;
+    }
     userLogAdditionsBytes += userLogUtf8Length(frame);
     userLogAdditionsCount += 1;
 }

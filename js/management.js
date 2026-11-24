@@ -2300,27 +2300,39 @@ function applyBillingSuggestion(id) {
 
 async function persistProcessedBilling(bill, codes, extra) {
     const silentToast = !!(extra && extra.silentToast);
+    const markProcessed = !!(extra && extra.markProcessed);
+    const silentRender = !!(extra && extra.silentRender);
     if (extra) {
         extra = { ...extra };
         delete extra.silentToast;
+        delete extra.markProcessed;
+        delete extra.silentRender;
     }
     const suggestion = suggestMbsItems(billingViewModel(bill));
+    const now = new Date().toISOString();
     bill.assignedMbsItems = codes;
     bill.suggestedMbsItems = suggestion.summary;
-    bill.status = 'confirmed';
-    bill.confirmedAt = new Date().toISOString();
-    bill.processedAt = '';
+    bill.status = markProcessed ? 'processed' : 'confirmed';
+    bill.confirmedAt = now;
+    bill.processedAt = markProcessed ? now : '';
+    if (markProcessed && typeof billingProcessedExpiresAt === 'function') {
+        bill.expiresAt = billingProcessedExpiresAt(now);
+    }
     if (extra) Object.assign(bill, extra);
     const lesion = managedLesions.find((item) => String(item.id) === String(bill.lesionId));
+    const lesionAction = markProcessed ? 'billing:processed' : 'billing:confirmed';
+    const billAction = markProcessed ? 'processed' : 'confirmed';
     if (lesion) {
         lesion.assignedMbsItems = codes;
         lesion.suggestedMbsItems = suggestion.summary;
-        lesion.billingStatus = 'confirmed';
-        if (isVaultLoggedIn()) {
-            try { await saveManagedLesionRecord(lesion, 'billing:confirmed', codes, { silent: true }); } catch (err) { /* keep billing record even if lesion write fails */ }
-        }
+        lesion.billingStatus = markProcessed ? 'processed' : 'confirmed';
+        if (markProcessed) lesion.billingProcessedAt = now;
     }
-    await saveManagedBillingRecord(bill, 'confirmed', codes);
+    const lesionSave = lesion && isVaultLoggedIn() && typeof saveManagedLesionRecord === 'function'
+        ? saveManagedLesionRecord(lesion, lesionAction, codes, { silent: true }).catch(() => { /* keep the bill even if the lesion write fails */ })
+        : Promise.resolve();
+    const billSave = saveManagedBillingRecord(bill, billAction, codes);
+    await Promise.all([lesionSave, billSave]);
     if (lesion
         && typeof lesionCanCloseNoFollowup === 'function'
         && lesionCanCloseNoFollowup(lesion)
@@ -2331,10 +2343,14 @@ async function persistProcessedBilling(bill, codes, extra) {
         await setManagedLesionStatus(lesion.id, 'no_followup', 'Billing confirmed', { currentPlan: 'No follow-up' });
     }
     if (!silentToast) {
-        showToast('Billing confirmed: ' + codes + '. Print for the practice manager from Billing.');
+        showToast(markProcessed
+            ? 'Billing marked processed: ' + codes + '.'
+            : 'Billing confirmed: ' + codes + '. Print for the practice manager from Billing.');
     }
-    renderManagedLesions();
-    if (typeof refreshProcedureCompleteOutputs === 'function') refreshProcedureCompleteOutputs();
+    if (!silentRender) {
+        renderManagedLesions();
+        if (typeof refreshProcedureCompleteOutputs === 'function') refreshProcedureCompleteOutputs();
+    }
     return lesion;
 }
 

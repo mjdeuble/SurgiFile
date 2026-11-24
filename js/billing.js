@@ -1436,20 +1436,12 @@ async function markVisitLesionsBillingProcessed(lesionList) {
     const list = lesionList || [];
     if (!list.length) return { processed: 0, codes: [] };
     const confirmed = typeof confirmSameDaySessionBilling === 'function'
-        ? await confirmSameDaySessionBilling(list)
+        ? await confirmSameDaySessionBilling(list, { markProcessed: true })
         : { confirmed: 0, codes: [] };
-    const ids = [];
-    list.forEach((lesion) => {
-        const bill = typeof billingForLesion === 'function' ? billingForLesion(lesion.id) : null;
-        if (bill && bill.status === 'confirmed') ids.push(bill.id);
-    });
-    if (ids.length && typeof markBillingsAsProcessed === 'function') {
-        await markBillingsAsProcessed(ids, { silentToast: true });
-    }
-    return { processed: ids.length, codes: confirmed.codes || [] };
+    return { processed: confirmed.confirmed || 0, codes: confirmed.codes || [] };
 }
 
-async function confirmSameDaySessionBilling(lesionList) {
+async function confirmSameDaySessionBilling(lesionList, options) {
     const readyLesions = [];
     const seen = new Set();
     (lesionList || []).forEach((lesion) => {
@@ -1465,20 +1457,26 @@ async function confirmSameDaySessionBilling(lesionList) {
     const summary = procedureSessionBillingSummary(readyLesions);
     const readyRows = (summary.rows || []).filter((row) => billingRowReadyToProcess(row));
     if (!readyRows.length) return { confirmed: 0, codes: [], doctorText: summary.doctorText || '' };
-    const codes = [];
+    const markProcessed = !!(options && options.markProcessed);
+    const saves = [];
     for (const row of readyRows) {
-        let bill = typeof billingForLesion === 'function' ? billingForLesion(row.lesion.id) : null;
-        if (!bill && typeof createOrUpdateBillingFromLesion === 'function') {
-            bill = await createOrUpdateBillingFromLesion(row.lesion);
-        }
-        if (!bill || (typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill))) {
-            continue;
-        }
-        if (typeof persistProcessedBilling === 'function') {
-            await persistProcessedBilling(bill, row.codes, { silentToast: true });
-        }
-        codes.push(row.codes);
+        saves.push((async () => {
+            let bill = typeof billingForLesion === 'function' ? billingForLesion(row.lesion.id) : null;
+            if (!bill && typeof createOrUpdateBillingFromLesion === 'function') {
+                bill = await createOrUpdateBillingFromLesion(row.lesion);
+            }
+            if (!bill || (typeof billingHasBeenSent === 'function' && billingHasBeenSent(bill))) return '';
+            if (typeof persistProcessedBilling === 'function') {
+                await persistProcessedBilling(bill, row.codes, {
+                    silentToast: true,
+                    silentRender: true,
+                    markProcessed
+                });
+            }
+            return row.codes;
+        })());
     }
+    const codes = (await Promise.all(saves)).filter(Boolean);
     return { confirmed: codes.length, codes, doctorText: summary.doctorText };
 }
 

@@ -101,7 +101,11 @@ eq(log.userLogShouldMigrate({ snapshot: false, prev: false, additions: true }), 
 async function roundTrip() {
     const key = await deriveVaultKey('correct-horse-battery', new TextEncoder().encode('salt-1234'));
     const dir = memoryDir();
-    global.writeTextFile = async (folder, name, text) => folder.write(name, text);
+    let freshWrites = 0;
+    global.writeTextFile = async (folder, name, text, options) => {
+        if (options && options.fresh) freshWrites += 1;
+        folder.write(name, text);
+    };
     global.readTextFile = (folder, name) => folder.read(name);
     global.deleteTextFile = async (folder, name) => { folder.files.delete(name); return true; };
     global.appendTextFile = async (folder, name, text) => {
@@ -129,8 +133,16 @@ async function roundTrip() {
     eq(dir.files.get('records.additions.log'), '', 'the additions file starts empty');
     eq(log.userLogIsActive(), true, 'saves go to the clinic file after the copy');
 
+    let dirLooks = 0;
+    const openDir = global.getUserDir;
+    global.getUserDir = async (...args) => {
+        dirLooks += 1;
+        return openDir(...args);
+    };
     await log.appendUserLogPut('lesion', { id: 'spot-1', location: 'Left cheek', updatedAt: '2026-11-02T00:00:00.000Z', plan: 'Monitor' });
     await log.appendUserLogPut('lesion', { id: 'spot-2', location: 'Right arm', updatedAt: '2026-11-02T01:00:00.000Z' });
+    eq(freshWrites, 2, 'each new save is written once');
+    eq(dirLooks, 1, 'later saves reuse the clinic folder');
     const additions = await dir.getDirectoryHandle('records.additions');
     const savedNames = [];
     for await (const [name, handle] of additions.entries()) {

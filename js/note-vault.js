@@ -306,6 +306,11 @@ async function saveCurrentVisitNotes(options) {
     return note;
 }
 
+function cancelScheduledVisitNoteSave() {
+    clearTimeout(visitNoteSaveTimer);
+    visitNoteSaveTimer = null;
+}
+
 function scheduleVisitNoteSave() {
     if (typeof applyingChartRecord !== 'undefined' && applyingChartRecord) return;
     if (!hasCurrentPatient()) return;

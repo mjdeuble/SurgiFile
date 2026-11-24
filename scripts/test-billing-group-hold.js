@@ -79,9 +79,30 @@ eq(splitVisit.lesions.every((item) => item.chartId === 'chart-b'), true, 'the wa
 let persisted = 0;
 global.persistProcessedBilling = () => { persisted += 1; return Promise.resolve(); };
 global.managedLesions = [punch, waiting];
-confirmSameDaySessionBilling([punch, waiting]).then((result) => {
+confirmSameDaySessionBilling([punch, waiting]).then(async (result) => {
     eq(result.confirmed, 0, 'a mixed group confirms nothing');
     eq(persisted, 0, 'a mixed group is not marked processed');
+    const readyPair = [biopsy('r1', 'chart-d'), biopsy('r2', 'chart-d')];
+    global.managedLesions = readyPair;
+    global.billingForLesion = (id) => ({ id: 'bill-' + id, lesionId: id, status: 'awaiting' });
+    global.billingHasBeenSent = () => false;
+    let active = 0;
+    let peak = 0;
+    const flags = [];
+    global.persistProcessedBilling = (bill, codes, extra) => {
+        active += 1;
+        peak = Math.max(peak, active);
+        flags.push(!!(extra && extra.markProcessed));
+        return new Promise((resolve) => setTimeout(() => {
+            active -= 1;
+            resolve();
+        }, 30));
+    };
+    const processed = await confirmSameDaySessionBilling(readyPair, { markProcessed: true });
+    eq(processed.confirmed, 2, 'both ready biopsies are saved');
+    eq(peak, 2, 'the two billing saves run together');
+    eq(flags.length, 2, 'each ready biopsy is saved once');
+    eq(flags.every(Boolean), true, 'visit close marks them processed in that save');
     if (failed) {
         console.error(failed + ' failed');
         process.exit(1);

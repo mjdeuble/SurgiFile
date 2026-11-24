@@ -1163,6 +1163,7 @@ async function saveCurrentChartFromDom(options) {
             ignoreWorkspace: !!options?.endVisit
         });
     }
+    if (options?.skipWrite) return chart;
     await saveManagedChartRecord(chart);
     if (typeof updateChartChrome === 'function') updateChartChrome();
     return chart;
@@ -1468,7 +1469,7 @@ function patientSummaryHistoryLines() {
 }
 
 async function markChartIemrCopied(text) {
-    const chart = await saveCurrentChartFromDom();
+    const chart = await saveCurrentChartFromDom({ skipWrite: true });
     if (!chart) return;
     const now = new Date().toISOString();
     const hash = screeningSnapshotHash(chart.screening, chart.exam);
@@ -1784,8 +1785,11 @@ async function closePatientChart(options) {
         return;
     }
     closeFinaliseVisitModal();
-    await saveCurrentChartFromDom({ endVisit: true });
-    if (typeof saveCurrentVisitNotes === 'function') await saveCurrentVisitNotes();
+    if (typeof cancelScheduledChartSave === 'function') cancelScheduledChartSave();
+    if (typeof cancelScheduledVisitNoteSave === 'function') cancelScheduledVisitNoteSave();
+    const chartWrite = saveCurrentChartFromDom({ endVisit: true });
+    const noteWrite = typeof saveCurrentVisitNotes === 'function' ? saveCurrentVisitNotes() : Promise.resolve();
+    await Promise.all([chartWrite, noteWrite]);
     if (typeof clearStoredProcedureSession === 'function') {
         await clearStoredProcedureSession();
     }
@@ -1793,7 +1797,7 @@ async function closePatientChart(options) {
     clearCurrentPatient();
     if (typeof switchWorkspaceTab === 'function') switchWorkspaceTab('management');
     if (typeof setMgmtFilter === 'function') setMgmtFilter('open');
-    if (typeof renderManagedLesions === 'function') renderManagedLesions();
+    else if (typeof renderManagedLesions === 'function') renderManagedLesions();
     if (typeof updateChartChrome === 'function') updateChartChrome();
     if (!options?.silent) showToast('Chart closed. Showing all active lesions.');
 }
@@ -1842,7 +1846,7 @@ function setFinaliseCopyButton(id, copied, idleLabel, doneLabel, idleClass, done
 }
 
 function refreshFinaliseVisitModal() {
-    if (typeof updateOutput === 'function') updateOutput();
+    if (typeof updateOutput === 'function') updateOutput({ skipSchedule: true });
     const iemr = typeof generateCompleteInteractionNote === 'function'
         ? generateCompleteInteractionNote()
         : (typeof generateEMRNotePlainText === 'function' ? generateEMRNotePlainText() : '');

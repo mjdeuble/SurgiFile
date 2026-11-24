@@ -1796,9 +1796,10 @@ async function endProcedureSession() {
         if (typeof stampHistologyBatchForProcedure === 'function') {
             stampHistologyBatchForProcedure(ordered.length ? ordered : ids.map((id) => ({ id })));
         }
+        if (progress) progress('Saving procedure lesions…', 0.4);
+        const lesionSaves = [];
         for (let i = 0; i < ids.length; i++) {
             const id = ids[i];
-            if (progress) progress('Saving procedure lesions…', 0.15 + (0.65 * ((i + 1) / ids.length)));
             let lesion = managedLesions.find((item) => String(item.id) === String(id))
                 || (typeof chartLesions === 'function' ? chartLesions() : []).find((item) => String(item.id) === String(id));
             if (!lesion) continue;
@@ -1823,28 +1824,32 @@ async function endProcedureSession() {
             }
             const sessionIdx = lesions.findIndex((item) => String(item.id) === String(id));
             if (sessionIdx !== -1) lesions[sessionIdx] = { ...lesions[sessionIdx], ...lesion };
-            try {
-                if (typeof appendLesionHistory === 'function') {
-                    appendLesionHistory(lesion, 'status:awaiting_histology', lesion.procedureComplications || 'Procedure completed');
+            lesionSaves.push((async () => {
+                try {
+                    if (typeof appendLesionHistory === 'function') {
+                        appendLesionHistory(lesion, 'status:awaiting_histology', lesion.procedureComplications || 'Procedure completed');
+                    }
+                    const billWrite = typeof createOrUpdateBillingFromLesion === 'function'
+                        ? createOrUpdateBillingFromLesion(lesion, { skipLesionWrite: true })
+                        : Promise.resolve();
+                    const lesionWrite = typeof persistSessionLesionToVault === 'function' && isVaultLoggedIn()
+                        ? persistSessionLesionToVault(lesion, { silent: true })
+                        : Promise.resolve();
+                    await Promise.all([billWrite, lesionWrite]);
+                } catch (err) {
+                    lesion.managementStatus = 'awaiting_histology';
+                    if (typeof warnVaultWriteFailure === 'function') {
+                        warnVaultWriteFailure(err, 'Procedure lesion could not be saved to the clinic folder. Check folder access.');
+                    } else {
+                        console.warn('Procedure lesion persist failed', err);
+                    }
+                    if (typeof createOrUpdateBillingFromLesion === 'function') {
+                        try { await createOrUpdateBillingFromLesion(lesion); } catch (billErr) { /* in-memory billing still attempted */ }
+                    }
                 }
-                if (typeof createOrUpdateBillingFromLesion === 'function') {
-                    await createOrUpdateBillingFromLesion(lesion, { skipLesionWrite: true });
-                }
-                if (typeof persistSessionLesionToVault === 'function' && isVaultLoggedIn()) {
-                    await persistSessionLesionToVault(lesion);
-                }
-            } catch (err) {
-                lesion.managementStatus = 'awaiting_histology';
-                if (typeof warnVaultWriteFailure === 'function') {
-                    warnVaultWriteFailure(err, 'Procedure lesion could not be saved to the clinic folder. Check folder access.');
-                } else {
-                    console.warn('Procedure lesion persist failed', err);
-                }
-                if (typeof createOrUpdateBillingFromLesion === 'function') {
-                    try { await createOrUpdateBillingFromLesion(lesion); } catch (billErr) { /* in-memory billing still attempted */ }
-                }
-            }
+            })());
         }
+        await Promise.all(lesionSaves);
         const finishedLesions = ids.map((id) => managedLesions.find((item) => String(item.id) === String(id))).filter(Boolean);
         procedureSession.started = false;
         procedureSession.completedAt = new Date().toISOString();
@@ -1870,22 +1875,23 @@ async function endProcedureSession() {
         if (typeof renderChartSidebar === 'function') renderChartSidebar();
         if (typeof renderManagedLesions === 'function') renderManagedLesions();
         if (typeof ensureExLesionsFromOutputLesions === 'function') ensureExLesionsFromOutputLesions();
-        if (typeof updateOutput === 'function') updateOutput();
-        if (typeof saveCurrentVisitNotes === 'function') {
-            saveCurrentVisitNotes().catch(() => { /* snapshot is best-effort */ });
-        }
-        if (typeof persistProcedureSessionToChart === 'function') {
-            if (progress) progress('Saving procedure…', 0.92);
-            try {
-                await persistProcedureSessionToChart();
-            } catch (err) {
+        if (typeof updateOutput === 'function') updateOutput({ skipSchedule: true });
+        if (progress) progress('Saving procedure…', 0.92);
+        const noteWrite = typeof saveCurrentVisitNotes === 'function'
+            ? saveCurrentVisitNotes().catch(() => { /* snapshot is best-effort */ })
+            : Promise.resolve();
+        const chartWrite = typeof persistProcedureSessionToChart === 'function'
+            ? persistProcedureSessionToChart().catch((err) => {
                 if (typeof warnVaultWriteFailure === 'function') {
                     warnVaultWriteFailure(err, 'Procedure session could not be saved to the clinic folder. Check folder access.');
                 } else {
                     console.warn('Procedure session persist failed', err);
                 }
-            }
-        }
+            })
+            : Promise.resolve();
+        await Promise.all([noteWrite, chartWrite]);
+        if (typeof cancelScheduledChartSave === 'function') cancelScheduledChartSave();
+        if (typeof cancelScheduledVisitNoteSave === 'function') cancelScheduledVisitNoteSave();
         renderProcedureWorkspace();
         if (progress) progress('Procedure complete', 1);
     };

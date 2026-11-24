@@ -3433,7 +3433,7 @@ function upsertManagedLesionMemory(lesion) {
     else managedLesions[idx] = lesion;
 }
 
-async function persistSessionLesionToVault(sessionLesion) {
+async function persistSessionLesionToVault(sessionLesion, options) {
     if (!isVaultLoggedIn()) return null;
     const existing = managedLesions.find((item) => String(item.id) === String(sessionLesion.id)) || {};
     const priorConsent = lesionConsentStatus(existing);
@@ -3607,8 +3607,10 @@ async function persistSessionLesionToVault(sessionLesion) {
     await writeManagedLesion(next);
     upsertManagedLesionMemory(next);
     if (typeof offerLesionToProcedureSession === 'function') offerLesionToProcedureSession(next);
-    renderManagedLesions();
-    if (typeof renderChartSidebar === 'function') renderChartSidebar();
+    if (!options?.silent) {
+        renderManagedLesions();
+        if (typeof renderChartSidebar === 'function') renderChartSidebar();
+    }
     return next;
 }
 
