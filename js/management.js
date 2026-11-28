@@ -9,10 +9,18 @@ try {
     openAttentionOnly = false;
 }
 
+function managementQueueUsesAttention(filter) {
+    const key = typeof normalizeMgmtFilter === 'function' ? normalizeMgmtFilter(filter) : filter;
+    if (key === 'open' || key === 'active') return true;
+    return typeof isRequiresManagementFilter === 'function'
+        ? isRequiresManagementFilter(key)
+        : (key === 'requires_management' || key === 'needs_contact' || key === 'appointment_requested');
+}
+
 function openAttentionFilterActive() {
     if (!openAttentionOnly) return false;
     const filter = typeof normalizeMgmtFilter === 'function' ? normalizeMgmtFilter(mgmtActiveFilter) : mgmtActiveFilter;
-    return filter === 'open' || filter === 'active';
+    return managementQueueUsesAttention(filter);
 }
 
 function lesionsForOpenAttention(items) {
@@ -28,7 +36,7 @@ function syncOpenAttentionControl() {
     const box = document.getElementById('openAttentionToggle');
     const filter = typeof normalizeMgmtFilter === 'function' ? normalizeMgmtFilter(mgmtActiveFilter) : mgmtActiveFilter;
     const practice = typeof practiceWorkspaceActive !== 'function' || practiceWorkspaceActive();
-    const show = practice && (filter === 'open' || filter === 'active');
+    const show = practice && managementQueueUsesAttention(filter);
     if (wrap) wrap.classList.toggle('hidden', !show);
     if (box) box.checked = !!openAttentionOnly;
 }
@@ -491,7 +499,7 @@ function renderManagedLesions() {
     }
 
     let visible = chart.filter((item) => lesionMatchesFilter(item, mgmtActiveFilter));
-    if (mgmtActiveFilter === 'open' || mgmtActiveFilter === 'active') visible = lesionsForOpenAttention(visible);
+    if (managementQueueUsesAttention(mgmtActiveFilter)) visible = lesionsForOpenAttention(visible);
     if (empty) empty.classList.toggle('hidden', visible.length > 0);
 
     if (mgmtActiveFilter === 'open' || mgmtActiveFilter === 'active') {
@@ -511,8 +519,9 @@ function renderOpenLesionBoard(items) {
     return '<p class="text-sm text-slate-400 italic lg:col-span-2">' + message + '</p>';
 }
 
-function renderNamedStatusColumn(title, items) {
+function renderNamedStatusColumn(title, items, emptyMessage) {
     const grouped = renderPatientEpisodeGroups(items, (lesion, opts) => renderManagedLesionCard(lesion, opts));
+    const empty = emptyMessage || 'No lesions in this queue.';
     return `
         <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden lg:col-span-2">
             <header class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
@@ -520,7 +529,7 @@ function renderNamedStatusColumn(title, items) {
                 <span class="text-[11px] font-semibold text-slate-500">${items.length}</span>
             </header>
             <div class="p-3 space-y-3">
-                ${grouped || '<p class="text-sm text-slate-400 italic">No lesions in this queue.</p>'}
+                ${grouped || '<p class="text-sm text-slate-400 italic">' + escapeHtml(empty) + '</p>'}
             </div>
         </section>`;
 }
@@ -534,7 +543,8 @@ function renderStatusColumn(status, items) {
         : (status === 'completed' || status === 'no_followup')
             ? 'Completed'
         : (LESION_STATUSES[status] || status);
-    return renderNamedStatusColumn(title, items);
+    const attention = typeof openAttentionFilterActive === 'function' && openAttentionFilterActive();
+    return renderNamedStatusColumn(title, items, attention ? 'No lesions need attention now.' : '');
 }
 
 function phoneTelHref(phone) {

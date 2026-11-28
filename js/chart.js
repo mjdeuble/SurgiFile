@@ -1572,7 +1572,7 @@ function renderFurtherActionDateCard(lesion) {
         <div class="insp-card-head">Further action</div>
         <div class="insp-card-body">
             <label class="insp-label" for="inspFurtherActionDate">Next attention date</label>
-            <p class="insp-hint">The day this open lesion next needs attention. Leave it blank to keep the lesion on Needs attention now. A later date hides it until that day. You can change it after contact, after a procedure is planned, or if the patient does not attend.</p>
+            <p class="insp-hint">The day this lesion next needs attention. Leave it blank to keep the lesion on Needs attention now. A later date hides it from Open lesions and Requires management until that day. You can change it after contact, after a procedure is planned, or if the patient does not attend.</p>
             <div class="further-action-row">
                 <input type="date" id="inspFurtherActionDate" class="insp-input" value="${escapeHtml(date)}" onchange="saveFurtherActionDateFromInspector()">
                 <button type="button" onclick="clearFurtherActionDateFromInspector()">Clear</button>

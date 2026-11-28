@@ -47,6 +47,10 @@ eq(shown(lesion('awaiting_histology', '2026-11-03')), false, 'pending result dat
 eq(shown(lesion('planned_procedure', '2026-11-03')), false, 'planned procedure dated ahead is hidden');
 eq(shown(lesion('planned_procedure', '2026-11-02')), true, 'planned procedure due today stays');
 eq(shown(lesion('needs_contact', '2026-10-01')), true, 'past contact date stays');
+eq(shown(lesion('needs_contact', '2026-11-03')), false, 'requires management dated ahead is hidden');
+eq(shown(lesion('appointment_requested', '2026-11-03')), false, 'a requested appointment dated ahead is hidden');
+eq(shown(lesion('awaiting_assessment', '2026-11-02')), true, 'assessment due today stays');
+eq(shown(lesion('awaiting_assessment', '')), true, 'assessment with no date stays');
 eq(shown(lesion('topical_followup', '')), true, 'topical review with no date stays');
 eq(shown(lesion('no_followup', '')), false, 'completed lesion stays off the open list');
 eq(shown(lesion('no_followup', '2026-11-01')), false, 'completed lesion with a past date stays off');
